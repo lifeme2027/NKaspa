@@ -4,7 +4,7 @@
 
 状态只用三种：
 
-- **已实现**：这一版（0.1.5-alpha）里有对应类型，范围以代码为准。
+- **已实现**：这一版（0.1.6-alpha）里有对应类型，范围以代码为准。
 - **计划中**：后面阶段要做，或只做 Kaspa 自己的等价物，不照搬比特币协议。
 - **无需实现**：Kaspa 没有这套机制，或它不该出现在这个库里。
 
@@ -19,9 +19,10 @@
 | `BitcoinWitScriptAddress` | — | 无需实现 | 没有 witness v0 脚本程序。脚本哈希走 `KaspaScriptHashAddress`。 |
 | `TaprootAddress` 及 Taproot 脚本树 | — | 无需实现 | Kaspa 的 Schnorr 不是比特币 BIP341 Taproot。 |
 | `Key` / `PubKey` / `BitcoinSecret` | `Key` / `PubKey` / `PubKeyECDSA` | 已实现 | `PubKey` 是 32 字节 Schnorr x-only。33 字节压缩公钥是 `PubKeyECDSA`。没有比特币 WIF / `BitcoinSecret`。 |
-| `Script` | `Script` / `ScriptPubKey` | 已实现 | 解析、构建、`ToString`、标准模板和签名脚本。不执行脚本。 |
-| `Transaction` / `TxIn` / `TxOut` / `OutPoint` | 同名 | 已实现 | 版本 0 与 Toccata 版本 1 的序列化、交易号和交易哈希。版本 1 交易号是 BLAKE3。Covenant 只序列化，不执行。 |
-| `TransactionBuilder` / `Coin` | `TransactionBuilder` / `Coin` | 已实现 | 精简构建器：选币、Schnorr 与 ECDSA P2PK 签名、找零、显式费用、按费率估价，或只付最低中继费。`Coin` 是 `OutPoint` 加 `UtxoEntry`。默认版本 0。`SetVersion(1)` 产出版本 1，默认 compute budget 是 10。`MustSpend` / `SpendAllCoins` 强制每一枚指定的币进入交易并单独签名。 |
+| `Script` | `Script` / `ScriptPubKey` | 已实现 | 解析、构建、`ToString`、标准模板和签名脚本。`Script.VerifyScript` 执行版本 0 脚本，包括 P2SH 赎回脚本。 |
+| `ScriptEvaluationContext` | `ScriptEvaluationContext` / `TxScriptEngine` | 已实现 | 对标 NBitcoin 的执行上下文，规则对齐 rusty-kaspa `crypto/txscript` 的 `TxScriptEngine`。版本 0 预算是 `sigOpCount * 100000 + 9999`。版本 1 预算是 `computeBudget * 10000 + 9999`。脚本最长 1000000 字节，元素最长 1000000 字节，数据栈加备用栈最深 244，非推送操作码最多 1000000。`OP_ZKPRECOMPILE` 返回未实现。没有区块访问器时 `OP_CHAINBLOCKSEQCOMMIT` 是非法操作码。 |
+| `Transaction` / `TxIn` / `TxOut` / `OutPoint` | 同名 | 已实现 | 版本 0 与 Toccata 版本 1 的序列化、交易号和交易哈希。版本 1 交易号是 BLAKE3。`Transaction.Verify` 对每个输入跑脚本引擎。已确定规则的内省和 covenant 操作码会执行。 |
+| `TransactionBuilder` / `Coin` | `TransactionBuilder` / `Coin` | 已实现 | 精简构建器：选币、Schnorr 与 ECDSA P2PK 签名、找零、显式费用、按费率估价，或只付最低中继费。`Verify` 检查每一个输入的脚本。`Coin` 是 `OutPoint` 加 `UtxoEntry`。默认版本 0。`SetVersion(1)` 产出版本 1，默认 compute budget 是 10。`MustSpend` / `SpendAllCoins` 强制每一枚指定的币进入交易并单独签名。 |
 | `TransactionSignature` / sighash | `SchnorrSignature` / `ECDSASignature` / `SigHashType` | 已实现 | Kaspa sighash。`SigHashType.Single` 是 `0x04`，比特币的 SINGLE 是 `0x03`。 |
 | `uint256` | `uint256` | 已实现 | 可解析、比较、按 32 字节序列化。显示不反转字节，见下文。 |
 | `uint160` / `uint128` | — | 无需实现 | 地址和交易哈希都是 32 字节。 |
@@ -114,7 +115,7 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 | 状态 | 原因 |
 | --- | --- |
 | 无需原样实现 | 比特币标准脚本（P2PKH、P2WPKH、multisig 计数）对不上 Kaspa。 |
-| 已实现（mass） | `MassCalculator`：版本 0 与版本 1 的 compute mass、KIP-13 transient mass、KIP-9 storage mass。费用 mass 是这三项归一化后的最大值。块限额是 compute 500000、storage 500000、transient 1000000。旧的单笔 `100_000` 仍保留为可选策略。币库交易这三项都是 0。脚本是否标准仍等脚本虚拟机。 |
+| 已实现（mass） | `MassCalculator`：版本 0 与版本 1 的 compute mass、KIP-13 transient mass、KIP-9 storage mass。费用 mass 是这三项归一化后的最大值。块限额是 compute 500000、storage 500000、transient 1000000。旧的单笔 `100_000` 仍保留为可选策略。币库交易这三项都是 0。脚本执行在 `TxScriptEngine`。标准性策略仍是已有的模板和 mass，没有单独的 `StandardTransactionPolicy`。 |
 
 ## RPC
 
@@ -144,7 +145,7 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 | 无需实现（BIP174） | Kaspa 没有原生 PSBT，不移植 `PartiallySignedTransaction`。 |
 | 已实现（PSKT） | `NKaspa.PSKT` 对齐 rusty-kaspa `wallet/pskt`。类型是 `PSKT`、`PSKTInput`、`PSKTOutput`、`PSKTBundle`。角色是 Creator、Constructor、Updater、Signer、Combiner、Finalizer、Extractor，角色本身不进 JSON。传输是紧凑 JSON，再加前缀 `PSKT` 的小写十六进制；Bundle 的 JSON 是数组，前缀 `PSKB`。Schnorr 部分签名的 JSON 键是 `schnorr`（64 字节）。ECDSA 的键是 `eCDSA`（DER），脚本里仍用 64 字节紧凑形式。`Finalize` 覆盖单签 Schnorr P2PK、ECDSA P2PK，以及 P2SH 赎回脚本上的 m-of-n（1 到 16）。`TransactionBuilder.BuildPSKT` 和 `Sign` 覆盖版本 0 与版本 1。不广播。 |
 
-空 PSKT 的 JSON 按 serde 字段顺序钉死。rusty-kaspa 的 pskt 测试和多签示例用随机密钥并打印结果，没有钉死的十六进制向量。本库没有启动 rusty-kaspa 进程做字节对照。xpub 写成比特币 `xpub` 前缀（`ExtendedPublicKey::to_string(None)`），不是 Kaspa `kpub`。多个公钥的 map 按未压缩 X||Y 排序。多个 xpub 按 base58 字符串排序，可能和 rust 的 `Ord` 不完全一致，没有多 xpub 的上游向量可对。版本 1 的 compute budget 只留在内存里，不进 JSON；rusty 的 `unsigned_tx` 对 compute budget 仍是 TODO，版本 1 的 sighash 也不写入这笔预算。`ExtractTransaction` 写的是 KIP-9 storage mass，不执行脚本，也不取 storage、compute、transient 的最大值。
+空 PSKT 的 JSON 按 serde 字段顺序钉死。rusty-kaspa 的 pskt 测试和多签示例用随机密钥并打印结果，没有钉死的十六进制向量。本库没有启动 rusty-kaspa 进程做字节对照。xpub 写成比特币 `xpub` 前缀（`ExtendedPublicKey::to_string(None)`），不是 Kaspa `kpub`。多个公钥的 map 按未压缩 X||Y 排序。多个 xpub 按 base58 字符串排序，可能和 rust 的 `Ord` 不完全一致，没有多 xpub 的上游向量可对。版本 1 的 compute budget 只留在内存里，不进 JSON；rusty 的 `unsigned_tx` 对 compute budget 仍是 TODO，版本 1 的 sighash 也不写入这笔预算。`ExtractTransaction` 写的是 KIP-9 storage mass，这一步本身不执行脚本，也不取 storage、compute、transient 的最大值。提出来的交易用 `Transaction.Verify` 检查。
 
 ## BIP158
 
@@ -204,12 +205,12 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 
 ## 当前进度
 
-0.1.5-alpha。这一版加上通用 JSON 转换器。0.1.4 的行为还在：`samples/` 里的控制台示例。第一阶段的编码器、BLAKE2b、`uint256`、网络和三种地址仍在。第二阶段的密钥、签名、脚本、版本 0 交易和 sighash 仍在。第三阶段补上 BIP39、BIP32、mass / 费率、交易构建器和最小 wRPC JSON 客户端。0.1.1 补上 Toccata 版本 1 交易号、找零与 mass 策略，以及 wRPC 帧分发。0.1.2 让构建器强制花掉指定输入、在一枚币够付时不拉小币，并直接产出版本 1 付款。0.1.3 加上 PSKT：部分签名、合并、单签与 P2SH 多签终结、提取，以及 `TransactionBuilder.BuildPSKT`。
+0.1.6-alpha。这一版执行脚本。0.1.5 的通用 JSON 转换器还在。0.1.4 的行为还在：`samples/` 里的控制台示例。第一阶段的编码器、BLAKE2b、`uint256`、网络和三种地址仍在。第二阶段的密钥、签名、脚本、版本 0 交易和 sighash 仍在。第三阶段补上 BIP39、BIP32、mass / 费率、交易构建器和最小 wRPC JSON 客户端。0.1.1 补上 Toccata 版本 1 交易号、找零与 mass 策略，以及 wRPC 帧分发。0.1.2 让构建器强制花掉指定输入、在一枚币够付时不拉小币，并直接产出版本 1 付款。0.1.3 加上 PSKT：部分签名、合并、单签与 P2SH 多签终结、提取，以及 `TransactionBuilder.BuildPSKT`。
 
 - 解决方案：`NKaspa.sln`，类库 `src/NKaspa`（`net8.0`、`netstandard2.1`），测试 `tests/NKaspa.Tests`（xUnit，`net8.0`），示例 `samples/`（七个控制台项目，`net8.0`）。对照见下文「示例」。
 - 密钥：`Key`、`PubKey`（32 字节 x-only）、`PubKeyECDSA`（33 字节压缩）。`GetAddress` 默认是 Schnorr 地址。`Key.Create` 会清零临时缓冲区。`ExtKey.PrivateKey` 返回副本，处置副本不会让父密钥失效。
 - 签名：`SchnorrSignature`、`ECDSASignature`、`SigHashType`（`All=0x01`、`None=0x02`、`Single=0x04`，anyone-can-pay 是 `0x80`）。
-- 脚本：`OpcodeType`、`Op`、`Script`、`ScriptBuilder`。`ScriptPubKey` 仍带 u16 版本。标准模板是 Schnorr P2PK、ECDSA P2PK、P2SH。签名脚本是 66 字节的 `OP_DATA_65` 推送。不执行脚本。
+- 脚本：`OpcodeType`、`Op`、`Script`、`ScriptBuilder`、`ScriptEvaluationContext`、`TxScriptEngine`。`ScriptPubKey` 仍带 u16 版本。标准模板是 Schnorr P2PK、ECDSA P2PK、P2SH。签名脚本是 66 字节的 `OP_DATA_65` 推送。版本 0 脚本会执行，P2SH 会再跑赎回脚本。推送、流程控制、栈、位运算、算术、Schnorr 与 ECDSA 的 `OP_CHECKSIG` / `OP_CHECKMULTISIG`、`OP_BLAKE2B`、`OP_BLAKE3`、`OP_SHA256`、`OP_CHECKLOCKTIMEVERIFY`、`OP_CHECKSEQUENCEVERIFY`、内省操作码 `0xb2`–`0xc9`、covenant 操作码 `0xcb`–`0xd6`、`OP_NUM2BIN`、`OP_BIN2NUM`、`OP_CHECKSIGFROMSTACK` 都已实现。`OP_ZKPRECOMPILE` 返回未实现。没有 `ISeqCommitAccessor` 时 `OP_CHAINBLOCKSEQCOMMIT` 是非法操作码。数字是小端，符号在末字节高位，算术宽度最多 8 字节。
 - 交易：`OutPoint`、`TxIn`、`TxOut`、`Transaction`、`UtxoEntry`、`SubnetworkId`、`Money`、`CovenantBinding`。版本 0 的交易号用带密钥的 BLAKE2b，密钥是 `TransactionID`；交易哈希的密钥是 `TransactionHash`。版本 1 的交易号是 BLAKE3，域是 `PayloadDigest`、`TransactionRest`、`TransactionV1Id`。长度前缀是 u64。
 - Sighash：`SigHash.CalcSchnorrSignatureHash` 使用密钥 `TransactionSigningHash`。ECDSA 再套 `SHA256(SHA256("TransactionSigningHashECDSA") || schnorrHash)`。版本 1 省略 sigop。有 covenant 时写入存在标志、授权输入和 covenant id；没有 covenant 时写 0。
 - 和比特币的主要差别：`OP_CHECKSIG` 验的是 Schnorr；`OP_CHECKSIGECDSA` 是 `0xab`；`OP_BLAKE2B` 是 `0xaa`；CLTV 是 `0xb0`，CSV 是 `0xb1`。`OP_CAT` 等是启用的。`OP_LEFT`、`OP_RIGHT`、`OP_2MUL`、`OP_2DIV`、`OP_LSHIFT`、`OP_RSHIFT` 仍禁用。
@@ -236,7 +237,7 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 
 `KaspaRpcHandler::handshake` 在 `rpc/wrpc/server/src/service.rs` 里仍是 TODO，当前节点不发送握手问候。通道会识别 method 为 `handshake` 或带 `handshake` 字段、且没有请求 id 的文本帧，其余无 id 帧当作通知。响应按请求 id 匹配。
 
-脚本虚拟机、covenant 执行和零知识证明不在这一版。字段可以序列化，执行标为计划中。
+脚本虚拟机按 rusty-kaspa `master`（`4edcbbccb449f84832afb1ca157904b35f37d006`）的 `crypto/txscript` 执行。`script_tests.json` 955 条通过，0 条因未实现操作码跳过，23 条注释不计入。`opcodes.rs` 里 50 个表驱动测试和 `scriptPubKey` 字符串往返没有移植。`OP_ZKPRECOMPILE` 仍未实现，执行时报错，不假装成功。
 
 ### 审查条目
 
@@ -244,7 +245,7 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 | --- | --- | --- |
 | 1. `MinimumChange` 默认为 0，小找零把 storage mass 顶爆 | 属实 | 默认阈值 `C / storage 限额`（0.02 KAS）。找零导致超限时再并进手续费。1 KAS 付 0.99 KAS 的测试不再抛出。极小的付款输出仍然拒绝。 |
 | 2. 单笔标准上限仍是 100000 | 属实（本库）。rusty-kaspa master 已去掉单笔上限，块限额为 500000 / 500000 / 1000000 | 构建器默认用块限额。`toccataActive: false` 或把 `MaximumMass` 设为 `MaxStandardTransactionMass` 保留 100000。storage mass 落在 100001 到 500000 的交易可以构建。 |
-| 3. 版本 1 交易 | 属实，原先未实现 | BLAKE3、`TxIn.ComputeBudget`、`TxOut.Covenant`、`FromBytes` / `ToBytes`、sighash 写入 covenant、版本 1 mass。用 `tx.rs` 测试 10–14 核对。脚本虚拟机和 covenant 执行仍是计划中。 |
+| 3. 版本 1 交易 | 属实，原先未实现 | BLAKE3、`TxIn.ComputeBudget`、`TxOut.Covenant`、`FromBytes` / `ToBytes`、sighash 写入 covenant、版本 1 mass。用 `tx.rs` 测试 10–14 核对。0.1.6 起脚本引擎按 compute budget 计量，并执行已确定规则的 covenant 操作码。 |
 | 4. WebSocket 不按 id 匹配，握手和通知会挡住响应 | 部分属实 | 通道按 id 匹配，通知单独保存。节点握手在 rusty-kaspa 里仍是空实现，本库只识别这种帧，不编造节点问候。测试用本地 `HttpListener`。 |
 | 5. `getBlockDagInfo` 的 network 只接受字符串 | 属实 | 字符串和 `{networkType, suffix}` 都接受。 |
 | 6. `SendFees` 不检查 100 sompi/gram | 部分属实 | `SendEstimatedFees` 本来就拒绝低于 100 的费率。`SendFees` 现在按 compute 与归一化 transient 检查显式手续费。`AllowBelowMinimumRelayFee` 可以放开。 |
@@ -279,8 +280,8 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 
 ## 仍未完成
 
-- 脚本虚拟机。
-- Covenant 执行与零知识证明。
+- `opcodes.rs` 的 50 个表驱动测试，以及 `script_tests.json` 的 `scriptPubKey` 字符串往返。JSON 套件本身已经通过。
+- `OP_ZKPRECOMPILE`。引擎返回未实现，不接受证明。
 - 与正在运行的 rusty-kaspa 做 PSKT 字节对照。上游测试没有钉死向量。
 - 版本 1 compute budget 进入 PSKT。rusty-kaspa 的 `unsigned_tx` 这里仍是 TODO。
 - NuGet 发布。这一版只改版本号，不推包。
@@ -290,7 +291,7 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 
 ## 下一步计划
 
-- 脚本虚拟机。
-- Covenant 执行。
+- 移植 `opcodes.rs` 里尚未覆盖 JSON 套件的表驱动测试。
+- `OP_ZKPRECOMPILE`，等 rusty-kaspa 把预编译规则定下来。
 - 有上游向量之后，钉死多公钥 map 和多 xpub 的 JSON 键序。
 - NuGet 打包准备。示例已经在 `samples/`，默认不广播。

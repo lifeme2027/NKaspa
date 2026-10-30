@@ -277,7 +277,8 @@ namespace NKaspa.Tests
             Assert.Equal(SigHashType.All, hashType);
             Assert.True(key.PubKey.Verify(new SchnorrSignature(signature), hash.ToBytes()));
             Assert.EndsWith(redeem.ToHex(), tx.Inputs[0].SignatureScript.ToHex());
-            Assert.False(tx.VerifyInput(0, spent));
+            Assert.True(tx.VerifyInput(0, spent));
+            Assert.True(tx.Verify(new[] { spent }));
         }
 
         [Fact]

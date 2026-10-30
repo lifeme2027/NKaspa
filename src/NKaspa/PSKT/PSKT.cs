@@ -410,7 +410,7 @@ namespace NKaspa.PSKT
 
         /// <summary>
         /// Copies final scripts onto the unsigned transaction and sets KIP-9 storage mass.
-        /// The script engine is not run. The transaction is not broadcast.
+        /// This method does not execute scripts and does not broadcast. <see cref="Transaction.Verify(IReadOnlyList{UtxoEntry})"/> checks the scripts.
         /// </summary>
         public Transaction ExtractTransaction()
         {

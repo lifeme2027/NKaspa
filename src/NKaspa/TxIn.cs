@@ -58,7 +58,7 @@ namespace NKaspa
         /// <summary>
         /// Toccata compute budget. Null means this input carries <see cref="SigOpCount"/> instead.
         /// Version-1 hashing writes this value, or 0 when it is null.
-        /// The script engine that spends the budget is not implemented.
+        /// The script engine allows <c>computeBudget * 10000 + 9999</c> script units. A null budget allows 9999.
         /// </summary>
         public ushort? ComputeBudget { get; set; }
     }

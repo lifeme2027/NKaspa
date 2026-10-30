@@ -16,7 +16,8 @@ namespace NKaspa
     /// or <see cref="OpcodeType.OP_PUSHDATA4"/>.
     /// </para>
     /// <para>
-    /// This type does not execute scripts. Standard templates and signature scripts are recognized and built.
+    /// <see cref="VerifyScript(Script, ScriptPubKey, Transaction, int, IReadOnlyList{UtxoEntry})"/> executes scripts.
+    /// Standard templates and signature scripts are recognized and built.
     /// Pay-to-pubkey Schnorr is <c>OP_DATA_32 || x-only || OP_CHECKSIG</c>.
     /// Pay-to-pubkey ECDSA is <c>OP_DATA_33 || compressed || OP_CHECKSIGECDSA</c>.
     /// Pay-to-script-hash is <c>OP_BLAKE2B || OP_DATA_32 || hash || OP_EQUAL</c>.
@@ -436,6 +437,65 @@ namespace NKaspa
             return ops.ToArray();
         }
 
+        /// <summary>
+        /// Runs <paramref name="scriptSig"/> and <paramref name="scriptPubKey"/> for one input.
+        /// The input may spend its committed sigop count or compute budget, plus 9999 script units.
+        /// </summary>
+        public static bool VerifyScript(
+            Script scriptSig,
+            ScriptPubKey scriptPubKey,
+            Transaction tx,
+            int inputIndex,
+            IReadOnlyList<UtxoEntry> utxos)
+        {
+            return VerifyScript(scriptSig, scriptPubKey, tx, inputIndex, utxos, out _);
+        }
+
+        /// <summary>
+        /// Runs <paramref name="scriptSig"/> and <paramref name="scriptPubKey"/> for one input.
+        /// <paramref name="error"/> is null when the input is valid.
+        /// </summary>
+        public static bool VerifyScript(
+            Script scriptSig,
+            ScriptPubKey scriptPubKey,
+            Transaction tx,
+            int inputIndex,
+            IReadOnlyList<UtxoEntry> utxos,
+            out ScriptError? error)
+        {
+            var context = ScriptEvaluationContext.Verify(scriptSig, scriptPubKey, tx, inputIndex, utxos);
+            error = context.Error;
+            return context.Result;
+        }
+
+        /// <summary>Runs <paramref name="scriptSig"/> against a version-0 <paramref name="scriptPubKey"/>.</summary>
+        public static bool VerifyScript(
+            Script scriptSig,
+            Script scriptPubKey,
+            Transaction tx,
+            int inputIndex,
+            IReadOnlyList<UtxoEntry> utxos)
+        {
+            return VerifyScript(scriptSig, scriptPubKey, tx, inputIndex, utxos, out _);
+        }
+
+        /// <summary>Runs <paramref name="scriptSig"/> against a version-0 <paramref name="scriptPubKey"/>.</summary>
+        public static bool VerifyScript(
+            Script scriptSig,
+            Script scriptPubKey,
+            Transaction tx,
+            int inputIndex,
+            IReadOnlyList<UtxoEntry> utxos,
+            out ScriptError? error)
+        {
+            if (scriptPubKey == null)
+            {
+                throw new ArgumentNullException(nameof(scriptPubKey));
+            }
+
+            return VerifyScript(scriptSig, new ScriptPubKey(0, scriptPubKey), tx, inputIndex, utxos, out error);
+        }
+
         private static byte[] Take(byte[] script, ref int offset, int length)
         {
             if (length < 0 || script.Length - offset < length)
@@ -591,7 +651,13 @@ namespace NKaspa
             return this;
         }
 
-        /// <summary>Parses the bytes written so far.</summary>
+        /// <summary>Raw bytes written so far, including a truncated push.</summary>
+        public byte[] ToBytes()
+        {
+            return _bytes.ToArray();
+        }
+
+        /// <summary>Parses the bytes written so far. A truncated push throws <see cref="FormatException"/>.</summary>
         public Script ToScript()
         {
             return new Script(_bytes.ToArray());

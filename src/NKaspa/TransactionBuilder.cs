@@ -512,13 +512,13 @@ namespace NKaspa
                     }
                 }
 
-                if (!transaction.VerifyInput(i, coin.Utxo))
-                {
-                    return false;
-                }
-
                 spent.Add(coin.Utxo);
                 inputSum += coin.Amount.Sompi;
+            }
+
+            if (!transaction.Verify(spent))
+            {
+                return false;
             }
 
             ulong outputSum = 0;

@@ -215,8 +215,8 @@ namespace NKaspa
         }
 
         /// <summary>
-        /// Verifies one input using the public key inside its pay-to-pubkey script.
-        /// Other script templates return false. The script engine is not executed.
+        /// Runs the script engine on one input against <paramref name="utxo"/>.
+        /// Spent outputs of the other inputs are omitted, so introspection of those inputs fails.
         /// </summary>
         public bool VerifyInput(int inputIndex, UtxoEntry utxo)
         {
@@ -225,32 +225,60 @@ namespace NKaspa
                 throw new ArgumentNullException(nameof(utxo));
             }
 
-            var script = utxo.ScriptPublicKey.ToScript();
-            if (utxo.ScriptPublicKey.IsPayToPubKey && script.TryGetPayToPubKey(out var xOnly))
+            EnsureInput(inputIndex);
+            var utxos = new UtxoEntry?[Inputs.Count];
+            utxos[inputIndex] = utxo;
+            var engine = TxScriptEngine.Run(
+                Inputs[inputIndex].SignatureScript.ToBytes(),
+                utxo.ScriptPublicKey,
+                this,
+                inputIndex,
+                utxos);
+            return engine.Error == null;
+        }
+
+        /// <summary>
+        /// Runs the script engine on every input. <paramref name="utxos"/> is parallel to <see cref="Inputs"/>.
+        /// A script failure returns false. Null entries and a different count throw <see cref="ArgumentException"/>.
+        /// </summary>
+        public bool Verify(IReadOnlyList<UtxoEntry> utxos)
+        {
+            if (utxos == null)
             {
-                try
+                throw new ArgumentNullException(nameof(utxos));
+            }
+
+            if (utxos.Count != Inputs.Count)
+            {
+                throw new ArgumentException("The spent output list must have one entry per input.", nameof(utxos));
+            }
+
+            var copy = new UtxoEntry?[utxos.Count];
+            for (var i = 0; i < utxos.Count; i++)
+            {
+                if (utxos[i] == null)
                 {
-                    return VerifyInput(inputIndex, new PubKey(xOnly), utxo);
+                    throw new ArgumentException("Spent output " + i.ToString() + " is missing.", nameof(utxos));
                 }
-                catch (ArgumentException)
+
+                copy[i] = utxos[i];
+            }
+
+            for (var i = 0; i < Inputs.Count; i++)
+            {
+                var engine = TxScriptEngine.Run(
+                    Inputs[i].SignatureScript.ToBytes(),
+                    copy[i]!.ScriptPublicKey,
+                    this,
+                    i,
+                    copy);
+                if (engine.Error != null)
                 {
                     return false;
                 }
             }
 
-            if (utxo.ScriptPublicKey.IsPayToPubKeyEcdsa && script.TryGetPayToPubKeyEcdsa(out var compressed))
-            {
-                try
-                {
-                    return VerifyInput(inputIndex, new PubKeyECDSA(compressed), utxo);
-                }
-                catch (ArgumentException)
-                {
-                    return false;
-                }
-            }
-
-            return false;
+            return true;
         }
 
         /// <summary>

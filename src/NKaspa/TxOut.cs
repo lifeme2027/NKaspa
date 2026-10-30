@@ -2,8 +2,7 @@ namespace NKaspa
 {
     /// <summary>
     /// Optional covenant bound to a version-1 output.
-    /// The script engine and covenant execution are not implemented.
-    /// Serialization and sighash still write these bytes.
+    /// Serialization and sighash write these bytes. The script engine reads them through the covenant opcodes.
     /// </summary>
     public sealed class CovenantBinding
     {
