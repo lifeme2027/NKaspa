@@ -146,6 +146,48 @@ namespace NKaspa.Tests
             Assert.Equal("mainnet", (await client.GetBlockDagInfoAsync()).Network);
         }
 
+        [Fact]
+        public async Task Utxo_script_accepts_the_human_readable_version_prefixed_hex()
+        {
+            // rusty-kaspa ScriptPublicKey JSON is one hex string: big-endian version, then the script.
+            // The vector is the upstream test: version 0xc0de and script bytes 0x00..=0x22.
+            var script = new byte[35];
+            for (var i = 0; i < script.Length; i++)
+            {
+                script[i] = (byte)i;
+            }
+
+            var prefixed = "c0de" + NKaspa.DataEncoders.Encoders.Hex.EncodeData(script);
+            var channel = new ScriptedChannel();
+            var client = new KaspaWrpcJsonClient(channel);
+            channel.Handler = request =>
+            {
+                using var doc = JsonDocument.Parse(request);
+                var id = doc.RootElement.GetProperty("id").GetInt64();
+                return "{\"id\":" + id + ",\"method\":\"getUtxosByAddresses\",\"params\":{\"entries\":[{\"address\":\"kaspa:qq\",\"outpoint\":{\"transactionId\":\"" + new uint256(5) + "\",\"index\":2},\"utxoEntry\":{\"amount\":35000000,\"scriptPublicKey\":\"" + prefixed + "\",\"blockDaaScore\":541054755,\"covenantId\":null,\"isCoinbase\":false}}]}}";
+            };
+
+            var utxos = await client.GetUtxosByAddressesAsync(new[] { "kaspa:qq" });
+            Assert.Single(utxos);
+            Assert.Equal((ushort)0xc0de, utxos[0].Entry.ScriptPublicKey.Version);
+            Assert.Equal(script, utxos[0].Entry.ScriptPublicKey.Script);
+            Assert.Equal(35000000UL, utxos[0].Entry.Amount.Sompi);
+            Assert.Equal(541054755UL, utxos[0].Entry.BlockDaaScore);
+            Assert.False(utxos[0].Entry.IsCoinbase);
+
+            using (var zero = JsonDocument.Parse("\"000020ac\""))
+            {
+                var versionZero = KaspaRpcJson.ReadScript(zero.RootElement);
+                Assert.Equal((ushort)0, versionZero.Version);
+                Assert.Equal(new byte[] { 0x20, 0xac }, versionZero.Script);
+            }
+
+            using (var tooShort = JsonDocument.Parse("\"00\""))
+            {
+                Assert.Throws<FormatException>(() => KaspaRpcJson.ReadScript(tooShort.RootElement));
+            }
+        }
+
         private static string UtxoResponse(long id)
         {
             var script = new Key(new byte[]

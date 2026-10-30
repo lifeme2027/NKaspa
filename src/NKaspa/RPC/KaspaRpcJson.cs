@@ -7,7 +7,9 @@ namespace NKaspa.RPC
     /// <summary>
     /// Converts a version-0 <see cref="Transaction"/> to and from wRPC JSON.
     /// Output amounts are written as <c>value</c>. <c>amount</c> is accepted when reading.
-    /// Script bytes are written as <c>script</c>. <c>scriptPublicKey</c> is accepted when reading.
+    /// Script bytes are written as an object field <c>script</c>. Reading also accepts
+    /// <c>scriptPublicKey</c> on that object, and the human-readable rusty-kaspa string:
+    /// four hex digits of the big-endian version followed by the script hex.
     /// <c>storageMass</c> and the deprecated <c>mass</c> field are both written, and they are equal.
     /// </summary>
     public static class KaspaRpcJson
@@ -244,6 +246,16 @@ namespace NKaspa.RPC
 
         internal static ScriptPubKey ReadScript(JsonElement element)
         {
+            if (element.ValueKind == JsonValueKind.String)
+            {
+                return ReadVersionPrefixedScript(element.GetString() ?? string.Empty);
+            }
+
+            if (element.ValueKind != JsonValueKind.Object)
+            {
+                throw new FormatException("Script public key is not an object or a hex string.");
+            }
+
             var version = element.TryGetProperty("version", out var versionElement) ? (ushort)ReadU64(versionElement) : (ushort)0;
             byte[] script;
             if (element.TryGetProperty("script", out var scriptElement))
@@ -259,6 +271,29 @@ namespace NKaspa.RPC
                 throw new FormatException("Script public key is missing script bytes.");
             }
 
+            return new ScriptPubKey(version, script);
+        }
+
+        /// <summary>
+        /// Human-readable form from rusty-kaspa <c>ScriptPublicKey</c>:
+        /// big-endian u16 version, then the script bytes, as one hex string.
+        /// </summary>
+        private static ScriptPubKey ReadVersionPrefixedScript(string text)
+        {
+            if (text.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                text = text.Substring(2);
+            }
+
+            if (text.Length < 4 || (text.Length & 1) != 0)
+            {
+                throw new FormatException("Script public key hex must start with a 2-byte version.");
+            }
+
+            var bytes = Encoders.Hex.DecodeData(text);
+            var version = (ushort)((bytes[0] << 8) | bytes[1]);
+            var script = new byte[bytes.Length - 2];
+            Buffer.BlockCopy(bytes, 2, script, 0, script.Length);
             return new ScriptPubKey(version, script);
         }
 
