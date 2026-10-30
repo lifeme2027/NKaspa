@@ -4,7 +4,7 @@
 
 ## English
 
-NKaspa is a .NET library for [Kaspa](https://kaspa.org/). Version **0.1.2-alpha**.
+NKaspa is a .NET library for [Kaspa](https://kaspa.org/). Version **0.1.3-alpha**.
 
 The public types follow [NBitcoin](https://github.com/MetacoSA/NBitcoin) where a Kaspa counterpart exists. `KaspaAddress` corresponds to `BitcoinAddress`. `uint256` corresponds to `NBitcoin.uint256`. `Encoders` corresponds to `NBitcoin.DataEncoders.Encoders`. The behavior is Kaspa's, not Bitcoin's: addresses use cashaddr-style bech32 (`kaspa`, `kaspatest`, `kaspasim`, `kaspadev`, 8-character checksum), and consensus hashes are unkeyed BLAKE2b-256.
 
@@ -12,7 +12,7 @@ NBitcoin is MIT licensed. See [NOTICE](NOTICE). Elliptic-curve operations use th
 
 ### Status
 
-Alpha. This release contains encoders (hex, Kaspa bech32, Base58Check), BLAKE2b-256, BLAKE3-256, `uint256`, the four networks, and addresses (Schnorr public key, ECDSA public key, script hash). It also contains keys, BIP-340 Schnorr and compact ECDSA signatures, script parsing and the standard pay-to-pubkey / pay-to-script-hash templates, version-0 and Toccata version-1 transactions and sighash, BIP39 mnemonics, BIP32 extended keys, a transaction builder, Kaspa mass and fee rates, and a minimal wRPC JSON client. The builder can force every named coin into the transaction, prefer one coin when that coin covers the payment, and emit a version-1 payment. The script engine does not execute scripts. Covenant and zero-knowledge execution are not implemented. The wRPC client is covered by canned JSON and a loopback WebSocket. It has not been run against a live node. The map of NBitcoin areas is in [docs/NBitcoin-Mapping.md](docs/NBitcoin-Mapping.md).
+Alpha. This release contains encoders (hex, Kaspa bech32, Base58Check), BLAKE2b-256, BLAKE3-256, `uint256`, the four networks, and addresses (Schnorr public key, ECDSA public key, script hash). It also contains keys, BIP-340 Schnorr and compact ECDSA signatures, script parsing and the standard pay-to-pubkey / pay-to-script-hash templates, version-0 and Toccata version-1 transactions and sighash, BIP39 mnemonics, BIP32 extended keys, a transaction builder, Kaspa mass and fee rates, a minimal wRPC JSON client, and PSKT (partially signed Kaspa transactions). PSKT follows rusty-kaspa `wallet/pskt`: the roles Creator, Constructor, Updater, Signer, Combiner, Finalizer, and Extractor; Schnorr and ECDSA partial signatures; combine; finalize for single-sig P2PK and multisig P2SH; and extract. `TransactionBuilder.BuildPSKT` covers version 0 and version 1. The hex form is the prefix `PSKT` plus lowercase hex of the compact JSON. A bundle uses `PSKB`. The builder can force every named coin into the transaction, prefer one coin when that coin covers the payment, and emit a version-1 payment. The script engine does not execute scripts. Covenant and zero-knowledge execution are not implemented. Nothing in this library broadcasts a transaction. The wRPC client is covered by canned JSON and a loopback WebSocket. It has not been run against a live node. The map of NBitcoin areas is in [docs/NBitcoin-Mapping.md](docs/NBitcoin-Mapping.md).
 
 ### Usage
 
@@ -71,6 +71,24 @@ var toccata = new TransactionBuilder()
 
 `firstCoin` and `secondCoin` are `Coin` values, the same kind of value as `coin`. `floor` is 0.002036 KAS.
 
+```csharp
+using NKaspa.PSKT;
+
+var pskt = new TransactionBuilder()
+    .AddKeys(receive.PrivateKey)
+    .AddCoins(coin)
+    .Send(payee, Money.Coins(1))
+    .SetChange(address)
+    .SendMinimumRelayFee()
+    .BuildPSKT()
+    .Sign(receive.PrivateKey);
+
+var carried = PSKT.FromHex(pskt.ToHex());
+var tx = carried.Finalizer().Finalize().ExtractTransaction();
+```
+
+`BuildPSKT` returns a signer-role PSKT for the same unsigned payment as `BuildTransaction(false)`. `Sign` adds a Schnorr or ECDSA partial signature for each input that key can spend. `ToHex` is `PSKT` plus the compact JSON. `FromHex` comes back as a combiner. `Finalize` fills a single-sig P2PK script or a P2SH multisig redeem script, then `ExtractTransaction` copies those scripts onto the unsigned transaction. Pass two PSKTs to `Combine` before `Finalize` for a 2-of-2. Schnorr auxiliary randomness is random unless you pass 32 bytes to `PSKT.Sign`. Inside `namespace NKaspa`, write `NKaspa.PSKT.PSKT`, because the name `PSKT` is the namespace. A version-1 compute budget stays on the in-memory input and is not part of the JSON. This path does not broadcast.
+
 `uint256` display hex is Kaspa wire order (the same bytes BLAKE2b emits). It is not reversed the way `NBitcoin.uint256.ToString()` reverses them. Numeric comparison still treats byte 0 as the least significant byte.
 
 ### Build
@@ -95,7 +113,7 @@ Package id `NKaspa`. Repository placeholder: https://github.com/lifeme2027/NKasp
 
 ## 中文
 
-NKaspa 是 Kaspa 的 .NET 基础函数库，版本 **0.1.2-alpha**。
+NKaspa 是 Kaspa 的 .NET 基础函数库，版本 **0.1.3-alpha**。
 
 公开类型尽量与 [NBitcoin](https://github.com/MetacoSA/NBitcoin) 一一对应，但语义按 Kaspa。地址是 cashaddr 风格的 bech32（前缀 `kaspa` / `kaspatest` / `kaspasim` / `kaspadev`，8 字符校验和）。共识哈希是不带密钥的 BLAKE2b-256，不是比特币的双 SHA256。
 
@@ -103,7 +121,7 @@ NBitcoin 采用 MIT 许可，致谢见 [NOTICE](NOTICE)。椭圆曲线使用 NuG
 
 ### 状态
 
-Alpha。这一版包含编码器（十六进制、Kaspa bech32、Base58Check）、BLAKE2b-256、BLAKE3-256、`uint256`、四个网络，以及地址（Schnorr 公钥、ECDSA 公钥、脚本哈希）。同时包含密钥、BIP-340 Schnorr 与紧凑 ECDSA 签名、脚本解析和标准 P2PK / P2SH 模板、版本 0 与 Toccata 版本 1 交易和 sighash、BIP39 助记词、BIP32 扩展密钥、交易构建器、Kaspa mass 与费率，以及最小的 wRPC JSON 客户端。构建器可以强制花掉指定的币，在一枚币够付时只用一枚，并直接产出版本 1 付款。脚本只解析和构建，不执行。Covenant 与零知识证明也不执行。wRPC 用预制 JSON 和本地回环 WebSocket 做过测试，没有连过真实节点。对照表见 [docs/NBitcoin-Mapping.md](docs/NBitcoin-Mapping.md)。
+Alpha。这一版包含编码器（十六进制、Kaspa bech32、Base58Check）、BLAKE2b-256、BLAKE3-256、`uint256`、四个网络，以及地址（Schnorr 公钥、ECDSA 公钥、脚本哈希）。同时包含密钥、BIP-340 Schnorr 与紧凑 ECDSA 签名、脚本解析和标准 P2PK / P2SH 模板、版本 0 与 Toccata 版本 1 交易和 sighash、BIP39 助记词、BIP32 扩展密钥、交易构建器、Kaspa mass 与费率、最小的 wRPC JSON 客户端，以及 PSKT（部分签名的 Kaspa 交易）。PSKT 对齐 rusty-kaspa 的 `wallet/pskt`：角色 Creator、Constructor、Updater、Signer、Combiner、Finalizer、Extractor；Schnorr 与 ECDSA 部分签名；合并；单签 P2PK 与多签 P2SH 的终结；提取交易。`TransactionBuilder.BuildPSKT` 覆盖版本 0 和版本 1。十六进制是前缀 `PSKT` 加上紧凑 JSON 的小写十六进制。Bundle 用 `PSKB`。构建器可以强制花掉指定的币，在一枚币够付时只用一枚，并直接产出版本 1 付款。脚本只解析和构建，不执行。Covenant 与零知识证明也不执行。本库不广播交易。wRPC 用预制 JSON 和本地回环 WebSocket 做过测试，没有连过真实节点。对照表见 [docs/NBitcoin-Mapping.md](docs/NBitcoin-Mapping.md)。
 
 ### 用法
 
@@ -161,6 +179,24 @@ var toccata = new TransactionBuilder()
 ```
 
 `firstCoin` 和 `secondCoin` 与 `coin` 一样，都是 `Coin`。`floor` 是 0.002036 KAS。
+
+```csharp
+using NKaspa.PSKT;
+
+var pskt = new TransactionBuilder()
+    .AddKeys(receive.PrivateKey)
+    .AddCoins(coin)
+    .Send(payee, Money.Coins(1))
+    .SetChange(address)
+    .SendMinimumRelayFee()
+    .BuildPSKT()
+    .Sign(receive.PrivateKey);
+
+var carried = PSKT.FromHex(pskt.ToHex());
+var tx = carried.Finalizer().Finalize().ExtractTransaction();
+```
+
+`BuildPSKT` 给出的是签名者角色的 PSKT，未签名付款与 `BuildTransaction(false)` 相同。`Sign` 为这把密钥能花的每个输入写入 Schnorr 或 ECDSA 部分签名。`ToHex` 是 `PSKT` 加上紧凑 JSON。`FromHex` 读回来是合并者角色。`Finalize` 填上单签 P2PK 或 P2SH 多签赎回脚本，`ExtractTransaction` 把这些脚本抄到未签名交易上。2-of-2 先对两份 PSKT 调用 `Combine`，再 `Finalize`。Schnorr 的辅助随机数默认随机，除非给 `PSKT.Sign` 传入 32 字节。写在 `namespace NKaspa` 里面时要用 `NKaspa.PSKT.PSKT`，因为裸名 `PSKT` 是命名空间。版本 1 的 compute budget 只留在内存里的输入上，不进入 JSON。这条路径不广播。
 
 `uint256` 的十六进制是 Kaspa 线上字节序（与 BLAKE2b 输出一致），不会像 `NBitcoin.uint256.ToString()` 那样把字节反转后再显示。数值比较仍然把第 0 字节当作最低有效字节。
 

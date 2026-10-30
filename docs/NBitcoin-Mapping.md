@@ -4,7 +4,7 @@
 
 状态只用三种：
 
-- **已实现**：这一版（0.1.2-alpha）里有对应类型，范围以代码为准。
+- **已实现**：这一版（0.1.3-alpha）里有对应类型，范围以代码为准。
 - **计划中**：后面阶段要做，或只做 Kaspa 自己的等价物，不照搬比特币协议。
 - **无需实现**：Kaspa 没有这套机制，或它不该出现在这个库里。
 
@@ -125,7 +125,7 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 | 已实现（最小子集） | `IKaspaRpcClient`、`KaspaWrpcJsonClient`、`KaspaWebSocketChannel`。方法是 `getServerInfo`、`getBlockDagInfo`、`getUtxosByAddresses`、`getBalanceByAddress`、`submitTransaction`、`getFeeEstimate`。信封是 workflow-rpc：`id`、`method`、`params`。成功体在 `params`，读的时候也接受 `result`。错误是 `error.code` / `error.message`。不是 JSON-RPC 2.0。 |
 | 未接真实节点 | 单元测试用内存里的 JSON 通道。`KaspaWebSocketChannel` 能发一帧文本，但没有 workflow-rpc 订阅握手，也没有对套接字或公共节点跑过。 |
 | 费用估计的内层字段 | `priorityBucket`、`normalBuckets`、`lowBuckets`，以及 `feerate` / `estimatedSeconds`，对齐 kaswallet `WalletRestClient` 和公开的 Kaspa WASM `IFeeEstimate`。rusty-kaspa 里对应的 `feerate.rs` 路径没有取到（404），内层结构没有从那份 Rust 源码确认。 |
-| PSBT 相关的 RPC 参数 | 无需实现。见 BIP174。Kaspa 的部分签名交易是 PSKT，还没做。 |
+| PSBT 相关的 RPC 参数 | 无需实现。见 BIP174。PSKT 在库内交换，不通过这些 RPC 参数提交或广播。 |
 
 ## Payment
 
@@ -141,7 +141,10 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 
 | 状态 | 原因 |
 | --- | --- |
-| 无需实现 | Kaspa 没有原生 PSBT。交易构造走 `TransactionBuilder`。下一步若做未签名交易交换，做的是 PSKT（Kaspa 的部分签名交易），不移植 BIP174。 |
+| 无需实现（BIP174） | Kaspa 没有原生 PSBT，不移植 `PartiallySignedTransaction`。 |
+| 已实现（PSKT） | `NKaspa.PSKT` 对齐 rusty-kaspa `wallet/pskt`。类型是 `PSKT`、`PSKTInput`、`PSKTOutput`、`PSKTBundle`。角色是 Creator、Constructor、Updater、Signer、Combiner、Finalizer、Extractor，角色本身不进 JSON。传输是紧凑 JSON，再加前缀 `PSKT` 的小写十六进制；Bundle 的 JSON 是数组，前缀 `PSKB`。Schnorr 部分签名的 JSON 键是 `schnorr`（64 字节）。ECDSA 的键是 `eCDSA`（DER），脚本里仍用 64 字节紧凑形式。`Finalize` 覆盖单签 Schnorr P2PK、ECDSA P2PK，以及 P2SH 赎回脚本上的 m-of-n（1 到 16）。`TransactionBuilder.BuildPSKT` 和 `Sign` 覆盖版本 0 与版本 1。不广播。 |
+
+空 PSKT 的 JSON 按 serde 字段顺序钉死。rusty-kaspa 的 pskt 测试和多签示例用随机密钥并打印结果，没有钉死的十六进制向量。本库没有启动 rusty-kaspa 进程做字节对照。xpub 写成比特币 `xpub` 前缀（`ExtendedPublicKey::to_string(None)`），不是 Kaspa `kpub`。多个公钥的 map 按未压缩 X||Y 排序。多个 xpub 按 base58 字符串排序，可能和 rust 的 `Ord` 不完全一致，没有多 xpub 的上游向量可对。版本 1 的 compute budget 只留在内存里，不进 JSON；rusty 的 `unsigned_tx` 对 compute budget 仍是 TODO，版本 1 的 sighash 也不写入这笔预算。`ExtractTransaction` 写的是 KIP-9 storage mass，不执行脚本，也不取 storage、compute、transient 的最大值。
 
 ## BIP158
 
@@ -168,14 +171,14 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 | `BIP9Deployments` | 部署状态 | 无需实现 | 比特币软分叉版本位。Kaspa 的升级不走 BIP9。 |
 | `JsonConverters` | 各 `JsonConverter` | 计划中 | wRPC 有自己的 `KaspaRpcJson`，不是通用 `JsonConverter`。通用转换器仍未做。 |
 | `WalletPolicies` / miniscript | 策略描述 | 无需实现 | 比特币 miniscript 与输出描述符对不上当前 Kaspa 脚本。 |
-| `BuilderExtensions` | `TransactionBuilder` | 已实现 | 构建能力在 `TransactionBuilder` 上，没有单独的扩展方法类。强制花费是 `MustSpend` 和 `SpendAllCoins`，不是 `SendAll` 那种把金额扫进一个输出。 |
+| `BuilderExtensions` | `TransactionBuilder` | 已实现 | 构建能力在 `TransactionBuilder` 上，没有单独的扩展方法类。强制花费是 `MustSpend` 和 `SpendAllCoins`，不是 `SendAll` 那种把金额扫进一个输出。未签名交换走 `BuildPSKT` 和 `Sign`。 |
 | `Socks` | `SocksHelper` | 计划外 | 与共识无关。做节点连接时再考虑。 |
 | `Logging` | `Logs` | 无需实现 | 库不绑定 NBitcoin 的日志门面。 |
 | `BouncyCastle` | 摘要与大整数 | 无需实现 | 不把这套源码带进来。哈希用自带 BLAKE2b，曲线用 Secp256k1 包。 |
 
 ## 当前进度
 
-0.1.2-alpha。第一阶段的编码器、BLAKE2b、`uint256`、网络和三种地址仍在。第二阶段的密钥、签名、脚本、版本 0 交易和 sighash 仍在。第三阶段补上 BIP39、BIP32、mass / 费率、交易构建器和最小 wRPC JSON 客户端。0.1.1 补上 Toccata 版本 1 交易号、找零与 mass 策略，以及 wRPC 帧分发。0.1.2 让构建器强制花掉指定输入、在一枚币够付时不拉小币，并直接产出版本 1 付款。
+0.1.3-alpha。第一阶段的编码器、BLAKE2b、`uint256`、网络和三种地址仍在。第二阶段的密钥、签名、脚本、版本 0 交易和 sighash 仍在。第三阶段补上 BIP39、BIP32、mass / 费率、交易构建器和最小 wRPC JSON 客户端。0.1.1 补上 Toccata 版本 1 交易号、找零与 mass 策略，以及 wRPC 帧分发。0.1.2 让构建器强制花掉指定输入、在一枚币够付时不拉小币，并直接产出版本 1 付款。0.1.3 加上 PSKT：部分签名、合并、单签与 P2SH 多签终结、提取，以及 `TransactionBuilder.BuildPSKT`。
 
 - 解决方案：`NKaspa.sln`，类库 `src/NKaspa`（`net8.0`、`netstandard2.1`），测试 `tests/NKaspa.Tests`（xUnit，`net8.0`）。
 - 密钥：`Key`、`PubKey`（32 字节 x-only）、`PubKeyECDSA`（33 字节压缩）。`GetAddress` 默认是 Schnorr 地址。`Key.Create` 会清零临时缓冲区。`ExtKey.PrivateKey` 返回副本，处置副本不会让父密钥失效。
@@ -238,7 +241,8 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 
 - 脚本虚拟机。
 - Covenant 执行与零知识证明。
-- PSKT（Kaspa 的部分签名交易）。
+- 与正在运行的 rusty-kaspa 做 PSKT 字节对照。上游测试没有钉死向量。
+- 版本 1 compute budget 进入 PSKT。rusty-kaspa 的 `unsigned_tx` 这里仍是 TODO。
 - 示例程序。
 - NuGet 发布。这一版只改版本号，不推包。
 - 通用 `JsonConverter`。
@@ -248,5 +252,5 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 
 - 脚本虚拟机。
 - Covenant 执行。
-- PSKT。
+- 有上游向量之后，钉死多公钥 map 和多 xpub 的 JSON 键序。
 - 示例程序与 NuGet 打包准备。

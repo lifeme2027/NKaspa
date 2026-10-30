@@ -1,5 +1,6 @@
 using NKaspa.Crypto;
 using NKaspa.Policy;
+using NKaspa.PSKT;
 
 namespace NKaspa
 {
@@ -12,6 +13,7 @@ namespace NKaspa
     /// Change below <see cref="MinimumChange"/>, or change that would push mass over the limit, is added to the fee.
     /// The fee mass must stay within <see cref="MaximumMass"/> and within <see cref="MassLimits"/>.
     /// Version 0 is the default. <see cref="SetVersion"/>(1) builds a Toccata payment and signs it with the version-1 sighash.
+    /// <see cref="BuildPSKT"/> wraps the same unsigned payment. <see cref="Sign(NKaspa.PSKT.PSKT)"/> adds partial signatures for the builder keys.
     /// </summary>
     public sealed class TransactionBuilder
     {
@@ -410,6 +412,70 @@ namespace NKaspa
             }
 
             return transaction;
+        }
+
+        /// <summary>
+        /// Builds the same payment as <see cref="BuildTransaction"/> with <c>sign: false</c>, wrapped as a signer PSKT.
+        /// Version 0 inputs record one sigop so a later signature matches <see cref="BuildTransaction"/>.
+        /// Version 1 keeps the builder compute budget in memory. That budget is not part of the PSKT JSON.
+        /// </summary>
+        public NKaspa.PSKT.PSKT BuildPSKT()
+        {
+            var transaction = BuildTransaction(false);
+            var pskt = NKaspa.PSKT.PSKT.Create().Constructor().SetTransactionVersion(Version);
+            for (var i = 0; i < transaction.Inputs.Count; i++)
+            {
+                var coin = FindCoin(transaction.Inputs[i].PreviousOutpoint);
+                if (coin == null)
+                {
+                    throw new InvalidOperationException("Built input is not a known coin.");
+                }
+
+                var input = new PSKTInput(transaction.Inputs[i].PreviousOutpoint)
+                {
+                    Utxo = coin.Utxo,
+                    Sequence = transaction.Inputs[i].Sequence,
+                    SighashType = SigHashType.All,
+                    SigOpCount = Version == 0 ? (byte)1 : transaction.Inputs[i].SigOpCount,
+                };
+                if (Version >= 1)
+                {
+                    input.ComputeBudget = transaction.Inputs[i].ComputeBudget ?? BudgetFor(coin.Outpoint);
+                }
+
+                pskt.AddInput(input);
+            }
+
+            for (var i = 0; i < transaction.Outputs.Count; i++)
+            {
+                var output = transaction.Outputs[i];
+                pskt.AddOutput(new PSKTOutput(output.Value.Sompi, output.ScriptPublicKey)
+                {
+                    Covenant = output.Covenant,
+                });
+            }
+
+            return pskt.Updater().Signer();
+        }
+
+        /// <summary>
+        /// Adds a partial signature for every builder key that can spend an input.
+        /// The PSKT is moved to the signer role. It is not finalized and it is not broadcast.
+        /// </summary>
+        public NKaspa.PSKT.PSKT Sign(NKaspa.PSKT.PSKT pskt)
+        {
+            if (pskt == null)
+            {
+                throw new ArgumentNullException(nameof(pskt));
+            }
+
+            var signed = pskt.Signer();
+            for (var i = 0; i < _keys.Count; i++)
+            {
+                signed.Sign(_keys[i]);
+            }
+
+            return signed;
         }
 
         /// <summary>
