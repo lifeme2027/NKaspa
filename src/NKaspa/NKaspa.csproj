@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;netstandard2.1</TargetFrameworks>
+    <RootNamespace>NKaspa</RootNamespace>
+    <AssemblyName>NKaspa</AssemblyName>
+    <Version>0.1.0-alpha</Version>
+    <PackageId>NKaspa</PackageId>
+    <Title>NKaspa</Title>
+    <Description>A .NET library for Kaspa, structured as a counterpart of NBitcoin. Alpha: encoders, BLAKE2b, uint256, networks, and addresses.</Description>
+    <PackageTags>kaspa;nkaspa;blockchain</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/lifeme2027/NKaspa</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NBitcoin.Secp256k1" Version="3.1.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="\" />
+    <None Include="..\..\NOTICE" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>
