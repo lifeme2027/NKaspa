@@ -6,7 +6,7 @@ namespace NKaspa.RPC
     /// <summary>
     /// wRPC JSON client. Kaspa counterpart of a small slice of NBitcoin.RPC.RPCClient.
     /// Methods are the camelCase names of rusty-kaspa <c>RpcApiOps</c>.
-    /// The optional workflow-rpc subscription handshake is not implemented.
+    /// <see cref="KaspaWebSocketChannel"/> matches responses by request id and keeps handshake and notification frames off that path.
     /// This type does not open a socket by itself. Pass a channel.
     /// </summary>
     public sealed class KaspaWrpcJsonClient : IKaspaRpcClient
@@ -42,8 +42,8 @@ namespace NKaspa.RPC
         {
             var body = await InvokeAsync("getBlockDagInfo", writer => { }, cancellationToken).ConfigureAwait(false);
             var network = body.TryGetProperty("network", out var networkElement)
-                ? networkElement.GetString() ?? string.Empty
-                : body.TryGetProperty("networkName", out var alias) ? alias.GetString() ?? string.Empty : string.Empty;
+                ? KaspaRpcJson.ReadNetworkId(networkElement)
+                : body.TryGetProperty("networkName", out var alias) ? KaspaRpcJson.ReadNetworkId(alias) : string.Empty;
             return new RpcBlockDagInfo(
                 network,
                 KaspaRpcJson.ReadU64(Require(body, "blockCount")),

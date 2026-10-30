@@ -160,7 +160,8 @@ namespace NKaspa.Tests
             Assert.Throws<ArgumentException>(() => Storage(new ulong[] { 0 }, new ulong[] { 100 }));
             Assert.Throws<ArgumentException>(() => MassCalculator.Calculate(Tx(new[] { 66, 66 }, new ulong[] { 100 }), new[] { Entry(500) }));
             var version1 = new Transaction(1, Array.Empty<TxIn>(), Array.Empty<TxOut>(), 0, SubnetworkId.Native, 0, Array.Empty<byte>());
-            Assert.Throws<NotSupportedException>(() => MassCalculator.ComputeMass(version1));
+            Assert.Equal(94UL, MassCalculator.ComputeMass(version1));
+            Assert.Equal(100UL, MassCalculator.MassPerComputeBudget);
             Assert.Equal(203_600UL, MassCalculator.EstimateFee(2036, 100));
             Assert.Throws<ArgumentOutOfRangeException>(() => MassCalculator.EstimateFee(2036, 99));
             Assert.Throws<OverflowException>(() => MassCalculator.EstimateFee(ulong.MaxValue, 100));

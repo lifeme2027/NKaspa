@@ -37,17 +37,45 @@ namespace NKaspa
         public static Key Create()
         {
             var secret = new byte[Length];
-            for (var attempt = 0; attempt < 64; attempt++)
+            try
             {
-                RandomNumberGenerator.Fill(secret);
-                if (ECPrivKey.TryCreate(secret, out var key) && key != null)
+                for (var attempt = 0; attempt < 64; attempt++)
                 {
-                    key.Dispose();
-                    return new Key(secret);
+                    RandomNumberGenerator.Fill(secret);
+                    if (ECPrivKey.TryCreate(secret, out var key) && key != null)
+                    {
+                        key.Dispose();
+                        return TakeSecret(secret);
+                    }
                 }
+
+                throw new InvalidOperationException("Could not draw a secp256k1 private key.");
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(secret);
+            }
+        }
+
+        /// <summary>
+        /// Copies <paramref name="secret"/> into a new key and zeros <paramref name="secret"/>.
+        /// The buffer must be a 32-byte in-range secret.
+        /// </summary>
+        internal static Key TakeSecret(byte[] secret)
+        {
+            if (secret == null)
+            {
+                throw new ArgumentNullException(nameof(secret));
             }
 
-            throw new InvalidOperationException("Could not draw a secp256k1 private key.");
+            try
+            {
+                return new Key(secret.AsSpan());
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(secret);
+            }
         }
 
         /// <summary>Parses a 64-character hex secret.</summary>

@@ -6,6 +6,7 @@ namespace NKaspa
     /// <remarks>
     /// <see cref="Sequence"/> is a u64. Bitcoin stores sequence as a u32.
     /// <see cref="SigOpCount"/> is the byte committed by a version-0 signature hash.
+    /// <see cref="ComputeBudget"/> is the u16 committed by a version-1 transaction hash.
     /// <see cref="SignatureScript"/> is the sigScript, not a Bitcoin scriptSig witness.
     /// </remarks>
     public sealed class TxIn
@@ -27,6 +28,17 @@ namespace NKaspa
             SigOpCount = sigOpCount;
         }
 
+        /// <summary>
+        /// Creates a version-1 input that commits a compute budget.
+        /// <see cref="SigOpCount"/> stays 0. One budget unit is 100 compute grams.
+        /// </summary>
+        public static TxIn WithComputeBudget(OutPoint previousOutpoint, Script signatureScript, ulong sequence, ushort computeBudget)
+        {
+            var input = new TxIn(previousOutpoint, signatureScript, sequence, 0);
+            input.ComputeBudget = computeBudget;
+            return input;
+        }
+
         /// <summary>Output spent by this input.</summary>
         public OutPoint PreviousOutpoint { get; set; }
 
@@ -42,5 +54,12 @@ namespace NKaspa
 
         /// <summary>Signature-operation count committed by a version-0 sighash. A standard pubkey input uses 1.</summary>
         public byte SigOpCount { get; set; }
+
+        /// <summary>
+        /// Toccata compute budget. Null means this input carries <see cref="SigOpCount"/> instead.
+        /// Version-1 hashing writes this value, or 0 when it is null.
+        /// The script engine that spends the budget is not implemented.
+        /// </summary>
+        public ushort? ComputeBudget { get; set; }
     }
 }

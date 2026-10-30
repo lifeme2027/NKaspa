@@ -103,11 +103,13 @@ namespace NKaspa.Policy
     }
 
     /// <summary>
-    /// Kaspa transaction mass for version-0 native transactions.
+    /// Kaspa transaction mass for version-0 and version-1 native transactions.
     /// Port of rusty-kaspa <c>consensus/core/src/mass/mod.rs</c> and KIP-9.
-    /// Compute mass is bytes plus 10 per script-public-key byte plus 1000 per signature operation.
+    /// Compute mass is bytes plus 10 per script-public-key byte, plus 1000 per version-0 signature operation,
+    /// or 100 per version-1 compute-budget unit.
     /// Transient mass is 4 per byte (KIP-13). Storage mass uses C = 10^12.
-    /// The mass size counts a 32-byte payload hash and does not count the signature-operation byte.
+    /// The mass size counts a 32-byte payload hash and does not count the signature-operation byte or the covenant presence byte.
+    /// A version-1 input adds 2 bytes for the compute budget. A covenant adds 34 bytes.
     /// It is not equal to <see cref="Transaction.ToBytes"/> length.
     /// </summary>
     public static class MassCalculator
@@ -118,8 +120,11 @@ namespace NKaspa.Policy
         /// <summary>Compute mass charged for one script-public-key byte, including the version.</summary>
         public const ulong MassPerScriptPubKeyByte = 10;
 
-        /// <summary>Compute mass charged for one signature operation.</summary>
+        /// <summary>Compute mass charged for one signature operation. Version 0 only.</summary>
         public const ulong MassPerSigOp = 1000;
+
+        /// <summary>Compute mass charged for one version-1 compute-budget unit. rusty-kaspa <c>GRAMS_PER_COMPUTE_BUDGET_UNIT</c>.</summary>
+        public const ulong MassPerComputeBudget = 100;
 
         /// <summary>KIP-9 storage mass parameter. sompi per KAS times 10000.</summary>
         public const ulong StorageMassParameter = 100_000_000UL * 10_000UL;
@@ -127,7 +132,11 @@ namespace NKaspa.Policy
         /// <summary>KIP-13 transient mass per serialized byte.</summary>
         public const ulong TransientByteToMassFactor = 4;
 
-        /// <summary>Standard relay maximum for one transaction's fee mass.</summary>
+        /// <summary>
+        /// Pre-Toccata standard relay maximum for one transaction's fee mass.
+        /// rusty-kaspa removed this per-transaction cap (consensus PR 1086). Block limits remain.
+        /// The builder keeps this value as an optional policy.
+        /// </summary>
         public const ulong MaxStandardTransactionMass = 100_000;
 
         /// <summary>Minimum relay fee rate, sompi per gram.</summary>
@@ -136,7 +145,7 @@ namespace NKaspa.Policy
         private const ulong UtxoConstStorage = 32 + 4 + 8 + 8 + 1 + 2 + 8;
         private const ulong UtxoUnitSize = 100;
 
-        /// <summary>rusty-kaspa <c>transaction_estimated_serialized_size</c> for a version-0 transaction.</summary>
+        /// <summary>rusty-kaspa <c>transaction_estimated_serialized_size</c>.</summary>
         public static ulong EstimatedSerializedSize(Transaction transaction)
         {
             RequireSupported(transaction);
@@ -145,6 +154,10 @@ namespace NKaspa.Policy
             {
                 var input = transaction.Inputs[i];
                 size += 32 + 4 + 8 + (ulong)input.SignatureScript.Length + 8;
+                if (transaction.Version >= 1)
+                {
+                    size += 2;
+                }
             }
 
             size += 8;
@@ -152,6 +165,10 @@ namespace NKaspa.Policy
             {
                 var output = transaction.Outputs[i];
                 size += 8 + 2 + 8 + (ulong)output.ScriptPublicKey.Length;
+                if (output.Covenant != null)
+                {
+                    size += 2 + 32;
+                }
             }
 
             size += 8 + 20 + 8 + 32 + 8;
@@ -174,13 +191,29 @@ namespace NKaspa.Policy
                 scriptBytes += 2 + (ulong)transaction.Outputs[i].ScriptPublicKey.Length;
             }
 
-            ulong sigOps = 0;
-            for (var i = 0; i < transaction.Inputs.Count; i++)
+            ulong scriptMass;
+            if (transaction.Version >= 1)
             {
-                sigOps += transaction.Inputs[i].SigOpCount;
+                ulong budgets = 0;
+                for (var i = 0; i < transaction.Inputs.Count; i++)
+                {
+                    budgets += transaction.Inputs[i].ComputeBudget ?? 0;
+                }
+
+                scriptMass = budgets * MassPerComputeBudget;
+            }
+            else
+            {
+                ulong sigOps = 0;
+                for (var i = 0; i < transaction.Inputs.Count; i++)
+                {
+                    sigOps += transaction.Inputs[i].SigOpCount;
+                }
+
+                scriptMass = sigOps * MassPerSigOp;
             }
 
-            var compute = size * MassPerTxByte + scriptBytes * MassPerScriptPubKeyByte + sigOps * MassPerSigOp;
+            var compute = size * MassPerTxByte + scriptBytes * MassPerScriptPubKeyByte + scriptMass;
             return new NonContextualMasses(compute, size * TransientByteToMassFactor);
         }
 
@@ -216,7 +249,7 @@ namespace NKaspa.Policy
                 throw new ArgumentNullException(nameof(entry));
             }
 
-            return new UtxoCell(UtxoPlurality(entry.ScriptPublicKey.Length), entry.Amount.Sompi);
+            return new UtxoCell(UtxoPlurality(entry.ScriptPublicKey.Length, entry.CovenantId != null), entry.Amount.Sompi);
         }
 
         /// <summary>Storage cell of a created output.</summary>
@@ -227,7 +260,7 @@ namespace NKaspa.Policy
                 throw new ArgumentNullException(nameof(output));
             }
 
-            return new UtxoCell(UtxoPlurality(output.ScriptPublicKey.Length), output.Value.Sompi);
+            return new UtxoCell(UtxoPlurality(output.ScriptPublicKey.Length, output.Covenant != null), output.Value.Sompi);
         }
 
         /// <summary>
@@ -447,6 +480,16 @@ namespace NKaspa.Policy
                 Normalize(storageMass, limits.Storage, limits.Compute));
         }
 
+        /// <summary>
+        /// Minimum relay fee from the Toccata upgrade guide: 100 sompi times the larger of compute mass and normalized transient mass.
+        /// Storage mass is not part of this floor. With the default block limits, normalized transient mass is <c>2 * serialized size</c>.
+        /// </summary>
+        public static ulong MinimumRelayFee(TransactionMass mass)
+        {
+            var grams = Math.Max(mass.ComputeMass, mass.NormalizedTransientMass);
+            return checked(grams * MinimumFeeRate);
+        }
+
         /// <summary>Fee in sompi. A rate below <see cref="MinimumFeeRate"/> throws <see cref="ArgumentOutOfRangeException"/>.</summary>
         public static ulong EstimateFee(ulong mass, ulong feeRate)
         {
@@ -476,11 +519,6 @@ namespace NKaspa.Policy
             if (transaction == null)
             {
                 throw new ArgumentNullException(nameof(transaction));
-            }
-
-            if (transaction.Version != 0)
-            {
-                throw new NotSupportedException("Only version-0 transactions are supported by the mass calculator.");
             }
         }
 

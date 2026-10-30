@@ -114,10 +114,130 @@ namespace NKaspa.Tests
                 .AddCoins(coin)
                 .Send(payer.GetAddress(Network.Mainnet), new Money(40_000_000))
                 .SetChange(payer.GetAddress(Network.Mainnet))
-                .SendFees(new Money(200_000));
+                .SendFees(new Money(1_000_000));
             var unsigned = builder.BuildTransaction(false);
             Assert.Equal(0, unsigned.Inputs[0].SignatureScript.Length);
             Assert.False(builder.Verify(unsigned));
+        }
+
+        [Fact]
+        public void Paying_0_99_kas_from_1_kas_folds_the_small_change_instead_of_throwing()
+        {
+            using var payer = Key.Parse(SecretA);
+            using var payee = Key.Parse(SecretB);
+            var coin = new Coin(new OutPoint(new uint256(7), 0), new UtxoEntry(100_000_000UL, payer.PubKey.GetScriptPubKey(), 1, false));
+            var builder = new TransactionBuilder()
+                .AddKeys(payer)
+                .AddCoins(coin)
+                .Send(payee.GetAddress(Network.Mainnet), new Money(99_000_000))
+                .SetChange(payer.GetAddress(Network.Mainnet))
+                .SendEstimatedFees(FeeRate.MinimumRelay);
+
+            var tx = builder.BuildTransaction(sign: true);
+            Assert.Single(tx.Outputs);
+            Assert.Equal(99_000_000UL, tx.Outputs[0].Value.Sompi);
+            Assert.True(builder.Verify(tx));
+            Assert.True(tx.StorageMass <= BlockMassLimits.Default.Storage);
+        }
+
+        [Fact]
+        public void Change_that_exceeds_the_mass_limit_is_folded_even_when_minimum_change_is_zero()
+        {
+            using var payer = Key.Parse(SecretA);
+            using var payee = Key.Parse(SecretB);
+            var coin = new Coin(new OutPoint(new uint256(8), 0), new UtxoEntry(100_000_000UL, payer.PubKey.GetScriptPubKey(), 1, false));
+            var builder = new TransactionBuilder
+            {
+                MinimumChange = Money.Zero,
+            };
+            builder.AddKeys(payer)
+                .AddCoins(coin)
+                .Send(payee.GetAddress(Network.Mainnet), new Money(99_000_000))
+                .SetChange(payer.GetAddress(Network.Mainnet))
+                .SendEstimatedFees(FeeRate.MinimumRelay);
+
+            var tx = builder.BuildTransaction(sign: true);
+            Assert.Single(tx.Outputs);
+            Assert.Equal(99_000_000UL, tx.Outputs[0].Value.Sompi);
+        }
+
+        [Fact]
+        public void Storage_mass_between_100001_and_500000_can_be_built()
+        {
+            using var payer = Key.Parse(SecretA);
+            var coin = new Coin(new OutPoint(new uint256(9), 0), new UtxoEntry(100_000_000UL, payer.PubKey.GetScriptPubKey(), 1, false));
+            var builder = new TransactionBuilder()
+                .AddKeys(payer)
+                .AddCoins(coin)
+                .Send(payer.GetAddress(Network.Mainnet), new Money(4_761_904))
+                .SendFees(new Money(95_238_096));
+
+            var tx = builder.BuildTransaction(sign: true);
+            Assert.InRange(tx.StorageMass, 100_001UL, 500_000UL);
+            Assert.True(builder.Verify(tx));
+
+            var legacy = new TransactionBuilder(Network.Mainnet, toccataActive: false)
+                .AddKeys(payer)
+                .AddCoins(coin)
+                .Send(payer.GetAddress(Network.Mainnet), new Money(4_761_904))
+                .SendFees(new Money(95_238_096));
+            var error = Assert.Throws<InvalidOperationException>(() => legacy.BuildTransaction(true));
+            Assert.Contains("mass", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(100_000UL, MassCalculator.MaxStandardTransactionMass);
+        }
+
+        [Fact]
+        public void Explicit_fee_below_the_relay_floor_is_rejected_unless_allowed()
+        {
+            using var payer = Key.Parse(SecretA);
+            var coin = new Coin(new OutPoint(new uint256(10), 0), new UtxoEntry(100_000_000UL, payer.PubKey.GetScriptPubKey(), 1, false));
+            var builder = new TransactionBuilder()
+                .AddKeys(payer)
+                .AddCoins(coin)
+                .Send(payer.GetAddress(Network.Mainnet), new Money(50_000_000))
+                .SetChange(payer.GetAddress(Network.Mainnet))
+                .SendFees(new Money(1));
+
+            var error = Assert.Throws<InvalidOperationException>(() => builder.BuildTransaction(true));
+            Assert.Contains("relay", error.Message, StringComparison.OrdinalIgnoreCase);
+
+            builder.AllowBelowMinimumRelayFee = true;
+            var tx = builder.BuildTransaction(true);
+            Assert.Equal(2, tx.Outputs.Count);
+            Assert.True(builder.Verify(tx));
+        }
+
+        [Fact]
+        public void Duplicate_outpoints_are_spent_once()
+        {
+            using var payer = Key.Parse(SecretA);
+            var outpoint = new OutPoint(new uint256(11), 4);
+            var coin = new Coin(outpoint, new UtxoEntry(100_000_000UL, payer.PubKey.GetScriptPubKey(), 1, false));
+            var duplicate = new Coin(outpoint, new UtxoEntry(100_000_000UL, payer.PubKey.GetScriptPubKey(), 1, false));
+            var builder = new TransactionBuilder()
+                .AddKeys(payer)
+                .AddCoins(coin, duplicate)
+                .Send(payer.GetAddress(Network.Mainnet), new Money(40_000_000))
+                .SetChange(payer.GetAddress(Network.Mainnet))
+                .SendFees(new Money(1_000_000));
+            var tx = builder.BuildTransaction(sign: true);
+            Assert.Single(tx.Inputs);
+
+            var small = new Coin(outpoint, new UtxoEntry(40_000_000UL, payer.PubKey.GetScriptPubKey(), 1, false));
+            var tooSmall = new TransactionBuilder()
+                .AddKeys(payer)
+                .AddCoins(small, small)
+                .Send(payer.GetAddress(Network.Mainnet), new Money(70_000_000))
+                .SendFees(new Money(1_000));
+            Assert.Throws<InvalidOperationException>(() => tooSmall.BuildTransaction(true));
+
+            var other = new Coin(new OutPoint(new uint256(12), 0), new UtxoEntry(40_000_000UL, payer.PubKey.GetScriptPubKey(), 1, false));
+            var both = new TransactionBuilder()
+                .AddKeys(payer)
+                .AddCoins(small, other)
+                .Send(payer.GetAddress(Network.Mainnet), new Money(70_000_000))
+                .SendFees(new Money(10_000_000));
+            Assert.Equal(2, both.BuildTransaction(true).Inputs.Count);
         }
     }
 }

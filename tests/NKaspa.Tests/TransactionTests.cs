@@ -116,8 +116,10 @@ namespace NKaspa.Tests
             tx.Inputs[0].SigOpCount = 123;
             tx.Inputs[1].SigOpCount = 9;
             Assert.Equal(expected, SigHash.CalcSchnorrSignatureHash(tx, 0, SighashUtxo(0)).ToString());
-            Assert.Throws<NotSupportedException>(() => tx.GetId());
-            Assert.Throws<NotSupportedException>(() => tx.ToBytes());
+            var id = tx.GetId();
+            var roundTrip = Transaction.FromBytes(tx.ToBytes());
+            Assert.Equal(id, roundTrip.GetId());
+            Assert.Equal(tx.GetHash(), roundTrip.GetHash());
         }
 
         [Fact]

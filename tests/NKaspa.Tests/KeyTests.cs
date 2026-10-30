@@ -89,6 +89,32 @@ namespace NKaspa.Tests
         }
 
         [Fact]
+        public void Create_zeros_the_temporary_secret_buffer()
+        {
+            var buffer = Convert.FromHexString("0000000000000000000000000000000000000000000000000000000000000003");
+            using var key = Key.TakeSecret(buffer);
+            Assert.All(buffer, b => Assert.Equal(0, b));
+            using var original = Key.Parse("0000000000000000000000000000000000000000000000000000000000000003");
+            Assert.Equal(original.PubKey.ToString(), key.PubKey.ToString());
+        }
+
+        [Fact]
+        public void Extended_private_key_returns_a_copy()
+        {
+            using var parent = ExtKey.CreateFromSeed(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 });
+            var copy = parent.PrivateKey;
+            var hex = copy.ToHex();
+            copy.Dispose();
+            Assert.Throws<ObjectDisposedException>(() => copy.ToHex());
+            Assert.Equal(hex, parent.PrivateKey.ToHex());
+            var message = new byte[32];
+            message[0] = 9;
+            using var still = parent.PrivateKey;
+            var signature = still.SignSchnorr(message, new byte[32]);
+            Assert.True(still.PubKey.Verify(signature, message));
+        }
+
+        [Fact]
         public void Rejects_a_zero_secret_and_an_off_curve_x_only_key()
         {
             Assert.Throws<ArgumentException>(() => new Key(new byte[32]));

@@ -127,13 +127,24 @@ namespace NKaspa
             }
         }
 
-        /// <summary>Private key at this node.</summary>
+        /// <summary>
+        /// A copy of the private key at this node.
+        /// Disposing the returned key does not dispose this extended key.
+        /// </summary>
         public Key PrivateKey
         {
             get
             {
                 AssertNotDisposed();
-                return _key;
+                var secret = _key.ToBytes();
+                try
+                {
+                    return new Key(secret);
+                }
+                finally
+                {
+                    CryptographicOperations.ZeroMemory(secret);
+                }
             }
         }
 

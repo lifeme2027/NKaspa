@@ -12,17 +12,18 @@ namespace NKaspa
     public sealed class UtxoEntry
     {
         /// <summary>Creates a UTXO entry.</summary>
-        public UtxoEntry(Money amount, ScriptPubKey scriptPublicKey, ulong blockDaaScore, bool isCoinbase)
+        public UtxoEntry(Money amount, ScriptPubKey scriptPublicKey, ulong blockDaaScore, bool isCoinbase, uint256? covenantId = null)
         {
             Amount = amount;
             ScriptPublicKey = scriptPublicKey ?? throw new ArgumentNullException(nameof(scriptPublicKey));
             BlockDaaScore = blockDaaScore;
             IsCoinbase = isCoinbase;
+            CovenantId = covenantId;
         }
 
         /// <summary>Creates a UTXO entry from a sompi count.</summary>
-        public UtxoEntry(ulong sompi, ScriptPubKey scriptPublicKey, ulong blockDaaScore, bool isCoinbase)
-            : this(new Money(sompi), scriptPublicKey, blockDaaScore, isCoinbase)
+        public UtxoEntry(ulong sompi, ScriptPubKey scriptPublicKey, ulong blockDaaScore, bool isCoinbase, uint256? covenantId = null)
+            : this(new Money(sompi), scriptPublicKey, blockDaaScore, isCoinbase, covenantId)
         {
         }
 
@@ -37,5 +38,11 @@ namespace NKaspa
 
         /// <summary>True when the output was created by a coinbase transaction.</summary>
         public bool IsCoinbase { get; }
+
+        /// <summary>
+        /// Covenant id stored on this UTXO, when the spent output had one.
+        /// Storage plurality counts an extra 32 bytes when this is set. Sighash does not write it.
+        /// </summary>
+        public uint256? CovenantId { get; }
     }
 }

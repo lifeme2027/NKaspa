@@ -21,7 +21,9 @@ namespace NKaspa.Crypto
     /// Anyone-can-pay zeros the previous-output hash and the sigop-count hash.
     /// None, Single, and anyone-can-pay zero the sequence hash.
     /// None zeros the output hash. Single hashes the output at the input index, or 32 zeros when that output is missing.
-    /// Version 0 writes sigop counts. Version 1 and later omit them and write a false covenant byte on each hashed output.
+    /// Version 0 writes sigop counts. Version 1 and later omit them.
+    /// Version 1 writes a covenant presence byte on each hashed output, then the authorizing input and covenant id when one is set.
+    /// Compute budget is not part of the sighash preimage.
     /// </para>
     /// </remarks>
     public static class SigHash
@@ -94,7 +96,11 @@ namespace NKaspa.Crypto
             return new uint256(EcdsaDomainHash(schnorr));
         }
 
-        /// <summary>Version-0 transaction id. Keyed BLAKE2b <c>TransactionID</c>.</summary>
+        /// <summary>
+        /// Transaction id.
+        /// Version 0 is keyed BLAKE2b <c>TransactionID</c>.
+        /// Version 1 and later are keyed BLAKE3 <c>TransactionV1Id</c> over the payload digest and the rest digest.
+        /// </summary>
         public static uint256 TransactionId(Transaction tx)
         {
             if (tx == null)
@@ -102,10 +108,15 @@ namespace NKaspa.Crypto
                 throw new ArgumentNullException(nameof(tx));
             }
 
-            return new uint256(Keyed(tx.Serialize(forId: true, includeMass: false), TransactionIdKey));
+            if (tx.Version == 0)
+            {
+                return new uint256(Keyed(tx.Serialize(TxEncoding.ExcludeSignatureScript | TxEncoding.ExcludeMassCommit), TransactionIdKey));
+            }
+
+            return TransactionIdV1(tx);
         }
 
-        /// <summary>Version-0 transaction hash. Keyed BLAKE2b <c>TransactionHash</c>.</summary>
+        /// <summary>Transaction hash. Keyed BLAKE2b <c>TransactionHash</c> over the full encoding.</summary>
         public static uint256 TransactionHash(Transaction tx)
         {
             if (tx == null)
@@ -113,7 +124,7 @@ namespace NKaspa.Crypto
                 throw new ArgumentNullException(nameof(tx));
             }
 
-            return new uint256(Keyed(tx.Serialize(forId: false, includeMass: true), TransactionHashKey));
+            return new uint256(Keyed(tx.Serialize(TxEncoding.None), TransactionHashKey));
         }
 
         /// <summary>
@@ -256,8 +267,39 @@ namespace NKaspa.Crypto
             WriteScript(writer, output.ScriptPublicKey);
             if (txVersion >= 1)
             {
-                writer.U8(0);
+                var covenant = output.Covenant;
+                writer.U8(covenant == null ? (byte)0 : (byte)1);
+                if (covenant != null)
+                {
+                    writer.U16(covenant.AuthorizingInput);
+                    writer.Raw(covenant.CovenantId.ToBytes());
+                }
             }
+        }
+
+        /// <summary>
+        /// Precomputed <c>PayloadDigest</c> of an empty payload.
+        /// Bytes match rusty-kaspa <c>ZERO_PAYLOAD_DIGEST</c>.
+        /// </summary>
+        internal static readonly byte[] ZeroPayloadDigest =
+        {
+            156, 12, 162, 172, 180, 94, 146, 255, 230, 206, 180, 174, 41, 24, 139, 53,
+            200, 45, 150, 118, 205, 211, 206, 6, 127, 214, 204, 195, 10, 156, 74, 56,
+        };
+
+        private static uint256 TransactionIdV1(Transaction tx)
+        {
+            var payload = tx.Payload;
+            var payloadDigest = payload.Length == 0
+                ? ZeroPayloadDigest
+                : Blake3.DomainHash("PayloadDigest", payload);
+            var rest = Blake3.DomainHash(
+                "TransactionRest",
+                tx.Serialize(TxEncoding.ExcludePayload | TxEncoding.ExcludeSignatureScript | TxEncoding.ExcludeMassCommit));
+            var combined = new byte[64];
+            payloadDigest.CopyTo(combined, 0);
+            rest.CopyTo(combined, 32);
+            return new uint256(Blake3.DomainHash("TransactionV1Id", combined));
         }
 
         private static byte[] Keyed(byte[] data, byte[] key)

@@ -6,9 +6,9 @@ namespace NKaspa
     /// <summary>
     /// Builds and signs a version-0 Kaspa transaction.
     /// Kaspa counterpart of NBitcoin.TransactionBuilder, reduced to one native payment.
-    /// Inputs are Schnorr or ECDSA pay-to-pubkey. Coin selection is largest-first.
-    /// Change below <see cref="MinimumChange"/> is added to the fee.
-    /// The fee mass must stay within <see cref="MaximumMass"/>.
+    /// Inputs are Schnorr or ECDSA pay-to-pubkey. Coin selection is largest-first and deduplicated by outpoint.
+    /// Change below <see cref="MinimumChange"/>, or change that would push mass over the limit, is added to the fee.
+    /// The fee mass must stay within <see cref="MaximumMass"/> and within <see cref="MassLimits"/>.
     /// </summary>
     public sealed class TransactionBuilder
     {
@@ -20,16 +20,54 @@ namespace NKaspa
         private ScriptPubKey? _change;
 
         /// <summary>
-        /// Change at or below this amount is added to the fee instead of creating an output.
-        /// The default is zero, so any positive change becomes an output.
+        /// Change below this amount is added to the fee instead of creating an output.
+        /// The default is <c>C / storage limit</c>: 0.02 KAS when the storage limit is 500000.
+        /// A change at or above this amount is still folded in when keeping it would exceed <see cref="MaximumMass"/> or <see cref="MassLimits"/>.
         /// </summary>
-        public Money MinimumChange { get; set; } = Money.Zero;
+        public Money MinimumChange { get; set; }
 
-        /// <summary>Maximum allowed fee mass. The default is the standard limit of 100000 grams.</summary>
-        public ulong MaximumMass { get; set; } = MassCalculator.MaxStandardTransactionMass;
+        /// <summary>
+        /// Maximum allowed fee mass.
+        /// The default is the post-Toccata block compute limit, 500000.
+        /// Set this to <see cref="MassCalculator.MaxStandardTransactionMass"/> (100000) for the pre-Toccata relay cap.
+        /// </summary>
+        public ulong MaximumMass { get; set; }
+
+        /// <summary>Block dimension limits used for normalization and for the mass check. The default is the post-Toccata mainnet limits.</summary>
+        public BlockMassLimits MassLimits { get; set; }
+
+        /// <summary>
+        /// When false, an explicit <see cref="SendFees"/> below 100 sompi per gram of compute or normalized transient mass throws.
+        /// Storage mass is not part of that floor. The default is false.
+        /// </summary>
+        public bool AllowBelowMinimumRelayFee { get; set; }
 
         private Money? _explicitFee;
         private FeeRate? _estimatedRate;
+
+        /// <summary>Creates a builder for mainnet after Toccata. Fee mass may use the full block compute limit.</summary>
+        public TransactionBuilder()
+            : this(Network.Mainnet, toccataActive: true)
+        {
+        }
+
+        /// <summary>
+        /// Creates a builder for <paramref name="network"/>.
+        /// <paramref name="toccataActive"/> false keeps the pre-Toccata fee-mass cap of 100000.
+        /// Every built-in network currently publishes the same post-Toccata block limits.
+        /// </summary>
+        public TransactionBuilder(Network network, bool toccataActive = true)
+        {
+            if (network == null)
+            {
+                throw new ArgumentNullException(nameof(network));
+            }
+
+            MassLimits = network.MassLimits;
+            MaximumMass = toccataActive ? network.MassLimits.Compute : MassCalculator.MaxStandardTransactionMass;
+            var storageCeiling = toccataActive ? network.MassLimits.Storage : MassCalculator.MaxStandardTransactionMass;
+            MinimumChange = new Money(MassCalculator.StorageMassParameter / storageCeiling);
+        }
 
         /// <summary>Adds private keys used to sign pay-to-pubkey inputs.</summary>
         public TransactionBuilder AddKeys(params Key[] keys)
@@ -65,6 +103,11 @@ namespace NKaspa
                 if (coins[i] == null)
                 {
                     throw new ArgumentNullException(nameof(coins));
+                }
+
+                if (ContainsOutpoint(coins[i].Outpoint))
+                {
+                    continue;
                 }
 
                 _coins.Add(coins[i]);
@@ -200,6 +243,7 @@ namespace NKaspa
             }
 
             EnsureMass(transaction, selected);
+            EnsureRelayFee(transaction, selected, fee);
             transaction.StorageMass = MassCalculator.StorageMass(transaction, Entries(selected));
             if (sign)
             {
@@ -308,8 +352,11 @@ namespace NKaspa
 
             try
             {
-                var mass = MassCalculator.Calculate(transaction, spent);
-                return mass.FeeMass <= MaximumMass;
+                var mass = MassCalculator.Calculate(transaction, spent, MassLimits);
+                return mass.FeeMass <= MaximumMass
+                    && mass.ComputeMass <= MassLimits.Compute
+                    && mass.StorageMass <= MassLimits.Storage
+                    && mass.TransientMass <= MassLimits.Transient;
             }
             catch (ArgumentException)
             {
@@ -353,6 +400,18 @@ namespace NKaspa
 
         private Transaction Materialize(List<Coin> selected, ulong sendSum, ref ulong fee)
         {
+            var transaction = MaterializeOnce(selected, sendSum, ref fee);
+            if (TryGetChange(transaction, out var change) && ExceedsLimits(transaction, selected))
+            {
+                fee = checked(fee + change);
+                transaction = MaterializeOnce(selected, sendSum, ref fee);
+            }
+
+            return transaction;
+        }
+
+        private Transaction MaterializeOnce(List<Coin> selected, ulong sendSum, ref ulong fee)
+        {
             ulong inputSum = 0;
             for (var i = 0; i < selected.Count; i++)
             {
@@ -392,21 +451,74 @@ namespace NKaspa
             return new Transaction(0, inputs, outputs, 0, SubnetworkId.Native, 0, Array.Empty<byte>());
         }
 
-        private ulong RequiredFee(Transaction transaction, List<Coin> selected)
+        private bool TryGetChange(Transaction transaction, out ulong change)
         {
-            var mass = MassCalculator.Calculate(transaction, Entries(selected));
-            if (mass.FeeMass > MaximumMass)
+            change = 0;
+            if (_change == null || transaction.Outputs.Count != _sends.Count + 1)
             {
-                throw new InvalidOperationException("Transaction mass exceeds the standard maximum.");
+                return false;
             }
 
+            var last = transaction.Outputs[transaction.Outputs.Count - 1];
+            if (!last.ScriptPublicKey.Equals(_change) || last.Value.Sompi == 0)
+            {
+                return false;
+            }
+
+            change = last.Value.Sompi;
+            return true;
+        }
+
+        private ulong RequiredFee(Transaction transaction, List<Coin> selected)
+        {
+            var mass = MassCalculator.Calculate(transaction, Entries(selected), MassLimits);
+            EnsureWithin(mass);
             return MassCalculator.EstimateFee(mass.FeeMass, _estimatedRate!.Value.SompiPerGram);
         }
 
         private void EnsureMass(Transaction transaction, List<Coin> selected)
         {
-            var mass = MassCalculator.Calculate(transaction, Entries(selected));
-            if (mass.FeeMass > MaximumMass)
+            EnsureWithin(MassCalculator.Calculate(transaction, Entries(selected), MassLimits));
+        }
+
+        private void EnsureRelayFee(Transaction transaction, List<Coin> selected, ulong fee)
+        {
+            if (AllowBelowMinimumRelayFee || !_explicitFee.HasValue)
+            {
+                return;
+            }
+
+            var mass = MassCalculator.Calculate(transaction, Entries(selected), MassLimits);
+            if (fee < MassCalculator.MinimumRelayFee(mass))
+            {
+                throw new InvalidOperationException("Fee is below the minimum relay rate of 100 sompi per gram.");
+            }
+        }
+
+        private bool ExceedsLimits(Transaction transaction, List<Coin> selected)
+        {
+            TransactionMass mass;
+            try
+            {
+                mass = MassCalculator.Calculate(transaction, Entries(selected), MassLimits);
+            }
+            catch (ArgumentException)
+            {
+                return true;
+            }
+
+            return mass.FeeMass > MaximumMass
+                || mass.ComputeMass > MassLimits.Compute
+                || mass.StorageMass > MassLimits.Storage
+                || mass.TransientMass > MassLimits.Transient;
+        }
+
+        private void EnsureWithin(TransactionMass mass)
+        {
+            if (mass.FeeMass > MaximumMass
+                || mass.ComputeMass > MassLimits.Compute
+                || mass.StorageMass > MassLimits.Storage
+                || mass.TransientMass > MassLimits.Transient)
             {
                 throw new InvalidOperationException("Transaction mass exceeds the standard maximum.");
             }
@@ -466,6 +578,19 @@ namespace NKaspa
             }
 
             return null;
+        }
+
+        private bool ContainsOutpoint(OutPoint outpoint)
+        {
+            for (var i = 0; i < _coins.Count; i++)
+            {
+                if (_coins[i].Outpoint.Equals(outpoint))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static UtxoEntry[] Entries(List<Coin> selected)

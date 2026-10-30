@@ -64,7 +64,15 @@ namespace NKaspa.RPC
                 writer.WriteEndObject();
                 writer.WriteString("signatureScript", Encoders.Hex.EncodeData(input.SignatureScript.ToBytes()));
                 writer.WriteNumber("sequence", input.Sequence);
-                writer.WriteNumber("sigOpCount", input.SigOpCount);
+                if (transaction.Version >= 1)
+                {
+                    writer.WriteNumber("computeBudget", input.ComputeBudget ?? 0);
+                }
+                else
+                {
+                    writer.WriteNumber("sigOpCount", input.SigOpCount);
+                }
+
                 writer.WriteEndObject();
             }
 
@@ -77,6 +85,15 @@ namespace NKaspa.RPC
                 writer.WriteStartObject();
                 writer.WriteNumber("value", output.Value.Sompi);
                 WriteScript(writer, "scriptPublicKey", output.ScriptPublicKey);
+                if (output.Covenant != null)
+                {
+                    writer.WritePropertyName("covenant");
+                    writer.WriteStartObject();
+                    writer.WriteNumber("authorizingInput", output.Covenant.AuthorizingInput);
+                    writer.WriteString("covenantId", output.Covenant.CovenantId.ToString());
+                    writer.WriteEndObject();
+                }
+
                 writer.WriteEndObject();
             }
 
@@ -103,7 +120,19 @@ namespace NKaspa.RPC
                 var signature = ReadHex(input, "signatureScript");
                 var sequence = input.TryGetProperty("sequence", out var sequenceElement) ? ReadU64(sequenceElement) : 0UL;
                 var sigOp = input.TryGetProperty("sigOpCount", out var sigOpElement) ? (byte)ReadU64(sigOpElement) : (byte)0;
-                inputs.Add(new TxIn(new OutPoint(id, index), new Script(signature), sequence, sigOp));
+                var txIn = new TxIn(new OutPoint(id, index), new Script(signature), sequence, sigOp);
+                if (version >= 1 && input.TryGetProperty("computeBudget", out var budgetElement))
+                {
+                    var budget = ReadU64(budgetElement);
+                    if (budget > ushort.MaxValue)
+                    {
+                        throw new FormatException("computeBudget does not fit in an unsigned 16-bit integer.");
+                    }
+
+                    txIn.ComputeBudget = (ushort)budget;
+                }
+
+                inputs.Add(txIn);
             }
 
             var outputs = new List<TxOut>();
@@ -123,7 +152,15 @@ namespace NKaspa.RPC
                     throw new FormatException("Transaction output is missing value.");
                 }
 
-                outputs.Add(new TxOut(new Money(value), ReadScript(Require(output, "scriptPublicKey"))));
+                var txOut = new TxOut(new Money(value), ReadScript(Require(output, "scriptPublicKey")));
+                if (output.TryGetProperty("covenant", out var covenantElement) && covenantElement.ValueKind == JsonValueKind.Object)
+                {
+                    var authorizing = (ushort)ReadU64(Require(covenantElement, "authorizingInput"));
+                    var covenantId = uint256.Parse(ReadString(covenantElement, "covenantId"));
+                    txOut.Covenant = new CovenantBinding(authorizing, covenantId);
+                }
+
+                outputs.Add(txOut);
             }
 
             var lockTime = element.TryGetProperty("lockTime", out var lockElement) ? ReadU64(lockElement) : 0UL;

@@ -12,26 +12,36 @@ namespace NKaspa
     /// </remarks>
     public sealed class Network
     {
-        private Network(string name, string addressPrefix, int p2pPort, uint extPubKeyVersion, uint extPrivKeyVersion)
+        private Network(string name, string addressPrefix, int p2pPort, uint extPubKeyVersion, uint extPrivKeyVersion, Policy.BlockMassLimits massLimits)
         {
             Name = name;
             AddressPrefix = addressPrefix;
             P2PPort = p2pPort;
             ExtPubKeyVersion = extPubKeyVersion;
             ExtPrivKeyVersion = extPrivKeyVersion;
+            MassLimits = massLimits;
         }
 
+        /// <summary>
+        /// Mainnet Toccata activation DAA score from the rusty-kaspa upgrade guide,
+        /// commit <c>90dbf074275d60c1fe74a3491883196f110970c0</c>, about 2026-06-30 16:15 UTC.
+        /// Current rusty-kaspa master no longer branches on this score.
+        /// params.rs sets the same post-fork block mass limits on mainnet, testnet, simnet, and devnet.
+        /// Those networks' activation scores are not in that file.
+        /// </summary>
+        public const ulong MainnetToccataActivationDaaScore = 474_165_565;
+
         /// <summary>Mainnet. Address prefix <c>kaspa</c>. Extended keys use <c>kpub</c> and <c>kprv</c>.</summary>
-        public static Network Mainnet { get; } = new Network("mainnet", "kaspa", 16111, HdKeyVersions.Kpub, HdKeyVersions.Kprv);
+        public static Network Mainnet { get; } = new Network("mainnet", "kaspa", 16111, HdKeyVersions.Kpub, HdKeyVersions.Kprv, Policy.BlockMassLimits.Default);
 
         /// <summary>Public testnet. Address prefix <c>kaspatest</c>. Extended keys use <c>ktub</c> and <c>ktrv</c>.</summary>
-        public static Network Testnet { get; } = new Network("testnet", "kaspatest", 16211, HdKeyVersions.Ktub, HdKeyVersions.Ktrv);
+        public static Network Testnet { get; } = new Network("testnet", "kaspatest", 16211, HdKeyVersions.Ktub, HdKeyVersions.Ktrv, Policy.BlockMassLimits.Default);
 
         /// <summary>Simulation network. Address prefix <c>kaspasim</c>. Extended keys use <c>ktub</c> and <c>ktrv</c>.</summary>
-        public static Network Simnet { get; } = new Network("simnet", "kaspasim", 16511, HdKeyVersions.Ktub, HdKeyVersions.Ktrv);
+        public static Network Simnet { get; } = new Network("simnet", "kaspasim", 16511, HdKeyVersions.Ktub, HdKeyVersions.Ktrv, Policy.BlockMassLimits.Default);
 
         /// <summary>Development network. Address prefix <c>kaspadev</c>. Extended keys use <c>ktub</c> and <c>ktrv</c>.</summary>
-        public static Network Devnet { get; } = new Network("devnet", "kaspadev", 16611, HdKeyVersions.Ktub, HdKeyVersions.Ktrv);
+        public static Network Devnet { get; } = new Network("devnet", "kaspadev", 16611, HdKeyVersions.Ktub, HdKeyVersions.Ktrv, Policy.BlockMassLimits.Default);
 
         /// <summary>Short network name: mainnet, testnet, simnet, or devnet.</summary>
         public string Name { get; }
@@ -53,6 +63,12 @@ namespace NKaspa
         /// Mainnet is <c>kprv</c> (<c>0x038f2ef4</c>). Testnet, simnet, and devnet are <c>ktrv</c> (<c>0x03909e07</c>).
         /// </summary>
         public uint ExtPrivKeyVersion { get; }
+
+        /// <summary>
+        /// Block mass limits used for fee normalization.
+        /// Every built-in network uses the post-Toccata limits: compute 500000, storage 500000, transient 1000000.
+        /// </summary>
+        public Policy.BlockMassLimits MassLimits { get; }
 
         /// <summary>The four built-in networks.</summary>
         public static IReadOnlyList<Network> All { get; } = new[]

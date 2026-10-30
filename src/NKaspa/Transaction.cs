@@ -14,11 +14,18 @@ namespace NKaspa
     /// The tail is lock time, 20-byte subnetwork id, gas, and payload.
     /// </para>
     /// <para>
-    /// <see cref="GetId"/> hashes that body with signature scripts replaced by empty and with sigop counts omitted,
+    /// Version 0 <see cref="GetId"/> hashes that body with signature scripts replaced by empty and with sigop counts omitted,
     /// under the BLAKE2b key <c>TransactionID</c>.
     /// <see cref="GetHash"/> hashes the full body, and appends <see cref="StorageMass"/> when it is non-zero,
     /// under the key <c>TransactionHash</c>.
-    /// Version 1 transaction ids use BLAKE3 and are not implemented. Signature hashes for version 1 are implemented.
+    /// </para>
+    /// <para>
+    /// Version 1 (Toccata) adds a compute-budget u16 on each input and an optional covenant on each output.
+    /// <see cref="GetId"/> is BLAKE3: <c>TransactionV1Id</c> over the payload digest and the rest digest.
+    /// The rest digest excludes the payload, the signature scripts, and the mass commitment.
+    /// <see cref="GetHash"/> stays keyed BLAKE2b <c>TransactionHash</c> over the full encoding, which always includes storage mass.
+    /// <see cref="ToBytes"/> for version 1 is that full encoding, so a round trip keeps the hash.
+    /// Version 0 <see cref="ToBytes"/> still omits storage mass.
     /// </para>
     /// </remarks>
     public sealed class Transaction
@@ -99,18 +106,19 @@ namespace NKaspa
         }
 
         /// <summary>
-        /// Storage mass. Version-0 <see cref="GetHash"/> appends it only when it is greater than zero.
-        /// It is not part of <see cref="ToBytes"/> or <see cref="GetId"/>.
+        /// Storage mass committed by <see cref="GetHash"/>.
+        /// Version 0 appends it only when it is greater than zero, and omits it from <see cref="ToBytes"/> and <see cref="GetId"/>.
+        /// Version 1 always appends it to the hash encoding and to <see cref="ToBytes"/>. It is still excluded from <see cref="GetId"/>.
         /// </summary>
         public ulong StorageMass { get; set; }
 
-        /// <summary>Version-0 transaction id. Signature scripts do not change it.</summary>
+        /// <summary>Transaction id. Version 0 is keyed BLAKE2b. Version 1 and later are keyed BLAKE3.</summary>
         public uint256 GetId()
         {
             return SigHash.TransactionId(this);
         }
 
-        /// <summary>Version-0 transaction hash. Signature scripts and a non-zero storage mass change it.</summary>
+        /// <summary>Transaction hash. Keyed BLAKE2b over the full encoding, for every supported version.</summary>
         public uint256 GetHash()
         {
             return SigHash.TransactionHash(this);
@@ -245,10 +253,13 @@ namespace NKaspa
             return false;
         }
 
-        /// <summary>Version-0 consensus bytes. Storage mass is not included.</summary>
+        /// <summary>
+        /// Consensus bytes. Version 0 omits storage mass.
+        /// Version 1 includes compute budgets, covenant bytes, and storage mass.
+        /// </summary>
         public byte[] ToBytes()
         {
-            return Serialize(forId: false, includeMass: false);
+            return Serialize(Version == 0 ? TxEncoding.ExcludeMassCommit : TxEncoding.None);
         }
 
         /// <summary>Lowercase hex of <see cref="ToBytes"/>.</summary>
@@ -257,28 +268,37 @@ namespace NKaspa
             return Encoders.Hex.EncodeData(ToBytes());
         }
 
-        /// <summary>Reads a version-0 transaction. Storage mass is left at zero.</summary>
+        /// <summary>
+        /// Reads a version-0 or version-1 transaction.
+        /// Version 0 leaves storage mass at zero. Version 1 reads the storage mass that follows the payload.
+        /// </summary>
         public static Transaction FromBytes(ReadOnlySpan<byte> bytes)
         {
             var reader = new KaspaReader(bytes);
             var version = reader.U16();
-            if (version != 0)
+            if (version > 1)
             {
-                throw new NotSupportedException("Only version 0 transactions can be deserialized.");
+                throw new NotSupportedException("Only version 0 and version 1 transactions can be deserialized.");
             }
 
-            var inputs = ReadInputs(bytes, ref reader);
-            var outputs = ReadOutputs(bytes, ref reader);
+            var inputs = ReadInputs(bytes, ref reader, version);
+            var outputs = ReadOutputs(bytes, ref reader, version);
             var lockTime = reader.U64();
             var subnetwork = new SubnetworkId(reader.Take(SubnetworkId.Length));
             var gas = reader.U64();
             var payload = reader.VarBytes();
+            var transaction = new Transaction(version, inputs, outputs, lockTime, subnetwork, gas, payload);
+            if (version >= 1)
+            {
+                transaction.StorageMass = reader.U64();
+            }
+
             if (!reader.IsEnd)
             {
                 throw new FormatException("Transaction has trailing bytes.");
             }
 
-            return new Transaction(version, inputs, outputs, lockTime, subnetwork, gas, payload);
+            return transaction;
         }
 
         /// <summary>Reads a version-0 transaction from hex.</summary>
@@ -293,17 +313,16 @@ namespace NKaspa
         }
 
         /// <summary>
-        /// Version-0 body. <paramref name="forId"/> writes an empty signature script and omits the sigop byte.
-        /// <paramref name="includeMass"/> appends storage mass when it is non-zero.
+        /// Hash encoding from rusty-kaspa <c>write_transaction</c>.
+        /// <see cref="TxEncoding.ExcludeSignatureScript"/> writes an empty signature script and omits the version-0 sigop byte.
+        /// <see cref="TxEncoding.ExcludeMassCommit"/> omits storage mass and the version-1 compute budget.
+        /// <see cref="TxEncoding.ExcludePayload"/> writes an empty payload.
         /// </summary>
-        internal byte[] Serialize(bool forId, bool includeMass)
+        internal byte[] Serialize(TxEncoding encoding)
         {
-            if (Version != 0)
-            {
-                throw new NotSupportedException(
-                    "Only version 0 transactions use keyed BLAKE2b transaction ids. Version 1 ids use BLAKE3.");
-            }
-
+            var excludeSignature = (encoding & TxEncoding.ExcludeSignatureScript) != 0;
+            var excludeMass = (encoding & TxEncoding.ExcludeMassCommit) != 0;
+            var excludePayload = (encoding & TxEncoding.ExcludePayload) != 0;
             var writer = new KaspaWriter();
             writer.U16(Version);
             writer.U64((ulong)Inputs.Count);
@@ -316,42 +335,76 @@ namespace NKaspa
 
                 writer.Raw(input.PreviousOutpoint.TransactionId.ToBytes());
                 writer.U32(input.PreviousOutpoint.Index);
-                if (forId)
+                if (excludeSignature)
                 {
                     writer.U64(0);
                 }
                 else
                 {
                     writer.VarBytes(input.SignatureScript.ToBytes());
-                    writer.U8(input.SigOpCount);
+                    if (Version < 1)
+                    {
+                        writer.U8(input.SigOpCount);
+                    }
                 }
 
                 writer.U64(input.Sequence);
+                if (!excludeMass && Version >= 1)
+                {
+                    writer.U16(input.ComputeBudget ?? 0);
+                }
             }
 
             writer.U64((ulong)Outputs.Count);
             foreach (var output in Outputs)
             {
-                if (output == null || output.ScriptPublicKey == null)
-                {
-                    throw new InvalidOperationException("Transaction output is missing a script.");
-                }
-
-                writer.U64(output.Value.Sompi);
-                writer.U16(output.ScriptPublicKey.Version);
-                writer.VarBytes(output.ScriptPublicKey.Script);
+                WriteOutput(writer, output, Version);
             }
 
             writer.U64(LockTime);
             writer.Raw(SubnetworkId.ToBytes());
             writer.U64(Gas);
-            writer.VarBytes(_payload);
-            if (includeMass && StorageMass > 0)
+            writer.VarBytes(excludePayload ? ReadOnlySpan<byte>.Empty : _payload);
+            if (!excludeMass)
             {
-                writer.U64(StorageMass);
+                if (Version < 1)
+                {
+                    if (StorageMass > 0)
+                    {
+                        writer.U64(StorageMass);
+                    }
+                }
+                else
+                {
+                    writer.U64(StorageMass);
+                }
             }
 
             return writer.ToArray();
+        }
+
+        internal static void WriteOutput(KaspaWriter writer, TxOut output, ushort version)
+        {
+            if (output == null || output.ScriptPublicKey == null)
+            {
+                throw new InvalidOperationException("Transaction output is missing a script.");
+            }
+
+            writer.U64(output.Value.Sompi);
+            writer.U16(output.ScriptPublicKey.Version);
+            writer.VarBytes(output.ScriptPublicKey.Script);
+            if (version < 1)
+            {
+                return;
+            }
+
+            var covenant = output.Covenant;
+            writer.U8(covenant == null ? (byte)0 : (byte)1);
+            if (covenant != null)
+            {
+                writer.U16(covenant.AuthorizingInput);
+                writer.Raw(covenant.CovenantId.ToBytes());
+            }
         }
 
         private bool TryReadSignature(int inputIndex, UtxoEntry utxo, out byte[] signature, out SigHashType hashType)
@@ -373,7 +426,7 @@ namespace NKaspa
             }
         }
 
-        private static List<TxIn> ReadInputs(ReadOnlySpan<byte> bytes, ref KaspaReader reader)
+        private static List<TxIn> ReadInputs(ReadOnlySpan<byte> bytes, ref KaspaReader reader, ushort version)
         {
             var count = reader.U64();
             if (count > (ulong)bytes.Length)
@@ -387,15 +440,26 @@ namespace NKaspa
                 var transactionId = new uint256(reader.Take(uint256.Length));
                 var index = reader.U32();
                 var signatureScript = new Script(reader.VarBytes());
-                var sigOpCount = reader.U8();
+                byte sigOpCount = 0;
+                if (version < 1)
+                {
+                    sigOpCount = reader.U8();
+                }
+
                 var sequence = reader.U64();
-                inputs.Add(new TxIn(new OutPoint(transactionId, index), signatureScript, sequence, sigOpCount));
+                var input = new TxIn(new OutPoint(transactionId, index), signatureScript, sequence, sigOpCount);
+                if (version >= 1)
+                {
+                    input.ComputeBudget = reader.U16();
+                }
+
+                inputs.Add(input);
             }
 
             return inputs;
         }
 
-        private static List<TxOut> ReadOutputs(ReadOnlySpan<byte> bytes, ref KaspaReader reader)
+        private static List<TxOut> ReadOutputs(ReadOnlySpan<byte> bytes, ref KaspaReader reader, ushort version)
         {
             var count = reader.U64();
             if (count > (ulong)bytes.Length)
@@ -407,12 +471,45 @@ namespace NKaspa
             for (ulong i = 0; i < count; i++)
             {
                 var value = reader.U64();
-                var version = reader.U16();
+                var scriptVersion = reader.U16();
                 var script = reader.VarBytes();
-                outputs.Add(new TxOut(value, new ScriptPubKey(version, script)));
+                var output = new TxOut(value, new ScriptPubKey(scriptVersion, script));
+                if (version >= 1)
+                {
+                    var present = reader.U8();
+                    if (present == 1)
+                    {
+                        var authorizing = reader.U16();
+                        var covenantId = new uint256(reader.Take(uint256.Length));
+                        output.Covenant = new CovenantBinding(authorizing, covenantId);
+                    }
+                    else if (present != 0)
+                    {
+                        throw new FormatException("Covenant flag must be 0 or 1.");
+                    }
+                }
+
+                outputs.Add(output);
             }
 
             return outputs;
         }
+    }
+
+    /// <summary>Flags for <see cref="Transaction"/> hash encoding. Values match rusty-kaspa <c>TxEncodingFlags</c>.</summary>
+    [Flags]
+    internal enum TxEncoding
+    {
+        /// <summary>Full encoding.</summary>
+        None = 0,
+
+        /// <summary>Replace each signature script with an empty script and omit the version-0 sigop byte.</summary>
+        ExcludeSignatureScript = 1 << 0,
+
+        /// <summary>Omit storage mass and the version-1 compute budget.</summary>
+        ExcludeMassCommit = 1 << 1,
+
+        /// <summary>Write an empty payload.</summary>
+        ExcludePayload = 1 << 2,
     }
 }

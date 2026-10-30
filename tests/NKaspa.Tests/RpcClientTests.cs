@@ -122,6 +122,30 @@ namespace NKaspa.Tests
             Assert.Equal(0, error.RpcCode);
         }
 
+        [Fact]
+        public async Task Block_dag_network_accepts_a_string_and_an_object()
+        {
+            var channel = new ScriptedChannel();
+            var client = new KaspaWrpcJsonClient(channel);
+            channel.Handler = request =>
+            {
+                using var doc = JsonDocument.Parse(request);
+                var id = doc.RootElement.GetProperty("id").GetInt64();
+                return "{\"id\":" + id + ",\"method\":\"getBlockDagInfo\",\"params\":{\"network\":{\"networkType\":\"testnet\",\"suffix\":10},\"blockCount\":10,\"headerCount\":11,\"tipHashes\":[\"" + new uint256(1) + "\"],\"difficulty\":2.5,\"pastMedianTime\":99,\"virtualParentHashes\":[\"" + new uint256(2) + "\"],\"pruningPointHash\":\"" + new uint256(3) + "\",\"virtualDaaScore\":50,\"sink\":\"" + new uint256(4) + "\"}}";
+            };
+
+            var dag = await client.GetBlockDagInfoAsync();
+            Assert.Equal("testnet-10", dag.Network);
+
+            channel.Handler = request =>
+            {
+                using var doc = JsonDocument.Parse(request);
+                var id = doc.RootElement.GetProperty("id").GetInt64();
+                return "{\"id\":" + id + ",\"method\":\"getBlockDagInfo\",\"params\":{\"network\":\"mainnet\",\"blockCount\":1,\"headerCount\":1,\"tipHashes\":[\"" + uint256.Zero + "\"],\"difficulty\":1,\"pastMedianTime\":1,\"virtualParentHashes\":[\"" + uint256.Zero + "\"],\"pruningPointHash\":\"" + uint256.Zero + "\",\"virtualDaaScore\":1,\"sink\":\"" + uint256.Zero + "\"}}";
+            };
+            Assert.Equal("mainnet", (await client.GetBlockDagInfoAsync()).Network);
+        }
+
         private static string UtxoResponse(long id)
         {
             var script = new Key(new byte[]
