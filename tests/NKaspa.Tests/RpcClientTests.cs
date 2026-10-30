@@ -123,6 +123,47 @@ namespace NKaspa.Tests
         }
 
         [Fact]
+        public async Task Version1_submit_json_keeps_sig_op_count_and_compute_budget()
+        {
+            using var key = Key.Parse("0000000000000000000000000000000000000000000000000000000000000003");
+            var tx = new Transaction(
+                1,
+                new[] { TxIn.WithComputeBudget(new OutPoint(new uint256(9), 3), Script.Empty, 4, 10) },
+                new[] { new TxOut(10000000UL, key.PubKey.GetScriptPubKey()) },
+                0,
+                SubnetworkId.Native,
+                0,
+                Array.Empty<byte>());
+            tx.StorageMass = 152080;
+
+            var channel = new ScriptedChannel();
+            var client = new KaspaWrpcJsonClient(channel);
+            string? submitted = null;
+            channel.Handler = request =>
+            {
+                using var doc = JsonDocument.Parse(request);
+                var id = doc.RootElement.GetProperty("id").GetInt64();
+                submitted = doc.RootElement.GetProperty("params").GetProperty("transaction").GetRawText();
+                return "{\"id\":" + id + ",\"method\":\"submitTransaction\",\"params\":{\"transactionId\":\"" + tx.GetId() + "\"}}";
+            };
+
+            Assert.Equal(tx.GetId(), await client.SubmitTransactionAsync(tx, allowOrphan: false));
+            using var body = JsonDocument.Parse(submitted!);
+            var input = body.RootElement.GetProperty("inputs")[0];
+            Assert.Equal(0, input.GetProperty("sigOpCount").GetInt32());
+            Assert.Equal(10, input.GetProperty("computeBudget").GetInt32());
+            Assert.Equal(152080UL, body.RootElement.GetProperty("mass").GetUInt64());
+            Assert.Equal(152080UL, body.RootElement.GetProperty("storageMass").GetUInt64());
+
+            var parsed = KaspaRpcJson.ReadTransaction(submitted!);
+            Assert.Equal(tx.GetId(), parsed.GetId());
+            Assert.Equal(tx.GetHash(), parsed.GetHash());
+            Assert.Equal((ushort)10, parsed.Inputs[0].ComputeBudget);
+            Assert.Equal(0, parsed.Inputs[0].SigOpCount);
+            Assert.Equal(152080UL, parsed.StorageMass);
+        }
+
+        [Fact]
         public async Task Block_dag_network_accepts_a_string_and_an_object()
         {
             var channel = new ScriptedChannel();

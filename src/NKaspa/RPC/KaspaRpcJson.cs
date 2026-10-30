@@ -5,7 +5,9 @@ using NKaspa.DataEncoders;
 namespace NKaspa.RPC
 {
     /// <summary>
-    /// Converts a version-0 <see cref="Transaction"/> to and from wRPC JSON.
+    /// Converts a transaction to and from wRPC JSON.
+    /// Every input writes <c>sigOpCount</c>. Version 1 also writes <c>computeBudget</c>.
+    /// rusty-kaspa 2.1.0 requires <c>sig_op_count</c> even when the budget field is present.
     /// Output amounts are written as <c>value</c>. <c>amount</c> is accepted when reading.
     /// Script bytes are written as an object field <c>script</c>. Reading also accepts
     /// <c>scriptPublicKey</c> on that object, and the human-readable rusty-kaspa string:
@@ -66,13 +68,10 @@ namespace NKaspa.RPC
                 writer.WriteEndObject();
                 writer.WriteString("signatureScript", Encoders.Hex.EncodeData(input.SignatureScript.ToBytes()));
                 writer.WriteNumber("sequence", input.Sequence);
+                writer.WriteNumber("sigOpCount", input.SigOpCount);
                 if (transaction.Version >= 1)
                 {
                     writer.WriteNumber("computeBudget", input.ComputeBudget ?? 0);
-                }
-                else
-                {
-                    writer.WriteNumber("sigOpCount", input.SigOpCount);
                 }
 
                 writer.WriteEndObject();
