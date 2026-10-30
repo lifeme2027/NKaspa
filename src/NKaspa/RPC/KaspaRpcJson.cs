@@ -5,7 +5,9 @@ using NKaspa.DataEncoders;
 namespace NKaspa.RPC
 {
     /// <summary>
-    /// Converts a transaction to and from wRPC JSON.
+    /// Converts Kaspa values to and from wRPC JSON.
+    /// <see cref="NKaspa.JsonConverters.NKaspaJsonSerializer"/> writes transactions through these methods,
+    /// so the compact JSON is the same string.
     /// Every input writes <c>sigOpCount</c>. Version 1 also writes <c>computeBudget</c>.
     /// rusty-kaspa 2.1.0 requires <c>sig_op_count</c> even when the budget field is present.
     /// Output amounts are written as <c>value</c>. <c>amount</c> is accepted when reading.
@@ -59,22 +61,7 @@ namespace NKaspa.RPC
             writer.WriteStartArray();
             for (var i = 0; i < transaction.Inputs.Count; i++)
             {
-                var input = transaction.Inputs[i];
-                writer.WriteStartObject();
-                writer.WritePropertyName("previousOutpoint");
-                writer.WriteStartObject();
-                writer.WriteString("transactionId", input.PreviousOutpoint.TransactionId.ToString());
-                writer.WriteNumber("index", input.PreviousOutpoint.Index);
-                writer.WriteEndObject();
-                writer.WriteString("signatureScript", Encoders.Hex.EncodeData(input.SignatureScript.ToBytes()));
-                writer.WriteNumber("sequence", input.Sequence);
-                writer.WriteNumber("sigOpCount", input.SigOpCount);
-                if (transaction.Version >= 1)
-                {
-                    writer.WriteNumber("computeBudget", input.ComputeBudget ?? 0);
-                }
-
-                writer.WriteEndObject();
+                WriteInput(writer, transaction.Inputs[i], transaction.Version >= 1);
             }
 
             writer.WriteEndArray();
@@ -82,20 +69,7 @@ namespace NKaspa.RPC
             writer.WriteStartArray();
             for (var i = 0; i < transaction.Outputs.Count; i++)
             {
-                var output = transaction.Outputs[i];
-                writer.WriteStartObject();
-                writer.WriteNumber("value", output.Value.Sompi);
-                WriteScript(writer, "scriptPublicKey", output.ScriptPublicKey);
-                if (output.Covenant != null)
-                {
-                    writer.WritePropertyName("covenant");
-                    writer.WriteStartObject();
-                    writer.WriteNumber("authorizingInput", output.Covenant.AuthorizingInput);
-                    writer.WriteString("covenantId", output.Covenant.CovenantId.ToString());
-                    writer.WriteEndObject();
-                }
-
-                writer.WriteEndObject();
+                WriteOutput(writer, transaction.Outputs[i]);
             }
 
             writer.WriteEndArray();
@@ -115,53 +89,13 @@ namespace NKaspa.RPC
             var inputs = new List<TxIn>();
             foreach (var input in Require(element, "inputs").EnumerateArray())
             {
-                var outpoint = Require(input, "previousOutpoint");
-                var id = uint256.Parse(ReadString(outpoint, "transactionId"));
-                var index = ReadU32(Require(outpoint, "index"));
-                var signature = ReadHex(input, "signatureScript");
-                var sequence = input.TryGetProperty("sequence", out var sequenceElement) ? ReadU64(sequenceElement) : 0UL;
-                var sigOp = input.TryGetProperty("sigOpCount", out var sigOpElement) ? (byte)ReadU64(sigOpElement) : (byte)0;
-                var txIn = new TxIn(new OutPoint(id, index), new Script(signature), sequence, sigOp);
-                if (version >= 1 && input.TryGetProperty("computeBudget", out var budgetElement))
-                {
-                    var budget = ReadU64(budgetElement);
-                    if (budget > ushort.MaxValue)
-                    {
-                        throw new FormatException("computeBudget does not fit in an unsigned 16-bit integer.");
-                    }
-
-                    txIn.ComputeBudget = (ushort)budget;
-                }
-
-                inputs.Add(txIn);
+                inputs.Add(ReadInput(input, version >= 1));
             }
 
             var outputs = new List<TxOut>();
             foreach (var output in Require(element, "outputs").EnumerateArray())
             {
-                ulong value;
-                if (output.TryGetProperty("value", out var valueElement))
-                {
-                    value = ReadU64(valueElement);
-                }
-                else if (output.TryGetProperty("amount", out var amountElement))
-                {
-                    value = ReadU64(amountElement);
-                }
-                else
-                {
-                    throw new FormatException("Transaction output is missing value.");
-                }
-
-                var txOut = new TxOut(new Money(value), ReadScript(Require(output, "scriptPublicKey")));
-                if (output.TryGetProperty("covenant", out var covenantElement) && covenantElement.ValueKind == JsonValueKind.Object)
-                {
-                    var authorizing = (ushort)ReadU64(Require(covenantElement, "authorizingInput"));
-                    var covenantId = uint256.Parse(ReadString(covenantElement, "covenantId"));
-                    txOut.Covenant = new CovenantBinding(authorizing, covenantId);
-                }
-
-                outputs.Add(txOut);
+                outputs.Add(ReadOutput(output));
             }
 
             var lockTime = element.TryGetProperty("lockTime", out var lockElement) ? ReadU64(lockElement) : 0UL;
@@ -188,6 +122,299 @@ namespace NKaspa.RPC
             }
 
             return transaction;
+        }
+
+        /// <summary>Writes <c>{ transactionId, index }</c>.</summary>
+        internal static void WriteOutPoint(Utf8JsonWriter writer, OutPoint outpoint)
+        {
+            if (writer == null)
+            {
+                throw new ArgumentNullException(nameof(writer));
+            }
+
+            if (outpoint == null)
+            {
+                throw new ArgumentNullException(nameof(outpoint));
+            }
+
+            writer.WriteStartObject();
+            writer.WriteString("transactionId", outpoint.TransactionId.ToString());
+            writer.WriteNumber("index", outpoint.Index);
+            writer.WriteEndObject();
+        }
+
+        /// <summary>Reads an outpoint object, or <c>transactionId:index</c>.</summary>
+        internal static OutPoint ReadOutPoint(JsonElement element)
+        {
+            if (element.ValueKind == JsonValueKind.String)
+            {
+                var text = element.GetString() ?? string.Empty;
+                var colon = text.LastIndexOf(':');
+                if (colon <= 0 || colon == text.Length - 1)
+                {
+                    throw new FormatException("Outpoint string must be transactionId:index.");
+                }
+
+                if (!uint.TryParse(text.Substring(colon + 1), NumberStyles.None, CultureInfo.InvariantCulture, out var index))
+                {
+                    throw new FormatException("Outpoint index is not an unsigned 32-bit integer.");
+                }
+
+                return new OutPoint(uint256.Parse(text.Substring(0, colon)), index);
+            }
+
+            if (element.ValueKind != JsonValueKind.Object)
+            {
+                throw new FormatException("Outpoint is not an object.");
+            }
+
+            return new OutPoint(uint256.Parse(ReadString(element, "transactionId")), ReadU32(Require(element, "index")));
+        }
+
+        /// <summary>
+        /// Writes one input. <paramref name="writeComputeBudget"/> adds <c>computeBudget</c>
+        /// (0 when the input has no budget). Version-0 transactions pass false.
+        /// </summary>
+        internal static void WriteInput(Utf8JsonWriter writer, TxIn input, bool writeComputeBudget)
+        {
+            if (writer == null)
+            {
+                throw new ArgumentNullException(nameof(writer));
+            }
+
+            if (input == null)
+            {
+                throw new ArgumentNullException(nameof(input));
+            }
+
+            writer.WriteStartObject();
+            writer.WritePropertyName("previousOutpoint");
+            WriteOutPoint(writer, input.PreviousOutpoint);
+            writer.WriteString("signatureScript", Encoders.Hex.EncodeData(input.SignatureScript.ToBytes()));
+            writer.WriteNumber("sequence", input.Sequence);
+            writer.WriteNumber("sigOpCount", input.SigOpCount);
+            if (writeComputeBudget)
+            {
+                writer.WriteNumber("computeBudget", input.ComputeBudget ?? 0);
+            }
+
+            writer.WriteEndObject();
+        }
+
+        /// <summary>Reads one input. A null <c>sigOpCount</c> or <c>computeBudget</c> is absent.</summary>
+        internal static TxIn ReadInput(JsonElement input, bool readComputeBudget)
+        {
+            var txIn = new TxIn(ReadOutPoint(Require(input, "previousOutpoint")), new Script(ReadHex(input, "signatureScript")), OptionalU64(input, "sequence"), ReadSigOpCount(input));
+            if (readComputeBudget && input.TryGetProperty("computeBudget", out var budgetElement) && budgetElement.ValueKind != JsonValueKind.Null)
+            {
+                var budget = ReadU64(budgetElement);
+                if (budget > ushort.MaxValue)
+                {
+                    throw new FormatException("computeBudget does not fit in an unsigned 16-bit integer.");
+                }
+
+                txIn.ComputeBudget = (ushort)budget;
+            }
+
+            return txIn;
+        }
+
+        /// <summary>Writes one output. <c>value</c> is sompi. A covenant is omitted when null.</summary>
+        internal static void WriteOutput(Utf8JsonWriter writer, TxOut output)
+        {
+            if (writer == null)
+            {
+                throw new ArgumentNullException(nameof(writer));
+            }
+
+            if (output == null)
+            {
+                throw new ArgumentNullException(nameof(output));
+            }
+
+            writer.WriteStartObject();
+            writer.WriteNumber("value", output.Value.Sompi);
+            WriteScript(writer, "scriptPublicKey", output.ScriptPublicKey);
+            if (output.Covenant != null)
+            {
+                writer.WritePropertyName("covenant");
+                WriteCovenant(writer, output.Covenant);
+            }
+
+            writer.WriteEndObject();
+        }
+
+        /// <summary>Reads one output. <c>amount</c> is accepted when <c>value</c> is absent.</summary>
+        internal static TxOut ReadOutput(JsonElement output)
+        {
+            ulong value;
+            if (output.TryGetProperty("value", out var valueElement))
+            {
+                value = ReadU64(valueElement);
+            }
+            else if (output.TryGetProperty("amount", out var amountElement))
+            {
+                value = ReadU64(amountElement);
+            }
+            else
+            {
+                throw new FormatException("Transaction output is missing value.");
+            }
+
+            var txOut = new TxOut(new Money(value), ReadScript(Require(output, "scriptPublicKey")));
+            if (output.TryGetProperty("covenant", out var covenantElement) && covenantElement.ValueKind == JsonValueKind.Object)
+            {
+                txOut.Covenant = ReadCovenant(covenantElement);
+            }
+
+            return txOut;
+        }
+
+        /// <summary>Writes <c>{ authorizingInput, covenantId }</c>.</summary>
+        internal static void WriteCovenant(Utf8JsonWriter writer, CovenantBinding covenant)
+        {
+            if (writer == null)
+            {
+                throw new ArgumentNullException(nameof(writer));
+            }
+
+            if (covenant == null)
+            {
+                throw new ArgumentNullException(nameof(covenant));
+            }
+
+            writer.WriteStartObject();
+            writer.WriteNumber("authorizingInput", covenant.AuthorizingInput);
+            writer.WriteString("covenantId", covenant.CovenantId.ToString());
+            writer.WriteEndObject();
+        }
+
+        /// <summary>Reads a covenant object.</summary>
+        internal static CovenantBinding ReadCovenant(JsonElement element)
+        {
+            var authorizing = ReadU64(Require(element, "authorizingInput"));
+            if (authorizing > ushort.MaxValue)
+            {
+                throw new FormatException("authorizingInput does not fit in an unsigned 16-bit integer.");
+            }
+
+            return new CovenantBinding((ushort)authorizing, uint256.Parse(ReadString(element, "covenantId")));
+        }
+
+        /// <summary>
+        /// Writes a UTXO entry. <c>amount</c> is sompi.
+        /// <c>covenantId</c> is omitted when the entry has none. A null in JSON is accepted on read.
+        /// </summary>
+        internal static void WriteUtxoEntry(Utf8JsonWriter writer, UtxoEntry entry)
+        {
+            if (writer == null)
+            {
+                throw new ArgumentNullException(nameof(writer));
+            }
+
+            if (entry == null)
+            {
+                throw new ArgumentNullException(nameof(entry));
+            }
+
+            writer.WriteStartObject();
+            writer.WriteNumber("amount", entry.Amount.Sompi);
+            WriteScript(writer, "scriptPublicKey", entry.ScriptPublicKey);
+            writer.WriteNumber("blockDaaScore", entry.BlockDaaScore);
+            writer.WriteBoolean("isCoinbase", entry.IsCoinbase);
+            if (entry.CovenantId != null)
+            {
+                writer.WriteString("covenantId", entry.CovenantId.ToString());
+            }
+
+            writer.WriteEndObject();
+        }
+
+        /// <summary>Reads a UTXO entry. <c>scriptPublicKey</c> may be an object or version-prefixed hex.</summary>
+        internal static UtxoEntry ReadUtxoEntry(JsonElement element)
+        {
+            var amount = ReadU64(Require(element, "amount"));
+            var script = ReadScript(Require(element, "scriptPublicKey"));
+            var daa = OptionalU64(element, "blockDaaScore");
+            var coinbase = false;
+            if (element.TryGetProperty("isCoinbase", out var coinbaseElement) && coinbaseElement.ValueKind != JsonValueKind.Null)
+            {
+                if (coinbaseElement.ValueKind == JsonValueKind.True)
+                {
+                    coinbase = true;
+                }
+                else if (coinbaseElement.ValueKind == JsonValueKind.False)
+                {
+                    coinbase = false;
+                }
+                else
+                {
+                    throw new FormatException("Expected a boolean for isCoinbase.");
+                }
+            }
+
+            uint256? covenantId = null;
+            if (element.TryGetProperty("covenantId", out var covenantElement) && covenantElement.ValueKind == JsonValueKind.String)
+            {
+                var text = covenantElement.GetString();
+                if (!string.IsNullOrEmpty(text))
+                {
+                    covenantId = uint256.Parse(text);
+                }
+            }
+
+            return new UtxoEntry(amount, script, daa, coinbase, covenantId);
+        }
+
+        /// <summary>Writes <c>{ outpoint, utxoEntry }</c>, the getUtxosByAddresses entry without the address.</summary>
+        internal static void WriteCoin(Utf8JsonWriter writer, Coin coin)
+        {
+            if (writer == null)
+            {
+                throw new ArgumentNullException(nameof(writer));
+            }
+
+            if (coin == null)
+            {
+                throw new ArgumentNullException(nameof(coin));
+            }
+
+            writer.WriteStartObject();
+            writer.WritePropertyName("outpoint");
+            WriteOutPoint(writer, coin.Outpoint);
+            writer.WritePropertyName("utxoEntry");
+            WriteUtxoEntry(writer, coin.Utxo);
+            writer.WriteEndObject();
+        }
+
+        /// <summary>Reads a coin. <c>entry</c> is accepted when <c>utxoEntry</c> is absent. An address property is ignored.</summary>
+        internal static Coin ReadCoin(JsonElement element)
+        {
+            if (!element.TryGetProperty("utxoEntry", out var entryElement) && !element.TryGetProperty("entry", out entryElement))
+            {
+                throw new FormatException("Coin JSON is missing utxoEntry.");
+            }
+
+            return new Coin(ReadOutPoint(Require(element, "outpoint")), ReadUtxoEntry(entryElement));
+        }
+
+        /// <summary>Writes <c>{ version, script }</c> with no property name.</summary>
+        internal static void WriteScriptPublicKey(Utf8JsonWriter writer, ScriptPubKey script)
+        {
+            if (writer == null)
+            {
+                throw new ArgumentNullException(nameof(writer));
+            }
+
+            if (script == null)
+            {
+                throw new ArgumentNullException(nameof(script));
+            }
+
+            writer.WriteStartObject();
+            writer.WriteNumber("version", script.Version);
+            writer.WriteString("script", Encoders.Hex.EncodeData(script.Script));
+            writer.WriteEndObject();
         }
 
         internal static ulong ReadU64(JsonElement element)
@@ -351,10 +578,33 @@ namespace NKaspa.RPC
         private static void WriteScript(Utf8JsonWriter writer, string name, ScriptPubKey script)
         {
             writer.WritePropertyName(name);
-            writer.WriteStartObject();
-            writer.WriteNumber("version", script.Version);
-            writer.WriteString("script", Encoders.Hex.EncodeData(script.Script));
-            writer.WriteEndObject();
+            WriteScriptPublicKey(writer, script);
+        }
+
+        private static ulong OptionalU64(JsonElement element, string name)
+        {
+            if (!element.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null)
+            {
+                return 0UL;
+            }
+
+            return ReadU64(value);
+        }
+
+        private static byte ReadSigOpCount(JsonElement input)
+        {
+            if (!input.TryGetProperty("sigOpCount", out var sigOpElement) || sigOpElement.ValueKind == JsonValueKind.Null)
+            {
+                return 0;
+            }
+
+            var value = ReadU64(sigOpElement);
+            if (value > byte.MaxValue)
+            {
+                throw new FormatException("sigOpCount does not fit in a byte.");
+            }
+
+            return (byte)value;
         }
 
         private static JsonElement Require(JsonElement element, string name)

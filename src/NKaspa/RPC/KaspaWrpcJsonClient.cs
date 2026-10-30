@@ -86,16 +86,9 @@ namespace NKaspa.RPC
             foreach (var item in array.EnumerateArray())
             {
                 var address = StringOf(item, "address");
-                var outpointElement = Require(item, "outpoint");
-                var entryElement = Require(item, "utxoEntry");
-                var outpoint = new OutPoint(
-                    uint256.Parse(StringOf(outpointElement, "transactionId")),
-                    (uint)KaspaRpcJson.ReadU64(Require(outpointElement, "index")));
-                var amount = KaspaRpcJson.ReadU64(Require(entryElement, "amount"));
-                var script = KaspaRpcJson.ReadScript(Require(entryElement, "scriptPublicKey"));
-                var daa = entryElement.TryGetProperty("blockDaaScore", out var daaElement) ? KaspaRpcJson.ReadU64(daaElement) : 0UL;
-                var coinbase = BoolOf(entryElement, "isCoinbase");
-                entries.Add(new RpcUtxo(address, outpoint, new UtxoEntry(amount, script, daa, coinbase)));
+                var outpoint = KaspaRpcJson.ReadOutPoint(Require(item, "outpoint"));
+                var entry = KaspaRpcJson.ReadUtxoEntry(Require(item, "utxoEntry"));
+                entries.Add(new RpcUtxo(address, outpoint, entry));
             }
 
             return entries;

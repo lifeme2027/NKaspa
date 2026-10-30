@@ -1,5 +1,6 @@
 using NKaspa;
 using AddressSample = NKaspa.Samples.Address.Program;
+using JsonSample = NKaspa.Samples.Json.Program;
 using MnemonicSample = NKaspa.Samples.Mnemonic.Program;
 using PsktSample = NKaspa.Samples.PsktMultisig.Program;
 using SignSample = NKaspa.Samples.SignMessage.Program;
@@ -166,6 +167,30 @@ namespace NKaspa.Tests
             Assert.Contains("tampered-schnorr-ok: false", text, StringComparison.Ordinal);
             Assert.Contains("tampered-ecdsa-ok: false", text, StringComparison.Ordinal);
             Assert.Contains("\nok", text, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Json_sample_round_trips_public_types_and_refuses_a_private_key()
+        {
+            var writer = new StringWriter();
+            var code = JsonSample.Run(Array.Empty<string>(), writer);
+            var text = writer.ToString();
+            Assert.Equal(0, code);
+            Assert.Contains("money: 20000000", text, StringComparison.Ordinal);
+            Assert.Contains("address-network: mainnet", text, StringComparison.Ordinal);
+            Assert.Contains("script-prefixed: true", text, StringComparison.Ordinal);
+            Assert.Contains("\"computeBudget\":10", text, StringComparison.Ordinal);
+            Assert.Contains("\"covenant\"", text, StringComparison.Ordinal);
+            Assert.Contains("compute-budget: 10", text, StringComparison.Ordinal);
+            Assert.Contains("covenant: true", text, StringComparison.Ordinal);
+            Assert.Contains("feerate: 100", text, StringComparison.Ordinal);
+            Assert.Contains("pskt: true", text, StringComparison.Ordinal);
+            Assert.Contains("kpub: \"kpub", text, StringComparison.Ordinal);
+            Assert.Contains("private-key: refused", text, StringComparison.Ordinal);
+            Assert.Contains("warning: true", text, StringComparison.Ordinal);
+            Assert.Contains("\nok", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("kprv", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("0000000000000000000000000000000000000000000000000000000000000003", text, StringComparison.Ordinal);
         }
     }
 }

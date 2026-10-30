@@ -1,6 +1,7 @@
 # Offline sample smoke test.
-# Runs samples 1, 2, 4 (no --broadcast), 5, and 6. Does not run NodeQuery and does not submit a transaction.
-# 离线冒烟：示例 1、2、4（不带 --broadcast）、5、6。不跑 NodeQuery，不提交交易。
+# Runs Mnemonic, Address, Spend (no --broadcast), PsktMultisig, SignMessage, and Json.
+# Does not run NodeQuery and does not submit a transaction.
+# 离线冒烟：助记词、地址、花费（不带 --broadcast）、PSKT、消息签名、JSON。不跑 NodeQuery，不提交交易。
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
@@ -41,4 +42,5 @@ Invoke-Sample "samples\Address\Address.csproj"
 Invoke-Sample "samples\Spend\Spend.csproj"
 Invoke-Sample "samples\PsktMultisig\PsktMultisig.csproj"
 Invoke-Sample "samples\SignMessage\SignMessage.csproj" @("NKaspa")
+Invoke-Sample "samples\Json\Json.csproj"
 Write-Host "smoke ok"

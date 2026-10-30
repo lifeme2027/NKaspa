@@ -4,7 +4,7 @@
 
 ## English
 
-NKaspa is a .NET library for [Kaspa](https://kaspa.org/). Version **0.1.4-alpha**.
+NKaspa is a .NET library for [Kaspa](https://kaspa.org/). Version **0.1.5-alpha**.
 
 The public types follow [NBitcoin](https://github.com/MetacoSA/NBitcoin) where a Kaspa counterpart exists. `KaspaAddress` corresponds to `BitcoinAddress`. `uint256` corresponds to `NBitcoin.uint256`. `Encoders` corresponds to `NBitcoin.DataEncoders.Encoders`. The behavior is Kaspa's, not Bitcoin's: addresses use cashaddr-style bech32 (`kaspa`, `kaspatest`, `kaspasim`, `kaspadev`, 8-character checksum), and consensus hashes are unkeyed BLAKE2b-256.
 
@@ -12,7 +12,7 @@ NBitcoin is MIT licensed. See [NOTICE](NOTICE). Elliptic-curve operations use th
 
 ### Status
 
-Alpha. This release contains encoders (hex, Kaspa bech32, Base58Check), BLAKE2b-256, BLAKE3-256, `uint256`, the four networks, and addresses (Schnorr public key, ECDSA public key, script hash). It also contains keys, BIP-340 Schnorr and compact ECDSA signatures, script parsing and the standard pay-to-pubkey / pay-to-script-hash templates, version-0 and Toccata version-1 transactions and sighash, BIP39 mnemonics, BIP32 extended keys, a transaction builder, Kaspa mass and fee rates, a minimal wRPC JSON client, and PSKT (partially signed Kaspa transactions). PSKT follows rusty-kaspa `wallet/pskt`: the roles Creator, Constructor, Updater, Signer, Combiner, Finalizer, and Extractor; Schnorr and ECDSA partial signatures; combine; finalize for single-sig P2PK and multisig P2SH; and extract. `TransactionBuilder.BuildPSKT` covers version 0 and version 1. The hex form is the prefix `PSKT` plus lowercase hex of the compact JSON. A bundle uses `PSKB`. The builder can force every named coin into the transaction, prefer one coin when that coin covers the payment, and emit a version-1 payment. The script engine does not execute scripts. Covenant and zero-knowledge execution are not implemented. Nothing in this library broadcasts a transaction on its own. The console samples under `samples/` print transactions or query a node. `samples/Spend` submits a transaction only when `--broadcast` is set and the environment variable `NKASPA_MNEMONIC` is set. The wRPC client is covered by canned JSON and a loopback WebSocket. `samples/NodeQuery` is the read-only call to a public node. The map of NBitcoin areas is in [docs/NBitcoin-Mapping.md](docs/NBitcoin-Mapping.md).
+Alpha. This release contains encoders (hex, Kaspa bech32, Base58Check), BLAKE2b-256, BLAKE3-256, `uint256`, the four networks, and addresses (Schnorr public key, ECDSA public key, script hash). It also contains keys, BIP-340 Schnorr and compact ECDSA signatures, script parsing and the standard pay-to-pubkey / pay-to-script-hash templates, version-0 and Toccata version-1 transactions and sighash, BIP39 mnemonics, BIP32 extended keys, a transaction builder, Kaspa mass and fee rates, a minimal wRPC JSON client, PSKT (partially signed Kaspa transactions), and System.Text.Json converters in `NKaspa.JsonConverters`. PSKT follows rusty-kaspa `wallet/pskt`: the roles Creator, Constructor, Updater, Signer, Combiner, Finalizer, and Extractor; Schnorr and ECDSA partial signatures; combine; finalize for single-sig P2PK and multisig P2SH; and extract. `TransactionBuilder.BuildPSKT` covers version 0 and version 1. The hex form is the prefix `PSKT` plus lowercase hex of the compact JSON. A bundle uses `PSKB`. The builder can force every named coin into the transaction, prefer one coin when that coin covers the payment, and emit a version-1 payment. The script engine does not execute scripts. Covenant and zero-knowledge execution are not implemented. Nothing in this library broadcasts a transaction on its own. The console samples under `samples/` print transactions or query a node. `samples/Spend` submits a transaction only when `--broadcast` is set and the environment variable `NKASPA_MNEMONIC` is set. The wRPC client is covered by canned JSON and a loopback WebSocket. `samples/NodeQuery` is the read-only call to a public node. The map of NBitcoin areas is in [docs/NBitcoin-Mapping.md](docs/NBitcoin-Mapping.md).
 
 ### Usage
 
@@ -91,6 +91,27 @@ var tx = carried.Finalizer().Finalize().ExtractTransaction();
 
 `uint256` display hex is Kaspa wire order (the same bytes BLAKE2b emits). It is not reversed the way `NBitcoin.uint256.ToString()` reverses them. Numeric comparison still treats byte 0 as the least significant byte.
 
+### JSON
+
+`NKaspa.JsonConverters.NKaspaJsonSerializer` is the counterpart of `NBitcoin.JsonConverters.Serializer`. It uses `System.Text.Json` (package 8.0.5, already referenced, so `net8.0` and `netstandard2.1` share it). There is no Newtonsoft.Json adapter.
+
+Amounts are sompi integers. Names inside Kaspa values are camelCase. A transaction is the same compact object as `KaspaRpcJson.WriteTransaction`, including version 0 and version 1 (`sigOpCount`, and `computeBudget` on version 1) and an optional output `covenant`. `scriptPublicKey` is written as `{ "version", "script" }`. Reading also accepts `scriptPublicKey` on that object, and the rusty-kaspa hex string whose first two bytes are the big-endian version. `AddNKaspaConverters(network)` registers the converters and requires that network for addresses and extended keys.
+
+`Key` and `ExtKey` throw unless `allowPrivateKeys` is true. That option writes secret bytes. Do not turn it on for logs or RPC.
+
+```csharp
+using System.Text.Json;
+using NKaspa.JsonConverters;
+
+var json = NKaspaJsonSerializer.Serialize(tx, Network.Mainnet);
+var copy = NKaspaJsonSerializer.Deserialize<Transaction>(json, Network.Mainnet);
+
+var options = new JsonSerializerOptions();
+options.AddNKaspaConverters(Network.Mainnet);
+```
+
+`tx` is a `Transaction`. `copy` is the same transaction. The options object is for `JsonSerializer` calls that are not `NKaspaJsonSerializer`.
+
 ### Samples
 
 Console samples live in `samples/` and are part of `NKaspa.sln`. They use the same calls as the snippets above. `NodeQuery` is read-only. The others run offline. `samples/smoke.ps1` runs those offline programs. It uses `dotnet` on `PATH`, or `dotnet.exe` under `DOTNET_ROOT` when that variable is set. `SampleSmokeTests` runs the same checks under `dotnet test`.
@@ -105,10 +126,11 @@ dotnet run --project samples/Spend
 dotnet run --project samples/PsktMultisig
 dotnet run --project samples/SignMessage
 dotnet run --project samples/SignMessage -- NKaspa
+dotnet run --project samples/Json
 powershell -File samples/smoke.ps1
 ```
 
-`Mnemonic` draws a 12-word English mnemonic, or uses the words you pass, and derives `m/44'/111111'/0'/0/0` through `2` on mainnet (`kaspa`, `kpub`) and testnet (`kaspatest`, `ktub`). `Address` parses Schnorr, ECDSA, and script-hash addresses and prints `ScriptPubKey`. `NodeQuery` opens the wRPC JSON WebSocket, then calls `getServerInfo`, `getBlockDagInfo`, `getBalanceByAddress`, and `getUtxosByAddresses`. The default URL is `wss://eva.kaspa.green/kaspa/mainnet/wrpc/json`.
+`Mnemonic` draws a 12-word English mnemonic, or uses the words you pass, and derives `m/44'/111111'/0'/0/0` through `2` on mainnet (`kaspa`, `kpub`) and testnet (`kaspatest`, `ktub`). `Address` parses Schnorr, ECDSA, and script-hash addresses and prints `ScriptPubKey`. `NodeQuery` opens the wRPC JSON WebSocket, then calls `getServerInfo`, `getBlockDagInfo`, `getBalanceByAddress`, and `getUtxosByAddresses`. The default URL is `wss://eva.kaspa.green/kaspa/mainnet/wrpc/json`. `Json` prints compact JSON for the public types, including a version-1 transaction with `computeBudget` and `covenant`, and refuses to print a private key.
 
 `Spend` builds three signed payments from public test keys and fake coins: version 0, version 0 with `MustSpend` on two inputs, and version 1. Each pays `SendMinimumRelayFee`. It prints the transaction hex and the wRPC JSON. It does not open a socket.
 
@@ -139,7 +161,7 @@ Package id `NKaspa`. Repository placeholder: https://github.com/lifeme2027/NKasp
 
 ## 中文
 
-NKaspa 是 Kaspa 的 .NET 基础函数库，版本 **0.1.4-alpha**。
+NKaspa 是 Kaspa 的 .NET 基础函数库，版本 **0.1.5-alpha**。
 
 公开类型尽量与 [NBitcoin](https://github.com/MetacoSA/NBitcoin) 一一对应，但语义按 Kaspa。地址是 cashaddr 风格的 bech32（前缀 `kaspa` / `kaspatest` / `kaspasim` / `kaspadev`，8 字符校验和）。共识哈希是不带密钥的 BLAKE2b-256，不是比特币的双 SHA256。
 
@@ -147,7 +169,7 @@ NBitcoin 采用 MIT 许可，致谢见 [NOTICE](NOTICE)。椭圆曲线使用 NuG
 
 ### 状态
 
-Alpha。这一版包含编码器（十六进制、Kaspa bech32、Base58Check）、BLAKE2b-256、BLAKE3-256、`uint256`、四个网络，以及地址（Schnorr 公钥、ECDSA 公钥、脚本哈希）。同时包含密钥、BIP-340 Schnorr 与紧凑 ECDSA 签名、脚本解析和标准 P2PK / P2SH 模板、版本 0 与 Toccata 版本 1 交易和 sighash、BIP39 助记词、BIP32 扩展密钥、交易构建器、Kaspa mass 与费率、最小的 wRPC JSON 客户端，以及 PSKT（部分签名的 Kaspa 交易）。PSKT 对齐 rusty-kaspa 的 `wallet/pskt`：角色 Creator、Constructor、Updater、Signer、Combiner、Finalizer、Extractor；Schnorr 与 ECDSA 部分签名；合并；单签 P2PK 与多签 P2SH 的终结；提取交易。`TransactionBuilder.BuildPSKT` 覆盖版本 0 和版本 1。十六进制是前缀 `PSKT` 加上紧凑 JSON 的小写十六进制。Bundle 用 `PSKB`。构建器可以强制花掉指定的币，在一枚币够付时只用一枚，并直接产出版本 1 付款。脚本只解析和构建，不执行。Covenant 与零知识证明也不执行。本库自己不广播交易。`samples/` 里的控制台示例只打印交易，或只读查询节点。`samples/Spend` 只有在传入 `--broadcast` 且环境变量 `NKASPA_MNEMONIC` 已设置时才提交交易。wRPC 用预制 JSON 和本地回环 WebSocket 做过测试。`samples/NodeQuery` 是对公共节点的只读调用。对照表见 [docs/NBitcoin-Mapping.md](docs/NBitcoin-Mapping.md)。
+Alpha。这一版包含编码器（十六进制、Kaspa bech32、Base58Check）、BLAKE2b-256、BLAKE3-256、`uint256`、四个网络，以及地址（Schnorr 公钥、ECDSA 公钥、脚本哈希）。同时包含密钥、BIP-340 Schnorr 与紧凑 ECDSA 签名、脚本解析和标准 P2PK / P2SH 模板、版本 0 与 Toccata 版本 1 交易和 sighash、BIP39 助记词、BIP32 扩展密钥、交易构建器、Kaspa mass 与费率、最小的 wRPC JSON 客户端、PSKT（部分签名的 Kaspa 交易），以及 `NKaspa.JsonConverters` 里的 System.Text.Json 转换器。PSKT 对齐 rusty-kaspa 的 `wallet/pskt`：角色 Creator、Constructor、Updater、Signer、Combiner、Finalizer、Extractor；Schnorr 与 ECDSA 部分签名；合并；单签 P2PK 与多签 P2SH 的终结；提取交易。`TransactionBuilder.BuildPSKT` 覆盖版本 0 和版本 1。十六进制是前缀 `PSKT` 加上紧凑 JSON 的小写十六进制。Bundle 用 `PSKB`。构建器可以强制花掉指定的币，在一枚币够付时只用一枚，并直接产出版本 1 付款。脚本只解析和构建，不执行。Covenant 与零知识证明也不执行。本库自己不广播交易。`samples/` 里的控制台示例只打印交易，或只读查询节点。`samples/Spend` 只有在传入 `--broadcast` 且环境变量 `NKASPA_MNEMONIC` 已设置时才提交交易。wRPC 用预制 JSON 和本地回环 WebSocket 做过测试。`samples/NodeQuery` 是对公共节点的只读调用。对照表见 [docs/NBitcoin-Mapping.md](docs/NBitcoin-Mapping.md)。
 
 ### 用法
 
@@ -226,6 +248,27 @@ var tx = carried.Finalizer().Finalize().ExtractTransaction();
 
 `uint256` 的十六进制是 Kaspa 线上字节序（与 BLAKE2b 输出一致），不会像 `NBitcoin.uint256.ToString()` 那样把字节反转后再显示。数值比较仍然把第 0 字节当作最低有效字节。
 
+### JSON
+
+`NKaspa.JsonConverters.NKaspaJsonSerializer` 对标 `NBitcoin.JsonConverters.Serializer`。实现是 `System.Text.Json`（已经引用的 8.0.5，所以 `net8.0` 和 `netstandard2.1` 共用）。没有 Newtonsoft.Json 适配。
+
+金额是 sompi 整数。Kaspa 值内部的字段名是驼峰。交易对象与 `KaspaRpcJson.WriteTransaction` 的紧凑 JSON 相同，包括版本 0 和版本 1（`sigOpCount`，版本 1 还有 `computeBudget`），输出可以带 `covenant`。`scriptPublicKey` 写成 `{ "version", "script" }`。读取还接受对象里的 `scriptPublicKey`，以及 rusty-kaspa 那种前两字节是大端版本的十六进制。`AddNKaspaConverters(network)` 注册转换器，地址和扩展密钥必须属于这个网络。
+
+`Key` 和 `ExtKey` 默认抛出。只有 `allowPrivateKeys` 为 true 才写出私钥字节。不要对日志或 RPC 打开这个开关。
+
+```csharp
+using System.Text.Json;
+using NKaspa.JsonConverters;
+
+var json = NKaspaJsonSerializer.Serialize(tx, Network.Mainnet);
+var copy = NKaspaJsonSerializer.Deserialize<Transaction>(json, Network.Mainnet);
+
+var options = new JsonSerializerOptions();
+options.AddNKaspaConverters(Network.Mainnet);
+```
+
+`tx` 是 `Transaction`。`copy` 是同一笔交易。`options` 给不经过 `NKaspaJsonSerializer` 的 `JsonSerializer` 调用使用。
+
 ### 示例
 
 示例在 `samples/`，已加入 `NKaspa.sln`。`NodeQuery` 只读。其余示例离线运行。`samples/smoke.ps1` 会跑这些离线程序。它用 `PATH` 上的 `dotnet`；如果设置了 `DOTNET_ROOT`，就用那个目录里的 `dotnet.exe`。`SampleSmokeTests` 在 `dotnet test` 里做同样的检查。
@@ -240,10 +283,11 @@ dotnet run --project samples/Spend
 dotnet run --project samples/PsktMultisig
 dotnet run --project samples/SignMessage
 dotnet run --project samples/SignMessage -- NKaspa
+dotnet run --project samples/Json
 powershell -File samples/smoke.ps1
 ```
 
-`Mnemonic` 生成 12 个英文词，或使用传入的助记词，并派生 `m/44'/111111'/0'/0/0` 到 `2`。主网地址前缀是 `kaspa`，扩展公钥是 `kpub`。测试网是 `kaspatest` 和 `ktub`。`Address` 解析 Schnorr、ECDSA 和脚本哈希地址，并打印 `ScriptPubKey`。`NodeQuery` 打开 wRPC JSON WebSocket，然后调用 `getServerInfo`、`getBlockDagInfo`、`getBalanceByAddress`、`getUtxosByAddresses`。默认地址是 `wss://eva.kaspa.green/kaspa/mainnet/wrpc/json`。
+`Mnemonic` 生成 12 个英文词，或使用传入的助记词，并派生 `m/44'/111111'/0'/0/0` 到 `2`。主网地址前缀是 `kaspa`，扩展公钥是 `kpub`。测试网是 `kaspatest` 和 `ktub`。`Address` 解析 Schnorr、ECDSA 和脚本哈希地址，并打印 `ScriptPubKey`。`NodeQuery` 打开 wRPC JSON WebSocket，然后调用 `getServerInfo`、`getBlockDagInfo`、`getBalanceByAddress`、`getUtxosByAddresses`。默认地址是 `wss://eva.kaspa.green/kaspa/mainnet/wrpc/json`。`Json` 打印公开类型的紧凑 JSON，包括带 `computeBudget` 和 `covenant` 的版本 1 交易，并拒绝打印私钥。
 
 `Spend` 用公开测试密钥和本地假币签三笔付款：版本 0、版本 0 的双输入 `MustSpend`、版本 1。费用都是 `SendMinimumRelayFee`。它打印交易十六进制和 wRPC JSON，不开套接字。
 

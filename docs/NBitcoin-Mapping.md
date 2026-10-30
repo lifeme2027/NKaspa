@@ -4,7 +4,7 @@
 
 状态只用三种：
 
-- **已实现**：这一版（0.1.4-alpha）里有对应类型，范围以代码为准。
+- **已实现**：这一版（0.1.5-alpha）里有对应类型，范围以代码为准。
 - **计划中**：后面阶段要做，或只做 Kaspa 自己的等价物，不照搬比特币协议。
 - **无需实现**：Kaspa 没有这套机制，或它不该出现在这个库里。
 
@@ -169,18 +169,44 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 | `BIP38` | `BitcoinEncryptedSecret` | 无需实现 | 比特币 Base58 加密私钥。Kaspa 不用这套格式。 |
 | `BIP322` | `BIP322Signature` | 无需实现 | 比特币消息签名证明，绑定的是比特币地址和脚本。 |
 | `BIP9Deployments` | 部署状态 | 无需实现 | 比特币软分叉版本位。Kaspa 的升级不走 BIP9。 |
-| `JsonConverters` | 各 `JsonConverter` | 计划中 | wRPC 有自己的 `KaspaRpcJson`，不是通用 `JsonConverter`。通用转换器仍未做。 |
+| `JsonConverters` | `NKaspa.JsonConverters` | 已实现 | `NKaspaJsonSerializer` 对标 `Serializer`，用 System.Text.Json，不用 Newtonsoft。见下文「JsonConverters」。 |
 | `WalletPolicies` / miniscript | 策略描述 | 无需实现 | 比特币 miniscript 与输出描述符对不上当前 Kaspa 脚本。 |
 | `BuilderExtensions` | `TransactionBuilder` | 已实现 | 构建能力在 `TransactionBuilder` 上，没有单独的扩展方法类。强制花费是 `MustSpend` 和 `SpendAllCoins`，不是 `SendAll` 那种把金额扫进一个输出。未签名交换走 `BuildPSKT` 和 `Sign`。 |
 | `Socks` | `SocksHelper` | 计划外 | 与共识无关。做节点连接时再考虑。 |
 | `Logging` | `Logs` | 无需实现 | 库不绑定 NBitcoin 的日志门面。 |
 | `BouncyCastle` | 摘要与大整数 | 无需实现 | 不把这套源码带进来。哈希用自带 BLAKE2b，曲线用 Secp256k1 包。 |
 
+## JsonConverters
+
+`NKaspa.JsonConverters` 对标 `NBitcoin.JsonConverters`。NBitcoin 的 `Serializer` 用 Newtonsoft.Json。NKaspa 的 `NKaspaJsonSerializer` 用 System.Text.Json，因为 `net8.0` 和 `netstandard2.1` 都能用已经引用的 System.Text.Json 8.0.5。没有再加 Newtonsoft 包，也没有 Newtonsoft 适配层。
+
+`AddNKaspaConverters(network)` 把转换器加进 `JsonSerializerOptions`。调用前如果命名策略还是空的，会设成驼峰。地址、扩展公钥、以及显式打开之后的扩展私钥，都按这个网络的前缀读写。
+
+| 类型 | JSON |
+| --- | --- |
+| `Money` | sompi 整数。数字或数字字符串。不接受 `1 KAS` 这种小数。 |
+| `uint256` | 64 位十六进制，Kaspa 线上字节序。可选 `0x`。 |
+| `KaspaAddress` | 地址字符串。前缀必须属于 options 里的网络。 |
+| `Network` | `mainnet` / `testnet` / `simnet` / `devnet`。也接受 `testnet-10` 和 `{networkType, suffix}`。 |
+| `Script` | 脚本字节的十六进制，与 `signatureScript` 相同。 |
+| `ScriptPubKey` | 写出 `{version, script}`。读入还接受对象里的 `scriptPublicKey`，以及版本在前的十六进制。 |
+| `OutPoint` | `{transactionId, index}`。读入也接受 `transactionId:index`。 |
+| `TxIn` / `TxOut` / `Transaction` | 与 `KaspaRpcJson` 相同。版本 1 的交易写出 `computeBudget`。单独的 `TxIn` 只在有预算时写出。输出可带 `covenant`。 |
+| `UtxoEntry` | `{amount, scriptPublicKey, blockDaaScore, isCoinbase}`。有 covenant id 时写出 `covenantId`。 |
+| `Coin` | `{outpoint, utxoEntry}`。与 `getUtxosByAddresses` 的条目一致。地址字段被忽略。 |
+| `PubKey` / `PubKeyECDSA` | 32 字节 x-only，或 33 字节压缩公钥，小写十六进制。 |
+| `ExtPubKey` | 该网络的 `kpub` 或 `ktub`。 |
+| `FeeRate` | sompi/gram 的整数。 |
+| `PSKT` | `PSKT.ToJson()` 的紧凑对象。 |
+| `Key` / `ExtKey` | 默认拒绝，异常文本带 WARNING。`allowPrivateKeys: true` 才写出十六进制私钥或 `kprv` / `ktrv`。 |
+
+紧凑、不缩进的交易 JSON 与 `KaspaRpcJson.WriteTransaction` 是同一串。2026-10-30 主网三笔已接受交易（`5fd8f860…`、`2febe6ca…`、`4d1c6a5e…`）按 wRPC 形状读入后，交易号与链上一致。浏览器的 `mass` 是中继 mass，没有写进 `storageMass`。
+
 ## 当前进度
 
-0.1.4-alpha。库的行为与 0.1.3 相同。这一版加上 `samples/` 里的控制台示例。第一阶段的编码器、BLAKE2b、`uint256`、网络和三种地址仍在。第二阶段的密钥、签名、脚本、版本 0 交易和 sighash 仍在。第三阶段补上 BIP39、BIP32、mass / 费率、交易构建器和最小 wRPC JSON 客户端。0.1.1 补上 Toccata 版本 1 交易号、找零与 mass 策略，以及 wRPC 帧分发。0.1.2 让构建器强制花掉指定输入、在一枚币够付时不拉小币，并直接产出版本 1 付款。0.1.3 加上 PSKT：部分签名、合并、单签与 P2SH 多签终结、提取，以及 `TransactionBuilder.BuildPSKT`。
+0.1.5-alpha。这一版加上通用 JSON 转换器。0.1.4 的行为还在：`samples/` 里的控制台示例。第一阶段的编码器、BLAKE2b、`uint256`、网络和三种地址仍在。第二阶段的密钥、签名、脚本、版本 0 交易和 sighash 仍在。第三阶段补上 BIP39、BIP32、mass / 费率、交易构建器和最小 wRPC JSON 客户端。0.1.1 补上 Toccata 版本 1 交易号、找零与 mass 策略，以及 wRPC 帧分发。0.1.2 让构建器强制花掉指定输入、在一枚币够付时不拉小币，并直接产出版本 1 付款。0.1.3 加上 PSKT：部分签名、合并、单签与 P2SH 多签终结、提取，以及 `TransactionBuilder.BuildPSKT`。
 
-- 解决方案：`NKaspa.sln`，类库 `src/NKaspa`（`net8.0`、`netstandard2.1`），测试 `tests/NKaspa.Tests`（xUnit，`net8.0`），示例 `samples/`（六个控制台项目，`net8.0`）。对照见下文「示例」。
+- 解决方案：`NKaspa.sln`，类库 `src/NKaspa`（`net8.0`、`netstandard2.1`），测试 `tests/NKaspa.Tests`（xUnit，`net8.0`），示例 `samples/`（七个控制台项目，`net8.0`）。对照见下文「示例」。
 - 密钥：`Key`、`PubKey`（32 字节 x-only）、`PubKeyECDSA`（33 字节压缩）。`GetAddress` 默认是 Schnorr 地址。`Key.Create` 会清零临时缓冲区。`ExtKey.PrivateKey` 返回副本，处置副本不会让父密钥失效。
 - 签名：`SchnorrSignature`、`ECDSASignature`、`SigHashType`（`All=0x01`、`None=0x02`、`Single=0x04`，anyone-can-pay 是 `0x80`）。
 - 脚本：`OpcodeType`、`Op`、`Script`、`ScriptBuilder`。`ScriptPubKey` 仍带 u16 版本。标准模板是 Schnorr P2PK、ECDSA P2PK、P2SH。签名脚本是 66 字节的 `OP_DATA_65` 推送。不执行脚本。
@@ -239,7 +265,7 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 
 ## 示例
 
-示例是 `samples/` 下的控制台项目，对标 NBitcoin 文档里的短示例。默认不广播。离线示例由 `tests/NKaspa.Tests/SampleSmokeTests.cs` 和 `samples/smoke.ps1` 覆盖。`NodeQuery` 要连公共节点，不进单元测试。
+示例是 `samples/` 下的控制台项目，对标 NBitcoin 文档里的短示例。默认不广播。离线示例由 `tests/NKaspa.Tests/SampleSmokeTests.cs` 和 `samples/smoke.ps1` 覆盖。`NodeQuery` 要连公共节点，不进单元测试。`Json` 只打印 JSON，不连节点。
 
 | 示例 | 项目 | NBitcoin | NKaspa |
 | --- | --- | --- | --- |
@@ -249,6 +275,7 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 | 构建并签名 | `samples/Spend` | `TransactionBuilder` | 版本 0、版本 0 的 `MustSpend` 双输入、版本 1，费用是 `SendMinimumRelayFee`。默认打印交易十六进制和 wRPC JSON。`--broadcast` 且环境变量 `NKASPA_MNEMONIC` 都有，并且还传入 `--to` 与 `--amount` 时才提交。 |
 | PSKT 2-of-2 | `samples/PsktMultisig` | BIP174 `PartiallySignedTransaction`（不移植） | `NKaspa.PSKT.PSKT`：创建、双方 `Sign`、`Combine`、`Finalize`、`ExtractTransaction`。 |
 | 离线消息签名 | `samples/SignMessage` | `Key.SignMessage`。BIP322 仍无需实现 | 对 UTF-8 的 BLAKE2b-256 调用 `Key.SignSchnorr` / `Key.SignECDSA`，再用 `PubKey.Verify` / `PubKeyECDSA.Verify`。不是比特币消息前缀。 |
+| JSON | `samples/Json` | `NBitcoin.JsonConverters.Serializer` | `NKaspaJsonSerializer` 与 `AddNKaspaConverters(network)`。版本 0 / 版本 1（`computeBudget`、`covenant`）、`scriptPublicKey` 的版本前缀十六进制。私钥默认拒绝。 |
 
 ## 仍未完成
 
@@ -257,7 +284,7 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 - 与正在运行的 rusty-kaspa 做 PSKT 字节对照。上游测试没有钉死向量。
 - 版本 1 compute budget 进入 PSKT。rusty-kaspa 的 `unsigned_tx` 这里仍是 TODO。
 - NuGet 发布。这一版只改版本号，不推包。
-- 通用 `JsonConverter`。
+- Newtonsoft.Json 适配。序列化只走 System.Text.Json，没有加这个包。
 - 未合并的 transient mass 改动（PR 1141）以及未能从源码确认的测试网激活 DAA。
 - 示例里的 `--broadcast` 路径没有对公共节点执行过。
 

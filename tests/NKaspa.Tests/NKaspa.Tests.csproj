@@ -19,6 +19,7 @@
     <ProjectReference Include="..\..\samples\Spend\Spend.csproj" />
     <ProjectReference Include="..\..\samples\PsktMultisig\PsktMultisig.csproj" />
     <ProjectReference Include="..\..\samples\SignMessage\SignMessage.csproj" />
+    <ProjectReference Include="..\..\samples\Json\Json.csproj" />
   </ItemGroup>
 
   <ItemGroup>
