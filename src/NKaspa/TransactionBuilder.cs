@@ -4,20 +4,33 @@ using NKaspa.Policy;
 namespace NKaspa
 {
     /// <summary>
-    /// Builds and signs a version-0 Kaspa transaction.
+    /// Builds and signs a native Kaspa payment.
     /// Kaspa counterpart of NBitcoin.TransactionBuilder, reduced to one native payment.
-    /// Inputs are Schnorr or ECDSA pay-to-pubkey. Coin selection is largest-first and deduplicated by outpoint.
+    /// Inputs are Schnorr or ECDSA pay-to-pubkey. Each selected coin is its own input and gets its own signature script.
+    /// <see cref="DefaultCoinSelector"/> spends one coin when that coin covers the payment, the fee, and the minimum change.
+    /// <see cref="MustSpend(Coin[])"/> and <see cref="SpendAllCoins"/> force every named coin into the transaction.
     /// Change below <see cref="MinimumChange"/>, or change that would push mass over the limit, is added to the fee.
     /// The fee mass must stay within <see cref="MaximumMass"/> and within <see cref="MassLimits"/>.
+    /// Version 0 is the default. <see cref="SetVersion"/>(1) builds a Toccata payment and signs it with the version-1 sighash.
     /// </summary>
     public sealed class TransactionBuilder
     {
+        /// <summary>
+        /// Compute budget used on a version-1 pay-to-pubkey input when the caller does not set one.
+        /// One unit is 100 compute grams, so 10 units match one version-0 signature operation (1000 grams).
+        /// </summary>
+        public const ushort DefaultComputeBudget = 10;
+
         private static readonly Script PlaceholderSignature = Script.SignatureScript(new SchnorrSignature(new byte[64]), SigHashType.All);
 
         private readonly List<Coin> _coins = new List<Coin>();
         private readonly List<Key> _keys = new List<Key>();
         private readonly List<TxOut> _sends = new List<TxOut>();
+        private readonly List<OutPoint> _mustSpend = new List<OutPoint>();
+        private readonly Dictionary<OutPoint, ushort> _budgets = new Dictionary<OutPoint, ushort>();
         private ScriptPubKey? _change;
+        private ushort _version;
+        private bool _spendAll;
 
         /// <summary>
         /// Change below this amount is added to the fee instead of creating an output.
@@ -37,13 +50,41 @@ namespace NKaspa
         public BlockMassLimits MassLimits { get; set; }
 
         /// <summary>
-        /// When false, an explicit <see cref="SendFees"/> below 100 sompi per gram of compute or normalized transient mass throws.
-        /// Storage mass is not part of that floor. The default is false.
+        /// When false, an explicit <see cref="SendFees"/> below the minimum relay fee throws.
+        /// The floor is 100 sompi times the larger of compute mass and normalized transient mass.
+        /// Storage mass is not part of that floor. A standard one-input Schnorr payment is about 0.002 KAS.
+        /// The default is false. <see cref="SendMinimumRelayFee"/> already pays this floor.
         /// </summary>
         public bool AllowBelowMinimumRelayFee { get; set; }
 
+        /// <summary>
+        /// Transaction version. 0 keeps the pre-Toccata sighash and signature-operation mass.
+        /// 1 is a Toccata payment: each input carries <see cref="ComputeBudget"/> and the signature hash omits sigops.
+        /// Values above 1 are rejected.
+        /// </summary>
+        public ushort Version
+        {
+            get { return _version; }
+            set
+            {
+                if (value > 1)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(value), "Transaction version must be 0 or 1.");
+                }
+
+                _version = value;
+            }
+        }
+
+        /// <summary>
+        /// Compute budget written on every version-1 input that has no per-outpoint override.
+        /// The default is <see cref="DefaultComputeBudget"/> (10). Ignored when <see cref="Version"/> is 0.
+        /// </summary>
+        public ushort ComputeBudget { get; set; } = DefaultComputeBudget;
+
         private Money? _explicitFee;
         private FeeRate? _estimatedRate;
+        private bool _payMinimumRelay;
 
         /// <summary>Creates a builder for mainnet after Toccata. Fee mass may use the full block compute limit.</summary>
         public TransactionBuilder()
@@ -116,6 +157,93 @@ namespace NKaspa
             return this;
         }
 
+        /// <summary>
+        /// Spends every coin passed to <see cref="AddCoins"/>.
+        /// Each coin stays a separate input and is signed. The payment amount is unchanged.
+        /// Surplus still goes to change, or to the fee when change is below <see cref="MinimumChange"/>.
+        /// </summary>
+        public TransactionBuilder SpendAllCoins()
+        {
+            _spendAll = true;
+            return this;
+        }
+
+        /// <summary>
+        /// Requires these outpoints to be inputs. The coins must already have been added, or be added later with <see cref="AddCoins"/>.
+        /// Every required input is signed. Coins are not merged when they share a script.
+        /// </summary>
+        public TransactionBuilder MustSpend(params OutPoint[] outpoints)
+        {
+            if (outpoints == null)
+            {
+                throw new ArgumentNullException(nameof(outpoints));
+            }
+
+            for (var i = 0; i < outpoints.Length; i++)
+            {
+                if (outpoints[i] == null)
+                {
+                    throw new ArgumentNullException(nameof(outpoints));
+                }
+
+                if (IndexOfMust(outpoints[i]) >= 0)
+                {
+                    continue;
+                }
+
+                _mustSpend.Add(outpoints[i]);
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        /// Requires these coins to be inputs, and adds any that are not already in the builder.
+        /// Every required input is signed. Coins are not merged when they share a script.
+        /// </summary>
+        public TransactionBuilder MustSpend(params Coin[] coins)
+        {
+            AddCoins(coins);
+            if (coins.Length == 0)
+            {
+                return this;
+            }
+
+            var outpoints = new OutPoint[coins.Length];
+            for (var i = 0; i < coins.Length; i++)
+            {
+                outpoints[i] = coins[i].Outpoint;
+            }
+
+            return MustSpend(outpoints);
+        }
+
+        /// <summary>Sets <see cref="Version"/>. Only 0 and 1 are accepted.</summary>
+        public TransactionBuilder SetVersion(ushort version)
+        {
+            Version = version;
+            return this;
+        }
+
+        /// <summary>Sets the compute budget used for version-1 inputs that have no per-outpoint override.</summary>
+        public TransactionBuilder SetComputeBudget(ushort computeBudget)
+        {
+            ComputeBudget = computeBudget;
+            return this;
+        }
+
+        /// <summary>Sets the compute budget of one version-1 input. The outpoint does not have to be added yet.</summary>
+        public TransactionBuilder SetComputeBudget(OutPoint outpoint, ushort computeBudget)
+        {
+            if (outpoint == null)
+            {
+                throw new ArgumentNullException(nameof(outpoint));
+            }
+
+            _budgets[outpoint] = computeBudget;
+            return this;
+        }
+
         /// <summary>Adds a payment to an address.</summary>
         public TransactionBuilder Send(KaspaAddress address, Money amount)
         {
@@ -162,7 +290,7 @@ namespace NKaspa
             return this;
         }
 
-        /// <summary>Pays an exact fee. Cannot be combined with <see cref="SendEstimatedFees"/>.</summary>
+        /// <summary>Pays an exact fee. Cannot be combined with <see cref="SendEstimatedFees"/> or <see cref="SendMinimumRelayFee"/>.</summary>
         public TransactionBuilder SendFees(Money fee)
         {
             _explicitFee = fee;
@@ -170,8 +298,10 @@ namespace NKaspa
         }
 
         /// <summary>
-        /// Estimates the fee from the signed mass and <paramref name="feeRate"/>.
+        /// Estimates the fee from the signed fee mass and <paramref name="feeRate"/>.
+        /// Fee mass is the maximum of compute mass, normalized transient mass, and normalized storage mass.
         /// A rate below 100 sompi per gram is rejected.
+        /// The minimum relay floor is narrower. See <see cref="SendMinimumRelayFee"/>.
         /// </summary>
         public TransactionBuilder SendEstimatedFees(FeeRate feeRate)
         {
@@ -182,6 +312,36 @@ namespace NKaspa
 
             _estimatedRate = feeRate;
             return this;
+        }
+
+        /// <summary>
+        /// Pays the minimum relay fee, solved from the signed transaction.
+        /// The fee is 100 sompi times the larger of compute mass and normalized transient mass.
+        /// Storage mass is not included. A standard one-input Schnorr payment with change is 2036 grams, 203600 sompi, about 0.002 KAS.
+        /// Cannot be combined with <see cref="SendFees"/> or <see cref="SendEstimatedFees"/>.
+        /// </summary>
+        public TransactionBuilder SendMinimumRelayFee()
+        {
+            _payMinimumRelay = true;
+            return this;
+        }
+
+        /// <summary>
+        /// Fee for <paramref name="mass"/> grams at <paramref name="feeRate"/>.
+        /// A rate below 100 sompi per gram is rejected.
+        /// </summary>
+        public static Money EstimateFee(FeeRate feeRate, ulong mass)
+        {
+            return MassCalculator.EstimateFee(feeRate, mass);
+        }
+
+        /// <summary>
+        /// Minimum relay fee for a measured mass: 100 sompi times <see cref="MassCalculator.RelayMass"/>.
+        /// A standard one-input Schnorr payment is about 0.002 KAS.
+        /// </summary>
+        public static Money EstimateMinimumRelayFee(TransactionMass mass)
+        {
+            return MassCalculator.EstimateMinimumRelayFee(mass);
         }
 
         /// <summary>
@@ -196,23 +356,14 @@ namespace NKaspa
                 throw new InvalidOperationException("No outputs to send.");
             }
 
-            if (_explicitFee.HasValue && _estimatedRate.HasValue)
-            {
-                throw new InvalidOperationException("SendFees and SendEstimatedFees cannot both be set.");
-            }
-
-            if (!_explicitFee.HasValue && !_estimatedRate.HasValue)
-            {
-                throw new InvalidOperationException("Set SendFees or SendEstimatedFees.");
-            }
-
+            var mode = ResolveFeeMode();
             var sendSum = SumSends();
             List<Coin> selected;
             ulong fee;
             Transaction transaction;
-            if (_explicitFee.HasValue)
+            if (mode == FeeChoice.Explicit)
             {
-                fee = _explicitFee.Value.Sompi;
+                fee = _explicitFee!.Value.Sompi;
                 selected = Select(checked(sendSum + fee));
                 transaction = Materialize(selected, sendSum, ref fee);
             }
@@ -226,7 +377,7 @@ namespace NKaspa
                 {
                     selected = Select(checked(sendSum + fee));
                     transaction = Materialize(selected, sendSum, ref fee);
-                    var required = RequiredFee(transaction, selected);
+                    var required = RequiredFee(transaction, selected, mode);
                     if (fee >= required)
                     {
                         settled = true;
@@ -267,7 +418,7 @@ namespace NKaspa
         /// </summary>
         public bool Verify(Transaction transaction)
         {
-            if (transaction == null || transaction.Version != 0)
+            if (transaction == null || transaction.Version != Version)
             {
                 return false;
             }
@@ -381,21 +532,66 @@ namespace NKaspa
 
         private List<Coin> Select(ulong target)
         {
-            var ordered = new List<Coin>(_coins);
-            ordered.Sort(CompareCoins);
-            var selected = new List<Coin>();
-            ulong sum = 0;
-            for (var i = 0; i < ordered.Count; i++)
+            var forced = ResolveForced();
+            if (_spendAll || forced.Count > 0)
             {
-                selected.Add(ordered[i]);
-                sum = checked(sum + ordered[i].Amount.Sompi);
-                if (sum >= target)
+                ulong forcedSum = 0;
+                for (var i = 0; i < forced.Count; i++)
                 {
-                    return selected;
+                    forcedSum = checked(forcedSum + forced[i].Amount.Sompi);
+                }
+
+                if (forcedSum >= target || _spendAll)
+                {
+                    if (forcedSum < target)
+                    {
+                        throw new InvalidOperationException("Not enough funds.");
+                    }
+
+                    return forced;
+                }
+
+                var remaining = new List<Coin>();
+                for (var i = 0; i < _coins.Count; i++)
+                {
+                    if (IndexOfOutpoint(forced, _coins[i].Outpoint) < 0)
+                    {
+                        remaining.Add(_coins[i]);
+                    }
+                }
+
+                var extra = new DefaultCoinSelector(MinimumChange).Select(remaining, new Money(checked(target - forcedSum)));
+                forced.AddRange(extra);
+                return forced;
+            }
+
+            return new DefaultCoinSelector(MinimumChange).Select(_coins, new Money(target));
+        }
+
+        private List<Coin> ResolveForced()
+        {
+            for (var i = 0; i < _mustSpend.Count; i++)
+            {
+                if (FindCoin(_mustSpend[i]) == null)
+                {
+                    throw new InvalidOperationException("A must-spend outpoint was not added with AddCoins.");
                 }
             }
 
-            throw new InvalidOperationException("Not enough funds.");
+            if (_spendAll)
+            {
+                var all = new List<Coin>(_coins);
+                all.Sort(CompareCoins);
+                return all;
+            }
+
+            var forced = new List<Coin>(_mustSpend.Count);
+            for (var i = 0; i < _mustSpend.Count; i++)
+            {
+                forced.Add(FindCoin(_mustSpend[i])!);
+            }
+
+            return forced;
         }
 
         private Transaction Materialize(List<Coin> selected, ulong sendSum, ref ulong fee)
@@ -438,7 +634,15 @@ namespace NKaspa
             var inputs = new TxIn[selected.Count];
             for (var i = 0; i < selected.Count; i++)
             {
-                inputs[i] = new TxIn(selected[i].Outpoint, PlaceholderSignature, 0, 1);
+                var placeholder = new Script(PlaceholderSignature.ToBytes());
+                if (Version == 0)
+                {
+                    inputs[i] = new TxIn(selected[i].Outpoint, placeholder, 0, 1);
+                }
+                else
+                {
+                    inputs[i] = TxIn.WithComputeBudget(selected[i].Outpoint, placeholder, 0, BudgetFor(selected[i].Outpoint));
+                }
             }
 
             var outputs = new List<TxOut>(_sends.Count + 1);
@@ -448,7 +652,7 @@ namespace NKaspa
                 outputs.Add(new TxOut(new Money(change), _change!));
             }
 
-            return new Transaction(0, inputs, outputs, 0, SubnetworkId.Native, 0, Array.Empty<byte>());
+            return new Transaction(Version, inputs, outputs, 0, SubnetworkId.Native, 0, Array.Empty<byte>());
         }
 
         private bool TryGetChange(Transaction transaction, out ulong change)
@@ -469,11 +673,57 @@ namespace NKaspa
             return true;
         }
 
-        private ulong RequiredFee(Transaction transaction, List<Coin> selected)
+        private ulong RequiredFee(Transaction transaction, List<Coin> selected, FeeChoice mode)
         {
             var mass = MassCalculator.Calculate(transaction, Entries(selected), MassLimits);
             EnsureWithin(mass);
-            return MassCalculator.EstimateFee(mass.FeeMass, _estimatedRate!.Value.SompiPerGram);
+            if (mode == FeeChoice.Rate)
+            {
+                return MassCalculator.EstimateFee(mass.FeeMass, _estimatedRate!.Value.SompiPerGram);
+            }
+
+            return MassCalculator.MinimumRelayFee(mass);
+        }
+
+        private FeeChoice ResolveFeeMode()
+        {
+            var choices = 0;
+            if (_explicitFee.HasValue)
+            {
+                choices++;
+            }
+
+            if (_estimatedRate.HasValue)
+            {
+                choices++;
+            }
+
+            if (_payMinimumRelay)
+            {
+                choices++;
+            }
+
+            if (choices > 1)
+            {
+                throw new InvalidOperationException("Set only one of SendFees, SendEstimatedFees, or SendMinimumRelayFee.");
+            }
+
+            if (choices == 0)
+            {
+                throw new InvalidOperationException("Set SendFees, SendEstimatedFees, or SendMinimumRelayFee.");
+            }
+
+            if (_explicitFee.HasValue)
+            {
+                return FeeChoice.Explicit;
+            }
+
+            if (_estimatedRate.HasValue)
+            {
+                return FeeChoice.Rate;
+            }
+
+            return FeeChoice.MinimumRelay;
         }
 
         private void EnsureMass(Transaction transaction, List<Coin> selected)
@@ -534,9 +784,49 @@ namespace NKaspa
                     throw new InvalidOperationException("No private key matches an input script.");
                 }
 
-                transaction.Inputs[i].SigOpCount = 1;
+                if (transaction.Version == 0)
+                {
+                    transaction.Inputs[i].SigOpCount = 1;
+                }
+
                 transaction.SignInput(i, key, selected[i].Utxo, SigHashType.All);
             }
+        }
+
+        private ushort BudgetFor(OutPoint outpoint)
+        {
+            if (_budgets.TryGetValue(outpoint, out var budget))
+            {
+                return budget;
+            }
+
+            return ComputeBudget;
+        }
+
+        private int IndexOfMust(OutPoint outpoint)
+        {
+            for (var i = 0; i < _mustSpend.Count; i++)
+            {
+                if (_mustSpend[i].Equals(outpoint))
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private static int IndexOfOutpoint(List<Coin> coins, OutPoint outpoint)
+        {
+            for (var i = 0; i < coins.Count; i++)
+            {
+                if (coins[i].Outpoint.Equals(outpoint))
+                {
+                    return i;
+                }
+            }
+
+            return -1;
         }
 
         private Key? FindKey(ScriptPubKey scriptPubKey)
@@ -613,6 +903,13 @@ namespace NKaspa
             }
 
             return string.CompareOrdinal(left.Outpoint.ToString(), right.Outpoint.ToString());
+        }
+
+        private enum FeeChoice
+        {
+            Explicit,
+            Rate,
+            MinimumRelay,
         }
     }
 }

@@ -4,7 +4,7 @@
 
 状态只用三种：
 
-- **已实现**：这一版（0.1.1-alpha）里有对应类型，范围以代码为准。
+- **已实现**：这一版（0.1.2-alpha）里有对应类型，范围以代码为准。
 - **计划中**：后面阶段要做，或只做 Kaspa 自己的等价物，不照搬比特币协议。
 - **无需实现**：Kaspa 没有这套机制，或它不该出现在这个库里。
 
@@ -21,14 +21,15 @@
 | `Key` / `PubKey` / `BitcoinSecret` | `Key` / `PubKey` / `PubKeyECDSA` | 已实现 | `PubKey` 是 32 字节 Schnorr x-only。33 字节压缩公钥是 `PubKeyECDSA`。没有比特币 WIF / `BitcoinSecret`。 |
 | `Script` | `Script` / `ScriptPubKey` | 已实现 | 解析、构建、`ToString`、标准模板和签名脚本。不执行脚本。 |
 | `Transaction` / `TxIn` / `TxOut` / `OutPoint` | 同名 | 已实现 | 版本 0 与 Toccata 版本 1 的序列化、交易号和交易哈希。版本 1 交易号是 BLAKE3。Covenant 只序列化，不执行。 |
-| `TransactionBuilder` / `Coin` | `TransactionBuilder` / `Coin` | 已实现 | 精简构建器：选币、Schnorr P2PK 签名、找零、显式费用或按 mass 估价。`Coin` 是 `OutPoint` 加 `UtxoEntry`。版本 0。 |
+| `TransactionBuilder` / `Coin` | `TransactionBuilder` / `Coin` | 已实现 | 精简构建器：选币、Schnorr 与 ECDSA P2PK 签名、找零、显式费用、按费率估价，或只付最低中继费。`Coin` 是 `OutPoint` 加 `UtxoEntry`。默认版本 0。`SetVersion(1)` 产出版本 1，默认 compute budget 是 10。`MustSpend` / `SpendAllCoins` 强制每一枚指定的币进入交易并单独签名。 |
 | `TransactionSignature` / sighash | `SchnorrSignature` / `ECDSASignature` / `SigHashType` | 已实现 | Kaspa sighash。`SigHashType.Single` 是 `0x04`，比特币的 SINGLE 是 `0x03`。 |
 | `uint256` | `uint256` | 已实现 | 可解析、比较、按 32 字节序列化。显示不反转字节，见下文。 |
 | `uint160` / `uint128` | — | 无需实现 | 地址和交易哈希都是 32 字节。 |
 | `Network` | `Network` | 已实现 | 精简为 Mainnet、Testnet、Simnet、Devnet 与地址前缀。 |
 | `Block` / `BlockHeader` | — | 计划中 | Kaspa 区块是 GHOSTDAG 块 DAG，不是比特币单链头。字段要另定，不能照搬。 |
 | `Money` | `Money` | 已实现 | 单位是 sompi。1 KAS = 100,000,000 sompi。协议金额是 u64。 |
-| `FeeRate` | `FeeRate` | 已实现 | 单位是 sompi/gram。最低中继费率 100。比特币的 `Target`、工作量目标和 blue score 留在区块层，这一版没有。 |
+| `FeeRate` | `FeeRate` | 已实现 | 单位是 sompi/gram。最低中继费 = 100 sompi × max(compute mass, 归一化 transient mass)。storage 不计入。标准单输入 Schnorr 付款约 0.002 KAS（2036 gram，203600 sompi）。`GetFee` 按费率乘 gram。`MassCalculator.EstimateFee` 同样按费率，并拒绝低于 100 的费率。`EstimateMinimumRelayFee` 按上面的 mass 公式估价。比特币的 `Target`、工作量目标和 blue score 留在区块层，这一版没有。 |
+| `DefaultCoinSelector` | `DefaultCoinSelector` | 已实现 | 选币。不按 `scriptPubKey` 把多枚币并成一组。一枚币够付付款、手续费和最小找零时，只用最小的那一枚。只够付款和手续费、找零会低于最小值时，仍只用这一枚，找零并进手续费。没有任何一枚够付时才合并，并且不再把用不到的小币拉进来。NBitcoin 在多枚组合更接近目标时可能改花多枚；这里只要有一枚够付就不用多枚。 |
 | `BitcoinStream` | （内部读写） | 已实现 | 公开入口是 `Transaction.ToBytes` / `FromBytes`。长度是 u64，不是比特币 compact size。没有单独的公开流类型。 |
 
 `uint256` 的约定：`ToBytes()` 与 `ToString()` 都是 Kaspa 线上顺序，也就是 BLAKE2b 摘要的原始字节，RPC 十六进制也是这个顺序。字节 0 是摘要的第一个字节。NBitcoin 的 `ToString()` 会把这 32 字节反转，让十六进制看起来像大端整数。数值比较把这 32 字节当成小端整数（字节 0 是最低有效字节），这和 Kaspa 把哈希当工作量整数比较的方向一致。
@@ -167,14 +168,14 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 | `BIP9Deployments` | 部署状态 | 无需实现 | 比特币软分叉版本位。Kaspa 的升级不走 BIP9。 |
 | `JsonConverters` | 各 `JsonConverter` | 计划中 | wRPC 有自己的 `KaspaRpcJson`，不是通用 `JsonConverter`。通用转换器仍未做。 |
 | `WalletPolicies` / miniscript | 策略描述 | 无需实现 | 比特币 miniscript 与输出描述符对不上当前 Kaspa 脚本。 |
-| `BuilderExtensions` | `TransactionBuilder` | 已实现 | 构建能力在 `TransactionBuilder` 上，没有单独的扩展方法类。 |
+| `BuilderExtensions` | `TransactionBuilder` | 已实现 | 构建能力在 `TransactionBuilder` 上，没有单独的扩展方法类。强制花费是 `MustSpend` 和 `SpendAllCoins`，不是 `SendAll` 那种把金额扫进一个输出。 |
 | `Socks` | `SocksHelper` | 计划外 | 与共识无关。做节点连接时再考虑。 |
 | `Logging` | `Logs` | 无需实现 | 库不绑定 NBitcoin 的日志门面。 |
 | `BouncyCastle` | 摘要与大整数 | 无需实现 | 不把这套源码带进来。哈希用自带 BLAKE2b，曲线用 Secp256k1 包。 |
 
 ## 当前进度
 
-0.1.1-alpha。第一阶段的编码器、BLAKE2b、`uint256`、网络和三种地址仍在。第二阶段的密钥、签名、脚本、版本 0 交易和 sighash 仍在。第三阶段补上 BIP39、BIP32、mass / 费率、交易构建器和最小 wRPC JSON 客户端。这一版补上 Toccata 版本 1 交易号、找零与 mass 策略，以及 wRPC 帧分发。
+0.1.2-alpha。第一阶段的编码器、BLAKE2b、`uint256`、网络和三种地址仍在。第二阶段的密钥、签名、脚本、版本 0 交易和 sighash 仍在。第三阶段补上 BIP39、BIP32、mass / 费率、交易构建器和最小 wRPC JSON 客户端。0.1.1 补上 Toccata 版本 1 交易号、找零与 mass 策略，以及 wRPC 帧分发。0.1.2 让构建器强制花掉指定输入、在一枚币够付时不拉小币，并直接产出版本 1 付款。
 
 - 解决方案：`NKaspa.sln`，类库 `src/NKaspa`（`net8.0`、`netstandard2.1`），测试 `tests/NKaspa.Tests`（xUnit，`net8.0`）。
 - 密钥：`Key`、`PubKey`（32 字节 x-only）、`PubKeyECDSA`（33 字节压缩）。`GetAddress` 默认是 Schnorr 地址。`Key.Create` 会清零临时缓冲区。`ExtKey.PrivateKey` 返回副本，处置副本不会让父密钥失效。
@@ -187,7 +188,7 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 - BIP39：Trezor `vectors.json` 的英文行（BIP39 写明这些种子的口令是 `TREZOR`），副本是 NBitcoin 的 `bip39_vectors.json`。另一组是 NBitcoin 的 `bip39_vectors.en.json`，口令含表意空格，用来核对 NFKD。
 - BIP32：BIP-0032 的五组官方向量（含非法密钥）。Kaspa 前缀做了往返。没有找到外部钉死的「助记词 → kaspa 地址」字符串，测试只检查派生地址能通过 `KaspaAddress.IsValid`，以及账户公钥派生和私钥派生得到同一地址。
 - Mass：rusty-kaspa `test_storage_mass` 经 kaswallet `MassCalculatorTests` 移植。另有三组 api.kaspa.org `/transactions/mass` 的金额样本（83333、10003、2017），不是上游单元测试。mass 尺寸含 32 字节 payload 哈希、不含 sigop 字节，也不含 covenant 存在字节。空白交易是 94，不是 `ToBytes()` 的 62。版本 1 每个输入再加 2 字节 compute budget；有 covenant 时输出再加 34 字节。
-- 交易构建器：本地 Schnorr P2PK 端到端。默认 `MinimumChange` 是 0.02 KAS。找零低于这个数，或找零会让 mass 超限时，并进手续费。默认费用 mass 上限是块的 compute 限额 500000。`toccataActive: false` 恢复 100000。显式手续费低于 100 sompi/gram（compute 与归一化 transient 中的较大者，不含 storage）会拒绝，除非 `AllowBelowMinimumRelayFee`。选币按 outpoint 去重。
+- 交易构建器：本地 Schnorr 与 ECDSA P2PK 端到端。默认 `MinimumChange` 是 0.02 KAS。找零低于这个数，或找零会让 mass 超限时，并进手续费。默认费用 mass 上限是块的 compute 限额 500000。`toccataActive: false` 恢复 100000。显式手续费低于最低中继费会拒绝，除非 `AllowBelowMinimumRelayFee`。最低中继费 = 100 sompi × max(compute mass, 归一化 transient mass)，不含 storage。标准单输入是 2036 gram，203600 sompi，约 0.002 KAS。`SendEstimatedFees` 按费率乘 fee mass（三项里最大的那个）。`SendMinimumRelayFee` 只付中继下限。`EstimateFee` 与 `EstimateMinimumRelayFee` 是对应的静态估算。选币按 outpoint 去重，不按脚本合并。一枚够付时只用最小的那一枚。`MustSpend` 与 `SpendAllCoins` 强制全部指定输入进入交易，每笔输入单独签名。`SetVersion(1)` 用版本 1 sighash，默认每输入 compute budget 10（1000 compute gram，相当于版本 0 的一次签名）。版本 1 的 wRPC JSON 同时写 `sigOpCount` 和 `computeBudget`。
 - RPC：内存 JSON 样例，加上本地回环 WebSocket。大整数用整数记号，不用 `double`（样本 `9007199254740993`）。`getBlockDagInfo` 的 `network` 接受字符串或 `{networkType, suffix}`。
 
 ## Toccata 兼容性
@@ -220,6 +221,18 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 | 6. `SendFees` 不检查 100 sompi/gram | 部分属实 | `SendEstimatedFees` 本来就拒绝低于 100 的费率。`SendFees` 现在按 compute 与归一化 transient 检查显式手续费。`AllowBelowMinimumRelayFee` 可以放开。 |
 | 7. 重复 outpoint 会变成双花输入 | 属实 | `AddCoins` 按 outpoint 保留第一次。 |
 | 8. `Key.Create` 不清理临时缓冲区；`ExtKey.PrivateKey` 返回内部对象 | 属实 | `Create` / `TakeSecret` 清零调用方缓冲区。`PrivateKey` 返回副本。 |
+
+## 0.1.2 联调修复
+
+主网联调里，多输入和版本 1 付款是在库外手工组装的。这一版把这两条路径放回 `TransactionBuilder`。回归用的是已上链交易的形状，测试里没有密钥，也没有广播：
+
+| 交易 | 版本 | 输入 | 金额 | 手续费 | 中继 mass |
+| --- | --- | --- | --- | --- | --- |
+| `5fd8f8600950c36b1d9195d9afab0bbf5bde94594fd8246d2c2419c64f703868` | 0 | 1 | 0.2 KAS | 203600 | 2036 |
+| `2febe6cafd5f78f8ce21636d48f060560b39a7529b00646a00cf5d62098aa3d4` | 0 | 2 | 0.2 KAS | 315400 | 3154 |
+| `4d1c6a5e1b127278945673b3ed116786110b2b1ca44090c9f810a50e12350714` | 1 | 1，compute budget 10 | 0.1 KAS | 203800 | 2038 |
+
+版本 1 那笔的 wRPC JSON 同时有 `sigOpCount` 和 `computeBudget`，与 `d5f68e7` 的写法一致。
 
 ## 仍未完成
 

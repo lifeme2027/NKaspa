@@ -142,6 +142,24 @@ namespace NKaspa.Policy
         /// <summary>Minimum relay fee rate, sompi per gram.</summary>
         public const ulong MinimumFeeRate = 100;
 
+        /// <summary>
+        /// Compute mass of a standard version-0 Schnorr payment: one input, a 66-byte signature script, and two 34-byte outputs.
+        /// The minimum relay fee for this shape is 203600 sompi, about 0.002 KAS.
+        /// </summary>
+        public const ulong StandardSchnorrPaymentMass = 2036;
+
+        /// <summary>
+        /// Compute mass of that same payment at version 1 with a compute budget of 10.
+        /// The extra two budget bytes raise it from 2036 to 2038. The minimum relay fee is 203800 sompi.
+        /// </summary>
+        public const ulong StandardSchnorrPaymentMassVersion1 = 2038;
+
+        /// <summary>
+        /// Compute mass of a standard version-0 Schnorr payment with two inputs and two outputs.
+        /// The minimum relay fee is 315400 sompi.
+        /// </summary>
+        public const ulong StandardTwoInputSchnorrPaymentMass = 3154;
+
         private const ulong UtxoConstStorage = 32 + 4 + 8 + 8 + 1 + 2 + 8;
         private const ulong UtxoUnitSize = 100;
 
@@ -481,13 +499,47 @@ namespace NKaspa.Policy
         }
 
         /// <summary>
-        /// Minimum relay fee from the Toccata upgrade guide: 100 sompi times the larger of compute mass and normalized transient mass.
-        /// Storage mass is not part of this floor. With the default block limits, normalized transient mass is <c>2 * serialized size</c>.
+        /// Grams that set the minimum relay fee: the larger of compute mass and normalized transient mass.
+        /// Storage mass is not included. With the default block limits, normalized transient mass is <c>2 * serialized size</c>.
+        /// </summary>
+        public static ulong RelayMass(TransactionMass mass)
+        {
+            return Math.Max(mass.ComputeMass, mass.NormalizedTransientMass);
+        }
+
+        /// <summary>
+        /// Minimum relay fee from the Toccata upgrade guide: 100 sompi times <see cref="RelayMass"/>.
+        /// Storage mass is not part of this floor.
+        /// A standard one-input Schnorr payment with change is <see cref="StandardSchnorrPaymentMass"/> grams, 203600 sompi, about 0.002 KAS.
         /// </summary>
         public static ulong MinimumRelayFee(TransactionMass mass)
         {
-            var grams = Math.Max(mass.ComputeMass, mass.NormalizedTransientMass);
-            return checked(grams * MinimumFeeRate);
+            return checked(RelayMass(mass) * MinimumFeeRate);
+        }
+
+        /// <summary>Minimum relay fee as sompi. See <see cref="MinimumRelayFee(TransactionMass)"/>.</summary>
+        public static Money EstimateMinimumRelayFee(TransactionMass mass)
+        {
+            return new Money(MinimumRelayFee(mass));
+        }
+
+        /// <summary>
+        /// Fee at <paramref name="feeRate"/> for <paramref name="mass"/> grams.
+        /// A rate below <see cref="MinimumFeeRate"/> throws <see cref="ArgumentOutOfRangeException"/>.
+        /// This is the rate-based estimate. The relay floor for a built transaction is <see cref="MinimumRelayFee(TransactionMass)"/>.
+        /// </summary>
+        public static Money EstimateFee(FeeRate feeRate, ulong mass)
+        {
+            return new Money(EstimateFee(mass, feeRate.SompiPerGram));
+        }
+
+        /// <summary>
+        /// Fee at <paramref name="feeRate"/> for <see cref="TransactionMass.FeeMass"/>.
+        /// Fee mass includes normalized storage mass, so this can be higher than <see cref="EstimateMinimumRelayFee"/>.
+        /// </summary>
+        public static Money EstimateFee(FeeRate feeRate, TransactionMass mass)
+        {
+            return EstimateFee(feeRate, mass.FeeMass);
         }
 
         /// <summary>Fee in sompi. A rate below <see cref="MinimumFeeRate"/> throws <see cref="ArgumentOutOfRangeException"/>.</summary>

@@ -168,6 +168,31 @@ namespace NKaspa.Tests
             Assert.Equal(new Money(203600), new FeeRate(100).GetFee(2036));
         }
 
+        [Fact]
+        public void Minimum_relay_fee_uses_compute_or_normalized_transient_only()
+        {
+            Assert.Equal(2036UL, MassCalculator.StandardSchnorrPaymentMass);
+            Assert.Equal(2038UL, MassCalculator.StandardSchnorrPaymentMassVersion1);
+            Assert.Equal(3154UL, MassCalculator.StandardTwoInputSchnorrPaymentMass);
+
+            var standard = new TransactionMass(2036, 1264, 50_000, 632, 50_000, 50_000);
+            Assert.Equal(2036UL, MassCalculator.RelayMass(standard));
+            Assert.Equal(203_600UL, MassCalculator.MinimumRelayFee(standard));
+            Assert.Equal(new Money(203_600), MassCalculator.EstimateMinimumRelayFee(standard));
+            Assert.Equal(new Money(203_600), TransactionBuilder.EstimateMinimumRelayFee(standard));
+            Assert.Equal(new Money(203_600), TransactionBuilder.EstimateFee(FeeRate.MinimumRelay, MassCalculator.StandardSchnorrPaymentMass));
+            Assert.Equal(new Money(203_600), MassCalculator.EstimateFee(FeeRate.MinimumRelay, 2036UL));
+            Assert.Equal(new Money(5_000_000), MassCalculator.EstimateFee(FeeRate.MinimumRelay, standard));
+            Assert.Equal(Money.Coins(0.002036m), new Money(203_600));
+
+            var transientWins = new TransactionMass(100, 1_000, 10, 500, 10, 500);
+            Assert.Equal(500UL, MassCalculator.RelayMass(transientWins));
+            Assert.Equal(50_000UL, MassCalculator.MinimumRelayFee(transientWins));
+            Assert.Equal(new Money(50_000), FeeRate.MinimumRelay.GetFee(MassCalculator.RelayMass(transientWins)));
+            Assert.Throws<ArgumentOutOfRangeException>(() => MassCalculator.EstimateFee(new FeeRate(99), 2036UL));
+            Assert.Equal(new Money(99UL * 2036UL), new FeeRate(99).GetFee(2036));
+        }
+
         private static ulong Storage(ulong[] inputs, ulong[] outputs, ulong parameter = MassCalculator.StorageMassParameter)
         {
             return MassCalculator.StorageMass(Cells(inputs), Cells(outputs), parameter);

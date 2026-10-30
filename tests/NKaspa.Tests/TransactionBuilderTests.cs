@@ -1,4 +1,6 @@
+using System.Text.Json;
 using NKaspa.Policy;
+using NKaspa.RPC;
 using Xunit;
 
 namespace NKaspa.Tests
@@ -238,6 +240,321 @@ namespace NKaspa.Tests
                 .Send(payer.GetAddress(Network.Mainnet), new Money(70_000_000))
                 .SendFees(new Money(10_000_000));
             Assert.Equal(2, both.BuildTransaction(true).Inputs.Count);
+        }
+
+        [Fact]
+        public void Selector_uses_one_coin_when_it_covers_payment_fee_and_minimum_change()
+        {
+            using var payer = Key.Parse(SecretA);
+            var huge = CoinOf(payer, 500_000_000, 30, 0);
+            var fit = CoinOf(payer, 80_000_000, 31, 0);
+            var builder = new TransactionBuilder()
+                .AddKeys(payer)
+                .AddCoins(
+                    huge,
+                    fit,
+                    CoinOf(payer, 3_000_000, 32, 0),
+                    CoinOf(payer, 3_000_000, 33, 0),
+                    CoinOf(payer, 3_000_000, 34, 0),
+                    CoinOf(payer, 3_000_000, 35, 0),
+                    CoinOf(payer, 3_000_000, 36, 0))
+                .Send(payer.GetAddress(Network.Mainnet), new Money(10_000_000))
+                .SetChange(payer.GetAddress(Network.Mainnet))
+                .SendFees(new Money(1_000_000));
+
+            var tx = builder.BuildTransaction(true);
+            Assert.Single(tx.Inputs);
+            Assert.Equal(fit.Outpoint, tx.Inputs[0].PreviousOutpoint);
+            Assert.True(tx.VerifyInput(0, fit.Utxo));
+            Assert.Equal(2, tx.Outputs.Count);
+            Assert.True(builder.Verify(tx));
+        }
+
+        [Fact]
+        public void Selector_combines_coins_only_when_no_single_coin_covers_and_skips_dust()
+        {
+            using var payer = Key.Parse(SecretA);
+            var first = CoinOf(payer, 10_000_000, 40, 0);
+            var second = CoinOf(payer, 10_000_000, 41, 0);
+            var larger = CoinOf(payer, 12_000_000, 42, 0);
+            var dust = CoinOf(payer, 1_000, 43, 0);
+            var tx = new TransactionBuilder()
+                .AddKeys(payer)
+                .AddCoins(dust, larger, first, second)
+                .Send(payer.GetAddress(Network.Mainnet), new Money(15_000_000))
+                .SetChange(payer.GetAddress(Network.Mainnet))
+                .SendFees(new Money(1_000_000))
+                .BuildTransaction(true);
+
+            Assert.Equal(2, tx.Inputs.Count);
+            var spent = new List<OutPoint>();
+            for (var i = 0; i < tx.Inputs.Count; i++)
+            {
+                spent.Add(tx.Inputs[i].PreviousOutpoint);
+            }
+
+            Assert.Contains(first.Outpoint, spent);
+            Assert.Contains(second.Outpoint, spent);
+            Assert.DoesNotContain(larger.Outpoint, spent);
+            Assert.DoesNotContain(dust.Outpoint, spent);
+            Assert.True(tx.VerifyInput(0, FindUtxo(tx, 0, first, second)));
+            Assert.True(tx.VerifyInput(1, FindUtxo(tx, 1, first, second)));
+            Assert.NotEqual(tx.Inputs[0].SignatureScript.ToBytes(), tx.Inputs[1].SignatureScript.ToBytes());
+        }
+
+        [Fact]
+        public void Must_spend_signs_every_input_with_its_own_script()
+        {
+            using var payer = Key.Parse(SecretA);
+            using var other = Key.Parse(SecretB);
+            var large = CoinOf(payer, 100_000_000, 50, 0);
+            var ecdsa = CoinOf(other, 8_000_000, 51, 1, ecdsa: true);
+            var dust = CoinOf(payer, 1_000, 52, 2);
+            var builder = new TransactionBuilder()
+                .AddKeys(payer, other)
+                .AddCoins(large)
+                .MustSpend(ecdsa, dust)
+                .MustSpend(large.Outpoint)
+                .Send(payer.GetAddress(Network.Mainnet), new Money(10_000_000))
+                .SetChange(payer.GetAddress(Network.Mainnet))
+                .SendFees(new Money(1_000_000));
+
+            var tx = builder.BuildTransaction(true);
+            Assert.Equal(new[] { ecdsa.Outpoint, dust.Outpoint, large.Outpoint }, tx.Inputs.Select(input => input.PreviousOutpoint).ToArray());
+            Assert.True(tx.VerifyInput(0, ecdsa.Utxo));
+            Assert.True(tx.VerifyInput(1, dust.Utxo));
+            Assert.True(tx.VerifyInput(2, large.Utxo));
+            Assert.False(tx.VerifyInput(0, large.Utxo));
+            Assert.False(tx.VerifyInput(2, ecdsa.Utxo));
+            Assert.Equal(66, tx.Inputs[0].SignatureScript.Length);
+            Assert.Equal(66, tx.Inputs[1].SignatureScript.Length);
+            Assert.Equal(0x41, tx.Inputs[0].SignatureScript.ToBytes()[0]);
+            Assert.NotEqual(tx.Inputs[1].SignatureScript.ToBytes(), tx.Inputs[2].SignatureScript.ToBytes());
+            Assert.True(builder.Verify(tx));
+
+            var missing = new OutPoint(new uint256(99), 7);
+            var unknown = new TransactionBuilder()
+                .AddKeys(payer)
+                .AddCoins(large)
+                .MustSpend(missing)
+                .Send(payer.GetAddress(Network.Mainnet), new Money(1_000_000))
+                .SendFees(new Money(1_000_000));
+            Assert.Throws<InvalidOperationException>(() => unknown.BuildTransaction(true));
+        }
+
+        [Fact]
+        public void Spend_all_coins_keeps_each_input_even_when_one_would_pay()
+        {
+            using var payer = Key.Parse(SecretA);
+            var huge = CoinOf(payer, 500_000_000, 60, 0);
+            var fit = CoinOf(payer, 80_000_000, 61, 0);
+            var tx = new TransactionBuilder()
+                .AddKeys(payer)
+                .AddCoins(fit, huge)
+                .SpendAllCoins()
+                .Send(payer.GetAddress(Network.Mainnet), new Money(10_000_000))
+                .SetChange(payer.GetAddress(Network.Mainnet))
+                .SendFees(new Money(1_000_000))
+                .BuildTransaction(true);
+
+            Assert.Equal(huge.Outpoint, tx.Inputs[0].PreviousOutpoint);
+            Assert.Equal(fit.Outpoint, tx.Inputs[1].PreviousOutpoint);
+            Assert.True(tx.VerifyInput(0, huge.Utxo));
+            Assert.True(tx.VerifyInput(1, fit.Utxo));
+            Assert.NotEqual(tx.Inputs[0].SignatureScript.ToBytes(), tx.Inputs[1].SignatureScript.ToBytes());
+        }
+
+        [Fact]
+        public void Accepted_mainnet_shapes_match_minimum_relay_fee()
+        {
+            // Accepted on mainnet by the integration tool. The records carry no keys.
+            // 5fd8f8600950c36b1d9195d9afab0bbf5bde94594fd8246d2c2419c64f703868 version 0, 1 input, fee 203600, mass 2036.
+            // 2febe6cafd5f78f8ce21636d48f060560b39a7529b00646a00cf5d62098aa3d4 version 0, 2 inputs, fee 315400, mass 3154.
+            // 4d1c6a5e1b127278945673b3ed116786110b2b1ca44090c9f810a50e12350714 version 1, budget 10, fee 203800, mass 2038.
+            using var payer = Key.Parse(SecretA);
+            using var payee = Key.Parse(SecretB);
+            var singleCoin = CoinOf(payer, 100_000_000, 70, 0);
+            var single = new TransactionBuilder()
+                .AddKeys(payer)
+                .AddCoins(singleCoin)
+                .Send(payee.GetAddress(Network.Mainnet), new Money(20_000_000))
+                .SetChange(payer.GetAddress(Network.Mainnet))
+                .SendMinimumRelayFee()
+                .BuildTransaction(true);
+            AssertShape(single, 0, 1, 20_000_000, 203_600, MassCalculator.StandardSchnorrPaymentMass, singleCoin);
+            Assert.Equal(1, single.Inputs[0].SigOpCount);
+            Assert.Null(single.Inputs[0].ComputeBudget);
+            using (var json = JsonDocument.Parse(KaspaRpcJson.WriteTransaction(single)))
+            {
+                var input = json.RootElement.GetProperty("inputs")[0];
+                Assert.Equal(1, input.GetProperty("sigOpCount").GetInt32());
+                Assert.False(input.TryGetProperty("computeBudget", out _));
+            }
+
+            var left = CoinOf(payer, 50_000_000, 71, 0);
+            var right = CoinOf(payer, 50_000_000, 72, 0);
+            var multiBuilder = new TransactionBuilder()
+                .AddKeys(payer)
+                .AddCoins(left, right)
+                .MustSpend(left, right)
+                .Send(payee.GetAddress(Network.Mainnet), new Money(20_000_000))
+                .SetChange(payer.GetAddress(Network.Mainnet))
+                .SendMinimumRelayFee();
+            var multi = multiBuilder.BuildTransaction(true);
+            AssertShape(multi, 0, 2, 20_000_000, 315_400, MassCalculator.StandardTwoInputSchnorrPaymentMass, left, right);
+            Assert.True(multi.VerifyInput(0, left.Utxo));
+            Assert.True(multi.VerifyInput(1, right.Utxo));
+            Assert.True(multiBuilder.Verify(multi));
+            Assert.NotEqual(multi.Inputs[0].SignatureScript.ToBytes(), multi.Inputs[1].SignatureScript.ToBytes());
+
+            var v1Coin = CoinOf(payer, 100_000_000, 73, 0);
+            var v1Builder = new TransactionBuilder()
+                .SetVersion(1)
+                .AddKeys(payer)
+                .AddCoins(v1Coin)
+                .Send(payee.GetAddress(Network.Mainnet), new Money(10_000_000))
+                .SetChange(payer.GetAddress(Network.Mainnet))
+                .SendMinimumRelayFee();
+            var v1 = v1Builder.BuildTransaction(true);
+            AssertShape(v1, 1, 1, 10_000_000, 203_800, MassCalculator.StandardSchnorrPaymentMassVersion1, v1Coin);
+            Assert.Equal(TransactionBuilder.DefaultComputeBudget, v1.Inputs[0].ComputeBudget);
+            Assert.Equal(0, v1.Inputs[0].SigOpCount);
+            Assert.Equal(66, v1.Inputs[0].SignatureScript.Length);
+            Assert.True(v1.VerifyInput(0, v1Coin.Utxo));
+            Assert.True(v1Builder.Verify(v1));
+            var version1Hash = v1.GetSignatureHash(0, v1Coin.Utxo);
+            v1.Version = 0;
+            Assert.NotEqual(version1Hash, v1.GetSignatureHash(0, v1Coin.Utxo));
+            v1.Version = 1;
+            Assert.True(v1.VerifyInput(0, v1Coin.Utxo));
+            using (var json = JsonDocument.Parse(KaspaRpcJson.WriteTransaction(v1)))
+            {
+                var input = json.RootElement.GetProperty("inputs")[0];
+                Assert.Equal(0, input.GetProperty("sigOpCount").GetInt32());
+                Assert.Equal(10, input.GetProperty("computeBudget").GetInt32());
+            }
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => new TransactionBuilder().SetVersion(2));
+            var conflict = new TransactionBuilder().SendMinimumRelayFee().SendEstimatedFees(FeeRate.MinimumRelay);
+            Assert.Throws<InvalidOperationException>(() => conflict.AddKeys(payer).AddCoins(v1Coin).Send(payer.GetAddress(Network.Mainnet), new Money(1_000_000)).BuildTransaction(true));
+        }
+
+        [Fact]
+        public void Version1_compute_budget_can_be_set_per_input()
+        {
+            using var payer = Key.Parse(SecretA);
+            var first = CoinOf(payer, 50_000_000, 80, 0);
+            var second = CoinOf(payer, 50_000_000, 81, 0);
+            var tx = new TransactionBuilder()
+                .SetVersion(1)
+                .SetComputeBudget(10)
+                .SetComputeBudget(second.Outpoint, 25)
+                .AddKeys(payer)
+                .MustSpend(first, second)
+                .Send(payer.GetAddress(Network.Mainnet), new Money(10_000_000))
+                .SetChange(payer.GetAddress(Network.Mainnet))
+                .SendMinimumRelayFee()
+                .BuildTransaction(true);
+
+            Assert.Equal((ushort)1, tx.Version);
+            Assert.Equal((ushort)10, tx.Inputs[0].ComputeBudget);
+            Assert.Equal((ushort)25, tx.Inputs[1].ComputeBudget);
+            Assert.Equal(0, tx.Inputs[0].SigOpCount);
+            Assert.Equal(0, tx.Inputs[1].SigOpCount);
+            Assert.True(tx.VerifyInput(0, first.Utxo));
+            Assert.True(tx.VerifyInput(1, second.Utxo));
+            var mass = MassCalculator.Calculate(tx, new[] { first.Utxo, second.Utxo });
+            Assert.Equal(4658UL, mass.ComputeMass);
+            var paid = first.Amount.Sompi + second.Amount.Sompi - tx.Outputs[0].Value.Sompi - tx.Outputs[1].Value.Sompi;
+            Assert.Equal(MassCalculator.MinimumRelayFee(mass), paid);
+            Assert.Equal(TransactionBuilder.EstimateMinimumRelayFee(mass).Sompi, paid);
+            using var json = JsonDocument.Parse(KaspaRpcJson.WriteTransaction(tx));
+            var inputs = json.RootElement.GetProperty("inputs");
+            Assert.Equal(0, inputs[0].GetProperty("sigOpCount").GetInt32());
+            Assert.Equal(10, inputs[0].GetProperty("computeBudget").GetInt32());
+            Assert.Equal(0, inputs[1].GetProperty("sigOpCount").GetInt32());
+            Assert.Equal(25, inputs[1].GetProperty("computeBudget").GetInt32());
+        }
+
+        [Fact]
+        public void Selector_prefers_an_exact_coin_and_the_greedy_path_covers_change()
+        {
+            using var payer = Key.Parse(SecretA);
+            var exact = CoinOf(payer, 50_000_000, 90, 0);
+            var bigger = CoinOf(payer, 80_000_000, 91, 0);
+            var picked = new DefaultCoinSelector(new Money(2_000_000)).Select(new[] { bigger, exact }, new Money(50_000_000));
+            Assert.Equal(exact.Outpoint, picked[0].Outpoint);
+
+            var many = new List<Coin>();
+            for (var i = 0; i < 17; i++)
+            {
+                many.Add(CoinOf(payer, 1_000_000, (ulong)(100 + i), 0));
+            }
+
+            var selected = new DefaultCoinSelector(new Money(2_000_000)).Select(many, new Money(5_000_000));
+            Assert.Equal(7, selected.Count);
+            ulong sum = 0;
+            for (var i = 0; i < selected.Count; i++)
+            {
+                sum += selected[i].Amount.Sompi;
+            }
+
+            Assert.Equal(7_000_000UL, sum);
+            Assert.Throws<InvalidOperationException>(() => new DefaultCoinSelector().Select(new[] { exact }, new Money(80_000_000)));
+            Assert.Throws<ArgumentNullException>(() => new DefaultCoinSelector().Select(null!, new Money(1)));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new DefaultCoinSelector().Select(new[] { exact }, Money.Zero));
+        }
+
+        private static void AssertShape(Transaction tx, ushort version, int inputs, ulong amount, ulong fee, ulong relayMass, params Coin[] coins)
+        {
+            Assert.Equal(version, tx.Version);
+            Assert.Equal(inputs, tx.Inputs.Count);
+            Assert.Equal(2, tx.Outputs.Count);
+            Assert.Equal(amount, tx.Outputs[0].Value.Sompi);
+            var entries = new UtxoEntry[tx.Inputs.Count];
+            ulong inputSum = 0;
+            for (var i = 0; i < tx.Inputs.Count; i++)
+            {
+                var match = FindCoin(tx.Inputs[i].PreviousOutpoint, coins);
+                Assert.True(tx.VerifyInput(i, match.Utxo));
+                entries[i] = match.Utxo;
+                inputSum += match.Amount.Sompi;
+            }
+
+            var mass = MassCalculator.Calculate(tx, entries);
+            Assert.Equal(relayMass, MassCalculator.RelayMass(mass));
+            Assert.Equal(fee, MassCalculator.MinimumRelayFee(mass));
+            ulong outputSum = 0;
+            for (var i = 0; i < tx.Outputs.Count; i++)
+            {
+                outputSum += tx.Outputs[i].Value.Sompi;
+            }
+
+            Assert.Equal(fee, inputSum - outputSum);
+        }
+
+        private static UtxoEntry FindUtxo(Transaction tx, int index, params Coin[] coins)
+        {
+            return FindCoin(tx.Inputs[index].PreviousOutpoint, coins).Utxo;
+        }
+
+        private static Coin FindCoin(OutPoint outpoint, params Coin[] coins)
+        {
+            for (var i = 0; i < coins.Length; i++)
+            {
+                if (coins[i].Outpoint.Equals(outpoint))
+                {
+                    return coins[i];
+                }
+            }
+
+            throw new InvalidOperationException("Input is not one of the expected coins.");
+        }
+
+        private static Coin CoinOf(Key key, ulong amount, ulong txId, uint index, bool ecdsa = false)
+        {
+            var script = ecdsa ? key.PubKeyECDSA.GetScriptPubKey() : key.PubKey.GetScriptPubKey();
+            return new Coin(new OutPoint(new uint256(txId), index), new UtxoEntry(amount, script, 1, false));
         }
     }
 }
