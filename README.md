@@ -12,7 +12,7 @@ NBitcoin is MIT licensed. See [NOTICE](NOTICE). Elliptic-curve operations use th
 
 ### Status
 
-Alpha. This release contains encoders, BLAKE2b-256, `uint256`, the four networks, and addresses (Schnorr public key, ECDSA public key, script hash) with a minimal `ScriptPubKey`. Keys, signatures, the script engine, transactions, HD wallets, and RPC are not in this version. The map of NBitcoin areas is in [docs/NBitcoin-Mapping.md](docs/NBitcoin-Mapping.md).
+Alpha. This release contains encoders, BLAKE2b-256, `uint256`, the four networks, and addresses (Schnorr public key, ECDSA public key, script hash). It also contains keys, BIP-340 Schnorr and compact ECDSA signatures, script parsing and the standard pay-to-pubkey / pay-to-script-hash templates, version-0 transaction serialization, transaction id and hash, and Kaspa sighash. The script engine does not execute scripts. HD wallets, the transaction builder, fee estimation, and RPC are not in this version. The map of NBitcoin areas is in [docs/NBitcoin-Mapping.md](docs/NBitcoin-Mapping.md).
 
 `uint256` display hex is Kaspa wire order (the same bytes BLAKE2b emits). It is not reversed the way `NBitcoin.uint256.ToString()` reverses them. Numeric comparison still treats byte 0 as the least significant byte.
 
@@ -46,7 +46,7 @@ NBitcoin 采用 MIT 许可，致谢见 [NOTICE](NOTICE)。椭圆曲线使用 NuG
 
 ### 状态
 
-Alpha。这一版包含编码器、BLAKE2b-256、`uint256`、四个网络，以及地址（Schnorr 公钥、ECDSA 公钥、脚本哈希）和最简 `ScriptPubKey`。密钥、签名、完整脚本引擎、交易、HD 钱包和 RPC 还不在这一版里。对照表见 [docs/NBitcoin-Mapping.md](docs/NBitcoin-Mapping.md)。
+Alpha。这一版包含编码器、BLAKE2b-256、`uint256`、四个网络，以及地址（Schnorr 公钥、ECDSA 公钥、脚本哈希）。同时包含密钥、BIP-340 Schnorr 与紧凑 ECDSA 签名、脚本解析和标准 P2PK / P2SH 模板、版本 0 交易序列化、交易号、交易哈希和 Kaspa sighash。脚本只解析和构建，不执行。HD 钱包、交易构建器、费用估算和 RPC 还不在这一版里。对照表见 [docs/NBitcoin-Mapping.md](docs/NBitcoin-Mapping.md)。
 
 `uint256` 的十六进制是 Kaspa 线上字节序（与 BLAKE2b 输出一致），不会像 `NBitcoin.uint256.ToString()` 那样把字节反转后再显示。数值比较仍然把第 0 字节当作最低有效字节。
 

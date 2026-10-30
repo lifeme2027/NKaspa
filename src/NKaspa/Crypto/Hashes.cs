@@ -5,7 +5,7 @@ namespace NKaspa.Crypto
     /// <summary>
     /// Kaspa counterpart of NBitcoin.Crypto.Hashes.
     /// Bitcoin double-SHA256 and HASH160 are not the Kaspa consensus hashes.
-    /// Kaspa ids and script hashes are unkeyed BLAKE2b-256.
+    /// Script hashes are unkeyed BLAKE2b-256. Transaction ids use a keyed digest.
     /// </summary>
     public static class Hashes
     {

@@ -18,17 +18,18 @@
 | `BitcoinWitPubKeyAddress` / `BitcoinSegwitAddress` | `KaspaPubKeyAddress` | 已实现（角色对应） | 默认公钥地址。Kaspa 没有 SegWit。载荷是 32 字节 Schnorr x-only（版本 `0x00`）。 |
 | `BitcoinWitScriptAddress` | — | 无需实现 | 没有 witness v0 脚本程序。脚本哈希走 `KaspaScriptHashAddress`。 |
 | `TaprootAddress` 及 Taproot 脚本树 | — | 无需实现 | Kaspa 的 Schnorr 不是比特币 BIP341 Taproot。 |
-| `Key` / `PubKey` / `BitcoinSecret` | — | 计划中 | 第二阶段。曲线运算用 `NBitcoin.Secp256k1`。 |
-| `Script` | `ScriptPubKey`（最简） | 已实现（最简） | 只生成标准锁定脚本。完整 `Script` 与执行在第二阶段。 |
-| `Transaction` / `TxIn` / `TxOut` / `OutPoint` | — | 计划中 | 第二阶段，含 Kaspa 序列化。 |
-| `TransactionBuilder` / `Coin` | — | 计划中 | 第三阶段的交易构建器。 |
-| `TransactionSignature` / sighash | — | 计划中 | 第二阶段做 Kaspa sighash（Schnorr，BLAKE2b），不是比特币 SIGHASH。 |
+| `Key` / `PubKey` / `BitcoinSecret` | `Key` / `PubKey` / `PubKeyECDSA` | 已实现 | `PubKey` 是 32 字节 Schnorr x-only。33 字节压缩公钥是 `PubKeyECDSA`。没有比特币 WIF / `BitcoinSecret`。 |
+| `Script` | `Script` / `ScriptPubKey` | 已实现 | 解析、构建、`ToString`、标准模板和签名脚本。不执行脚本。 |
+| `Transaction` / `TxIn` / `TxOut` / `OutPoint` | 同名 | 已实现 | 版本 0 序列化、交易号和交易哈希。版本 1 的 BLAKE3 交易号未做。 |
+| `TransactionBuilder` / `Coin` | — | 计划中 | 第三阶段的交易构建器。`UtxoEntry` 已有，供 sighash 使用。 |
+| `TransactionSignature` / sighash | `SchnorrSignature` / `ECDSASignature` / `SigHashType` | 已实现 | Kaspa sighash。`SigHashType.Single` 是 `0x04`，比特币的 SINGLE 是 `0x03`。 |
 | `uint256` | `uint256` | 已实现 | 可解析、比较、按 32 字节序列化。显示不反转字节，见下文。 |
 | `uint160` / `uint128` | — | 无需实现 | 地址和交易哈希都是 32 字节。 |
 | `Network` | `Network` | 已实现 | 精简为 Mainnet、Testnet、Simnet、Devnet 与地址前缀。 |
 | `Block` / `BlockHeader` | — | 计划中 | Kaspa 区块是 GHOSTDAG 块 DAG，不是比特币单链头。字段要另定，不能照搬。 |
-| `Money` / `FeeRate` / `Target` | — | 计划中 | 金额单位是 sompi。工作量目标与 blue score 的规则不同于比特币。 |
-| `BitcoinStream` | — | 计划中 | 第二阶段随交易序列化一起做 Kaspa 的读写，而不是比特币的 witness 编码。 |
+| `Money` | `Money` | 已实现 | 单位是 sompi。1 KAS = 100,000,000 sompi。协议金额是 u64。 |
+| `FeeRate` / `Target` | — | 计划中 | 第三阶段做费用估算。工作量目标和 blue score 不照搬比特币。 |
+| `BitcoinStream` | （内部读写） | 已实现 | 公开入口是 `Transaction.ToBytes` / `FromBytes`。长度是 u64，不是比特币 compact size。没有单独的公开流类型。 |
 
 `uint256` 的约定：`ToBytes()` 与 `ToString()` 都是 Kaspa 线上顺序，也就是 BLAKE2b 摘要的原始字节，RPC 十六进制也是这个顺序。字节 0 是摘要的第一个字节。NBitcoin 的 `ToString()` 会把这 32 字节反转，让十六进制看起来像大端整数。数值比较把这 32 字节当成小端整数（字节 0 是最低有效字节），这和 Kaspa 把哈希当工作量整数比较的方向一致。
 
@@ -48,11 +49,11 @@
 | NBitcoin | NKaspa | 状态 | 原因 |
 | --- | --- | --- | --- |
 | `Hashes` | `Hashes` | 已实现 | 提供 `Blake2b256`。没有双 SHA256，也没有 HASH160。 |
-| （无同名类型） | `Blake2b` | 已实现 | RFC 7693。Kaspa 的交易号、区块哈希、脚本哈希都是不带密钥的 BLAKE2b-256。 |
+| （无同名类型） | `Blake2b` | 已实现 | RFC 7693。脚本哈希是不带密钥的 BLAKE2b-256。交易号、交易哈希和 sighash 是带域分离密钥的 BLAKE2b-256（`TransactionID`、`TransactionHash`、`TransactionSigningHash`）。 |
 | `Hashes.DoubleSHA256` | — | 无需实现 | 不是 Kaspa 共识哈希。 |
 | `Hashes.Hash160` / RIPEMD160 | — | 无需实现 | 地址不用 HASH160。 |
-| `SchnorrSignature` / `ECDSASignature` | — | 计划中 | 第二阶段。签名算法走 `NBitcoin.Secp256k1` 的 BIP-340 Schnorr，以及 ECDSA 地址所需的 ECDSA。 |
-| `DeterministicECDSA` | — | 计划中 | 若 ECDSA 签名需要 RFC 6979，用 Secp256k1 包里的实现，不另写一份。 |
+| `SchnorrSignature` / `ECDSASignature` | 同名 | 已实现 | Schnorr 是 BIP-340 的 64 字节。ECDSA 是 64 字节紧凑 R\|\|S，不是 DER。sighash 字节放在签名脚本里。 |
+| `DeterministicECDSA` | — | 已实现（无单独类型） | ECDSA 使用 `NBitcoin.Secp256k1` 的 RFC 6979，并规范化为 low-S。 |
 
 ## Secp256k1
 
@@ -60,7 +61,7 @@ NBitcoin 目录 `Secp256k1/` 含 `ECPrivKey`、`ECPubKey`、`ECXOnlyPubKey`、`S
 
 | 状态 | 原因 |
 | --- | --- |
-| 无需把源码搬进 NKaspa | 椭圆曲线用 NuGet 包 `NBitcoin.Secp256k1`（MIT，这一版引用 3.1.6）。包已经在工程里，密钥和签名类型第二阶段再包一层。 |
+| 无需把源码搬进 NKaspa | 椭圆曲线用 NuGet 包 `NBitcoin.Secp256k1`（MIT，这一版引用 3.1.6）。`Key`、`PubKey`、`PubKeyECDSA` 包在这个包外面。 |
 | MuSig / adaptor / recovery | 计划外，除非 Kaspa 钱包明确需要。 |
 
 ## BIP32
@@ -88,7 +89,7 @@ NBitcoin 目录 `Secp256k1/` 含 `ECPrivKey`、`ECPubKey`、`ECXOnlyPubKey`、`S
 | 无需原样实现 | 这些是比特币 P2P 消息。Kaspa 节点协议不同，没有 witness、compact block 那一套比特币载荷。 |
 | 计划中（另写） | 若以后做节点客户端，按 Kaspa P2P 写，不移植 `HaveWitnessPayload`、`CmpctBlockPayload` 这类类型。第三阶段先做 RPC，而不是完整 P2P 节点。 |
 
-`VarInt` 一类长度编码如果和 Kaspa 交易序列化重合，会在第二阶段的序列化里按 Kaspa 规则实现，不从比特币 `Protocol` 目录拷贝。
+交易里的长度是 u64 小端，写在 `Transaction` 的序列化里，不从比特币 `Protocol` 目录拷贝 `VarInt`。
 
 ## Policy
 
@@ -156,26 +157,24 @@ NBitcoin 目录 `Secp256k1/` 含 `ECPrivKey`、`ECPubKey`、`ECXOnlyPubKey`、`S
 
 ## 当前进度
 
-0.1.0-alpha，第一阶段：
+0.1.0-alpha。第一阶段的编码器、BLAKE2b、`uint256`、网络和三种地址仍在。第二阶段补上密钥、签名、脚本、版本 0 交易和 sighash。
 
 - 解决方案：`NKaspa.sln`，类库 `src/NKaspa`（`net8.0`、`netstandard2.1`），测试 `tests/NKaspa.Tests`（xUnit，`net8.0`）。
-- 已实现类型：`DataEncoder`、`Encoders`、`HexEncoder`、`KaspaBech32Encoder`、`Blake2b`、`Hashes`、`uint256`、`Network`、`ScriptPubKey`、`KaspaAddress`、`KaspaPubKeyAddress`、`KaspaPubKeyEcdsaAddress`、`KaspaScriptHashAddress`、`KaspaAddressVersion`。
-- 地址测试使用 kaswallet / kaspadotnet 里的已知 Kaspa 地址，并包含 rusty-kaspa 的短 cashaddr 向量。BLAKE2b 测试包含 RFC 7693 的 BLAKE2b-512("abc") 以及公开的 BLAKE2b-256 向量。
-- 依赖：`NBitcoin.Secp256k1` 3.1.6 已引用，这一阶段还没有密钥或签名代码去调用它。
+- 密钥：`Key`、`PubKey`（32 字节 x-only）、`PubKeyECDSA`（33 字节压缩）。`GetAddress` 默认是 Schnorr 地址。
+- 签名：`SchnorrSignature`、`ECDSASignature`、`SigHashType`（`All=0x01`、`None=0x02`、`Single=0x04`，anyone-can-pay 是 `0x80`）。
+- 脚本：`OpcodeType`、`Op`、`Script`、`ScriptBuilder`。`ScriptPubKey` 仍带 u16 版本。标准模板是 Schnorr P2PK、ECDSA P2PK、P2SH。签名脚本是 66 字节的 `OP_DATA_65` 推送。不执行脚本。
+- 交易：`OutPoint`、`TxIn`、`TxOut`、`Transaction`、`UtxoEntry`、`SubnetworkId`、`Money`。版本 0 的交易号用带密钥的 BLAKE2b，密钥是 `TransactionID`；交易哈希的密钥是 `TransactionHash`。长度前缀是 u64。
+- Sighash：`SigHash.CalcSchnorrSignatureHash` 使用密钥 `TransactionSigningHash`。ECDSA 再套 `SHA256(SHA256("TransactionSigningHashECDSA") || schnorrHash)`。版本 1 的 sighash 会省略 sigop，并在每个输出后写一个表示“没有 covenant”的字节。版本 1 的交易号是 BLAKE3，这一版会抛 `NotSupportedException`。
+- 和比特币的主要差别：`OP_CHECKSIG` 验的是 Schnorr；`OP_CHECKSIGECDSA` 是 `0xab`；`OP_BLAKE2B` 是 `0xaa`；CLTV 是 `0xb0`，CSV 是 `0xb1`。`OP_CAT` 等是启用的。`OP_LEFT`、`OP_RIGHT`、`OP_2MUL`、`OP_2DIV`、`OP_LSHIFT`、`OP_RSHIFT` 仍禁用。
+- 对照向量来自 rusty-kaspa 的 `hashing/tx.rs`、`hashing/sighash.rs`、`crypto/hashes/src/hashers.rs`，以及 kaswallet 里同一组测试。BIP-340 的第 0 条签名向量用来核对 Schnorr。地址派生用 BIP-340 第 1 条公钥，对应已有的 `kaspa:qr0lr4ml...`。
 
-还没有做：密钥与 Schnorr/ECDSA 签名、完整脚本、交易与 sighash、BIP32/BIP39、交易构建器、RPC。
+还没有做：BIP32/BIP39、交易构建器、RPC / wRPC、费用估算、脚本执行、版本 1 的 BLAKE3 交易号。
 
 ## 下一步计划
-
-第二阶段：
-
-- `Key` / `PubKey`，Schnorr（BIP-340，经 `NBitcoin.Secp256k1`）与 ECDSA 签名。
-- `Script` / 完整的 `ScriptPubKey` 解析与标准脚本识别。
-- `Transaction`、`TxIn`、`TxOut`、`OutPoint` 与 Kaspa 序列化。
-- Kaspa sighash。
 
 第三阶段：
 
 - BIP32 / BIP39 HD 钱包。
-- 交易构建器。
-- Kaspa RPC 客户端。
+- `TransactionBuilder`。
+- Kaspa RPC / wRPC 客户端。
+- 费用估算。

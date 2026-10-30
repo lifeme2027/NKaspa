@@ -68,6 +68,61 @@ namespace NKaspa.Tests
                 ToHex(hash));
         }
 
+        /// <summary>
+        /// 200-byte message, longer than the 128-byte BLAKE2b block.
+        /// Digest from kaswallet <c>ConsensusSigningTests.Blake2b_keyed_and_multiblock_match_reference</c>.
+        /// The keyed digest uses the Kaspa domain <c>TransactionSigningHash</c>.
+        /// </summary>
+        [Fact]
+        public void Blake2b256_multiblock_matches_kaswallet_reference()
+        {
+            var message = new byte[200];
+            for (var i = 0; i < message.Length; i++)
+            {
+                message[i] = (byte)i;
+            }
+
+            var key = Encoding.ASCII.GetBytes("TransactionSigningHash");
+            Assert.Equal("63c3d97a9f8894d5e043a707b0fee7f7ec4c049a23bbf1079df20b4165f9e22d", ToHex(Blake2b.Hash256(message)));
+            Assert.Equal("160ae16e5f0bc71d5815d7f5f42bd36fa2b4dc23e1c8dc3b59144821d083cd58", ToHex(Blake2b.ComputeHash(message, 32, key)));
+            Assert.Equal(
+                "1d25f7b19571ef69f5a7fac4494f74bb9c410ec485570beefe5a7e8d11fcc465",
+                ToHex(Blake2b.ComputeHash(Encoding.ASCII.GetBytes("abc"), 32, key)));
+        }
+
+        /// <summary>
+        /// Incremental keyed BLAKE2b from rusty-kaspa <c>crypto/hashes/src/hashers.rs</c> <c>test_vectors</c>.
+        /// Each digest is the hash of every chunk so far, without resetting the hasher.
+        /// The domain is <c>TransactionSigningHash</c>.
+        /// </summary>
+        [Fact]
+        public void TransactionSigningHash_incremental_matches_rusty_kaspa()
+        {
+            var chunks = new[]
+            {
+                Array.Empty<byte>(),
+                new byte[] { 1 },
+                DecodeHex("05c77e2c4720528b7ad92b30347028d1b4538be748308830a8e285073c04a0cd"),
+                Repeat(0x2a, 64),
+                new byte[8],
+            };
+            var expected = new[]
+            {
+                "34c75037ad62740d4b3228f88f844f7901c07bfacd55a045be518eabc15e52ce",
+                "8523b0471bcbea04575ccaa635eef9f9114f2890bda54367e5ff8caa3878bf82",
+                "a51c49d9eb3d13f9de16e1aa8d1ff17668d55633ce00f36a643ac714b0fb137f",
+                "487f199ef74c3e893e85bd37770e6334575a2d4d113b2e10474593c49807de93",
+                "6392adc33a8e24e9a0a0c4c5f07f9c1cc958ad40c16d7a9a276e374cebb4e32b",
+            };
+
+            var hasher = new Blake2b(32, Encoding.ASCII.GetBytes("TransactionSigningHash"));
+            for (var i = 0; i < chunks.Length; i++)
+            {
+                hasher.Update(chunks[i]);
+                Assert.Equal(expected[i], ToHex(hasher.Clone().FinalizeHash()));
+            }
+        }
+
         [Fact]
         public void Incremental_update_matches_one_shot_across_a_block_boundary()
         {
@@ -97,6 +152,17 @@ namespace NKaspa.Tests
             }
 
             return new string(chars);
+        }
+
+        private static byte[] Repeat(byte value, int length)
+        {
+            var bytes = new byte[length];
+            for (var i = 0; i < bytes.Length; i++)
+            {
+                bytes[i] = value;
+            }
+
+            return bytes;
         }
 
         private static byte[] DecodeHex(string hex)

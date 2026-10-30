@@ -1,9 +1,10 @@
 namespace NKaspa.Crypto
 {
     /// <summary>
-    /// RFC 7693 BLAKE2b. Kaspa transaction ids, block hashes, and script hashes
-    /// use the unkeyed 32-byte digest (BLAKE2b-256). There is no suitable small
-    /// MIT NuGet package dedicated to this use, so the hash lives in this library.
+    /// RFC 7693 BLAKE2b. Script hashes use the unkeyed 32-byte digest.
+    /// Transaction ids, transaction hashes, and signature hashes use the same digest
+    /// with a domain-separation key. There is no suitable small MIT NuGet package
+    /// dedicated to this use, so the hash lives in this library.
     /// </summary>
     /// <remarks>
     /// Keyed mode pads the key to one 128-byte block, as specified by RFC 7693.
@@ -57,6 +58,12 @@ namespace NKaspa.Crypto
         private ulong _counterHigh;
         private bool _finished;
 
+        /// <summary>Copies the hasher state, including a key block that has not been finalized.</summary>
+        public Blake2b Clone()
+        {
+            return new Blake2b(this);
+        }
+
         /// <summary>Creates a hasher. <paramref name="hashSize"/> is the digest length in bytes, from 1 to 64.</summary>
         public Blake2b(int hashSize = 32, ReadOnlySpan<byte> key = default)
         {
@@ -78,6 +85,17 @@ namespace NKaspa.Crypto
                 key.CopyTo(_buffer);
                 _bufferLength = BlockSize;
             }
+        }
+
+        private Blake2b(Blake2b other)
+        {
+            _hashSize = other._hashSize;
+            other._h.AsSpan().CopyTo(_h);
+            other._buffer.AsSpan().CopyTo(_buffer);
+            _bufferLength = other._bufferLength;
+            _counterLow = other._counterLow;
+            _counterHigh = other._counterHigh;
+            _finished = other._finished;
         }
 
         /// <summary>Absorbs the next slice of the message.</summary>

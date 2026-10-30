@@ -6,7 +6,7 @@
     <Version>0.1.0-alpha</Version>
     <PackageId>NKaspa</PackageId>
     <Title>NKaspa</Title>
-    <Description>A .NET library for Kaspa, structured as a counterpart of NBitcoin. Alpha: encoders, BLAKE2b, uint256, networks, and addresses.</Description>
+    <Description>A .NET library for Kaspa, structured as a counterpart of NBitcoin. Alpha: keys, Schnorr and ECDSA signatures, scripts, version-0 transactions, sighash, encoders, BLAKE2b, uint256, networks, and addresses.</Description>
     <PackageTags>kaspa;nkaspa;blockchain</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

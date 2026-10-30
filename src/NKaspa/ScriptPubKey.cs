@@ -3,9 +3,9 @@ using NKaspa.DataEncoders;
 namespace NKaspa
 {
     /// <summary>
-    /// Minimal script public key. Kaspa counterpart of the <c>Script</c> value
-    /// exposed by NBitcoin.BitcoinAddress.ScriptPubKey. The script engine itself
-    /// is left for a later phase.
+    /// Versioned script public key. Kaspa counterpart of the <c>Script</c> value
+    /// exposed by NBitcoin.BitcoinAddress.ScriptPubKey, stored with the u16 version
+    /// Kaspa puts on an output.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -18,6 +18,7 @@ namespace NKaspa
     /// Schnorr P2PK is <c>OP_DATA_32 || x-only || OP_CHECKSIG</c> (34 bytes),
     /// ECDSA P2PK is <c>OP_DATA_33 || compressed key || OP_CHECKSIGECDSA</c> (35 bytes),
     /// P2SH is <c>OP_BLAKE2B || OP_DATA_32 || hash || OP_EQUAL</c> (35 bytes).
+    /// Parsing and building live on <see cref="Script"/>. This type does not execute scripts.
     /// </para>
     /// </remarks>
     public sealed class ScriptPubKey : IEquatable<ScriptPubKey>
@@ -52,6 +53,18 @@ namespace NKaspa
 
             Version = version;
             _script = (byte[])script.Clone();
+        }
+
+        /// <summary>Wraps a parsed script. The bytes are copied.</summary>
+        public ScriptPubKey(ushort version, Script script)
+        {
+            if (script == null)
+            {
+                throw new ArgumentNullException(nameof(script));
+            }
+
+            Version = version;
+            _script = script.ToBytes();
         }
 
         /// <summary>Script version stored with the output. Standard payments use 0.</summary>
@@ -113,6 +126,64 @@ namespace NKaspa
             scriptHash.CopyTo(script.AsSpan(2));
             script[34] = OpEqual;
             return new ScriptPubKey(0, script);
+        }
+
+        /// <summary>Schnorr pay-to-pubkey script, version 0.</summary>
+        public static ScriptPubKey PayToPubKey(PubKey publicKey)
+        {
+            if (publicKey == null)
+            {
+                throw new ArgumentNullException(nameof(publicKey));
+            }
+
+            return new ScriptPubKey(0, global::NKaspa.Script.PayToPubKey(publicKey));
+        }
+
+        /// <summary>ECDSA pay-to-pubkey script, version 0.</summary>
+        public static ScriptPubKey PayToPubKeyEcdsa(PubKeyECDSA publicKey)
+        {
+            if (publicKey == null)
+            {
+                throw new ArgumentNullException(nameof(publicKey));
+            }
+
+            return new ScriptPubKey(0, global::NKaspa.Script.PayToPubKey(publicKey));
+        }
+
+        /// <summary>Pay-to-script-hash script, version 0.</summary>
+        public static ScriptPubKey PayToScriptHash(uint256 scriptHash)
+        {
+            return new ScriptPubKey(0, global::NKaspa.Script.PayToScriptHash(scriptHash));
+        }
+
+        /// <summary>Pay-to-script-hash script for <paramref name="redeemScript"/>, version 0.</summary>
+        public static ScriptPubKey PayToScriptHash(Script redeemScript)
+        {
+            return new ScriptPubKey(0, global::NKaspa.Script.PayToScriptHash(redeemScript));
+        }
+
+        /// <summary>The script bytes parsed as a <see cref="Script"/>.</summary>
+        public Script ToScript()
+        {
+            return new Script(_script);
+        }
+
+        /// <summary>True for a version-0 Schnorr pay-to-pubkey script.</summary>
+        public bool IsPayToPubKey
+        {
+            get { return Version == 0 && ToScript().IsPayToPubKey; }
+        }
+
+        /// <summary>True for a version-0 ECDSA pay-to-pubkey script.</summary>
+        public bool IsPayToPubKeyEcdsa
+        {
+            get { return Version == 0 && ToScript().IsPayToPubKeyEcdsa; }
+        }
+
+        /// <summary>True for a version-0 pay-to-script-hash script.</summary>
+        public bool IsPayToScriptHash
+        {
+            get { return Version == 0 && ToScript().IsPayToScriptHash; }
         }
 
         /// <summary>Lowercase hex of the script bytes. The version is not included.</summary>
