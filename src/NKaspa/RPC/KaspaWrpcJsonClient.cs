@@ -146,6 +146,81 @@ namespace NKaspa.RPC
             return new RpcFeeEstimate(priority, normal, low);
         }
 
+        /// <inheritdoc />
+        public async Task<RpcChainBlock?> GetBlockAsync(uint256 hash, bool includeTransactions = false, CancellationToken cancellationToken = default)
+        {
+            if (hash == null)
+            {
+                throw new ArgumentNullException(nameof(hash));
+            }
+
+            JsonElement body;
+            try
+            {
+                body = await InvokeAsync("getBlock", writer =>
+                {
+                    writer.WriteString("hash", hash.ToString());
+                    writer.WriteBoolean("includeTransactions", includeTransactions);
+                }, cancellationToken).ConfigureAwait(false);
+            }
+            catch (KaspaRpcException)
+            {
+                return null;
+            }
+
+            if (!body.TryGetProperty("block", out var block))
+            {
+                return null;
+            }
+
+            var header = block.TryGetProperty("header", out var headerElement) ? headerElement : block;
+            var verbose = block.TryGetProperty("verboseData", out var verboseElement) ? verboseElement : default;
+            var blueScore = ReadScore(header, verbose);
+            uint256? root = null;
+            if (header.ValueKind == JsonValueKind.Object && header.TryGetProperty("acceptedIdMerkleRoot", out var rootElement) && rootElement.ValueKind == JsonValueKind.String)
+            {
+                var text = rootElement.GetString();
+                if (!string.IsNullOrEmpty(text))
+                {
+                    root = uint256.Parse(text);
+                }
+            }
+
+            var chain = false;
+            if (verbose.ValueKind == JsonValueKind.Object && verbose.TryGetProperty("isChainBlock", out var chainElement))
+            {
+                if (chainElement.ValueKind == JsonValueKind.True)
+                {
+                    chain = true;
+                }
+                else if (chainElement.ValueKind == JsonValueKind.False)
+                {
+                    chain = false;
+                }
+                else
+                {
+                    throw new FormatException("Expected a boolean for isChainBlock.");
+                }
+            }
+
+            return new RpcChainBlock(hash, blueScore, root, chain);
+        }
+
+        private static ulong ReadScore(JsonElement header, JsonElement verbose)
+        {
+            if (header.ValueKind == JsonValueKind.Object && header.TryGetProperty("blueScore", out var headerScore))
+            {
+                return KaspaRpcJson.ReadU64(headerScore);
+            }
+
+            if (verbose.ValueKind == JsonValueKind.Object && verbose.TryGetProperty("blueScore", out var verboseScore))
+            {
+                return KaspaRpcJson.ReadU64(verboseScore);
+            }
+
+            return 0;
+        }
+
         private async Task<JsonElement> InvokeAsync(string method, Action<Utf8JsonWriter> writeParams, CancellationToken cancellationToken)
         {
             var id = Interlocked.Increment(ref _nextId);

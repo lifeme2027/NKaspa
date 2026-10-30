@@ -48,8 +48,17 @@ namespace NKaspa
         /// <summary>The opcode is not defined, or <c>OP_CHAINBLOCKSEQCOMMIT</c> has no block accessor.</summary>
         InvalidOpcode,
 
-        /// <summary><c>OP_ZKPRECOMPILE</c> is not implemented. The engine returns an error instead of accepting the proof.</summary>
+        /// <summary>
+        /// The cryptographic step of <c>OP_ZKPRECOMPILE</c> is not implemented.
+        /// Structural failures use <see cref="ZkIntegrity"/> instead. The engine never accepts a proof.
+        /// </summary>
         Unimplemented,
+
+        /// <summary>
+        /// <c>OP_ZKPRECOMPILE</c> rejected a tag, a field, a length, or a proof layout.
+        /// The message follows the rusty-kaspa <c>ZkIntegrity</c> text for the check that failed.
+        /// </summary>
+        ZkIntegrity,
 
         /// <summary>An <c>OP_IF</c> was still open at the end of a script.</summary>
         UnbalancedConditional,
@@ -215,6 +224,11 @@ namespace NKaspa
         internal static ScriptError Unimplemented(string name)
         {
             return new ScriptError(ScriptErrorCode.Unimplemented, name + " is not implemented");
+        }
+
+        internal static ScriptError ZkIntegrity(string message)
+        {
+            return new ScriptError(ScriptErrorCode.ZkIntegrity, message);
         }
 
         internal static readonly ScriptError UnbalancedConditional = new ScriptError(ScriptErrorCode.UnbalancedConditional, "unbalanced conditional");

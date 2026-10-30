@@ -14,7 +14,8 @@ namespace NKaspa
     /// The official script vectors run with an unlimited budget, matching <c>from_transaction_input</c>.
     /// </para>
     /// <para>
-    /// <c>OP_ZKPRECOMPILE</c> returns <see cref="ScriptErrorCode.Unimplemented"/>.
+    /// <c>OP_ZKPRECOMPILE</c> enforces the finalized tag, cost, and structural checks.
+    /// The BN254 pairing and the RISC0 STARK return <see cref="ScriptErrorCode.Unimplemented"/> and do not push true.
     /// <c>OP_CHAINBLOCKSEQCOMMIT</c> returns <see cref="ScriptErrorCode.InvalidOpcode"/> unless an <see cref="ISeqCommitAccessor"/> is supplied.
     /// </para>
     /// </remarks>
@@ -207,6 +208,126 @@ namespace NKaspa
             }
 
             return CountUpper(pushes[pushes.Count - 1].Data);
+        }
+
+        /// <summary>
+        /// Upper bound of <c>OP_ZKPRECOMPILE</c> script units.
+        /// A precompile whose previous push starts with a known tag uses that tag's cost.
+        /// Anything else, including a precompile in the first position, uses <see cref="ZkPrecompile.R0SuccinctScriptUnits"/>.
+        /// Pay-to-script-hash reads the last push of the signature script. A missing or malformed signature script counts as 0.
+        /// Parsing stops at the first malformed opcode and keeps the units counted before it.
+        /// </summary>
+        public static ulong GetZkScriptUnitsUpperBound(byte[] signatureScript, byte[] scriptPubKey)
+        {
+            if (signatureScript == null)
+            {
+                throw new ArgumentNullException(nameof(signatureScript));
+            }
+
+            if (scriptPubKey == null)
+            {
+                throw new ArgumentNullException(nameof(scriptPubKey));
+            }
+
+            if (!IsPayToScriptHash(scriptPubKey))
+            {
+                return ZkUnitsOf(scriptPubKey);
+            }
+
+            var pushes = new List<ParsedOp>();
+            if (signatureScript.Length == 0 || Parse(signatureScript, pushes) != null || pushes.Count == 0)
+            {
+                return 0;
+            }
+
+            return ZkUnitsOf(pushes[pushes.Count - 1].Data);
+        }
+
+        /// <summary>
+        /// Runs one opcode against a preset data stack. Index 0 of <paramref name="stack"/> is the bottom.
+        /// Used by the opcodes.rs table tests. The meter limit is <see cref="ulong.MaxValue"/>.
+        /// </summary>
+        internal static ScriptError? ExecuteOpcodeForTest(byte code, byte[] data, IReadOnlyList<byte[]> stack, out byte[][] result)
+        {
+            return ExecuteOpcodeForTest(code, data, stack, null, out result);
+        }
+
+        /// <summary>
+        /// Runs one opcode against a preset data stack and <paramref name="transaction"/> when the opcode reads the transaction.
+        /// The transaction needs one input when the opcode indexes it. A null transaction is an empty version-0 transaction with one input.
+        /// </summary>
+        internal static ScriptError? ExecuteOpcodeForTest(byte code, byte[] data, IReadOnlyList<byte[]> stack, Transaction? transaction, out byte[][] result)
+        {
+            if (data == null)
+            {
+                throw new ArgumentNullException(nameof(data));
+            }
+
+            if (stack == null)
+            {
+                throw new ArgumentNullException(nameof(stack));
+            }
+
+            var tx = transaction ?? TestTransaction();
+            var engine = new TxScriptEngine(
+                tx,
+                0,
+                new UtxoEntry?[Math.Max(tx.Inputs.Count, 1)],
+                Array.Empty<byte>(),
+                Array.Empty<byte>(),
+                0,
+                ScriptLimits.ScriptUnitsPerSigOpCountUnit,
+                ulong.MaxValue,
+                CovenantsContext.Empty,
+                null,
+                null,
+                new SigCache());
+            for (var i = 0; i < stack.Count; i++)
+            {
+                var pushed = engine._dstack.Push((byte[])stack[i].Clone(), meter: false);
+                if (pushed != null)
+                {
+                    result = Array.Empty<byte[]>();
+                    return pushed;
+                }
+            }
+
+            var error = engine.ExecuteOpcode(new ParsedOp(code, data));
+            result = new byte[engine._dstack.Count][];
+            for (var i = 0; i < result.Length; i++)
+            {
+                result[i] = (byte[])engine._dstack[i].Clone();
+            }
+
+            return error;
+        }
+
+        private static Transaction TestTransaction()
+        {
+            var input = new TxIn(new OutPoint(uint256.Zero, 0), Script.Empty, 1, 0);
+            var output = new TxOut(0UL, new ScriptPubKey(0, Script.Empty));
+            return new Transaction(0, new[] { input }, new[] { output }, 0, SubnetworkId.Native, 0, Array.Empty<byte>());
+        }
+
+        private static ulong ZkUnitsOf(byte[] script)
+        {
+            var ops = new List<ParsedOp>();
+            Parse(script, ops);
+            ulong units = 0;
+            for (var i = 0; i < ops.Count; i++)
+            {
+                if (ops[i].Code != (byte)OpcodeType.OP_ZKPRECOMPILE)
+                {
+                    continue;
+                }
+
+                var cost = i == 0 || ops[i - 1].Data.Length == 0
+                    ? ZkPrecompile.R0SuccinctScriptUnits
+                    : ZkPrecompile.Cost(ops[i - 1].Data[0]);
+                units = ScriptLimits.SaturatingAdd(units, cost);
+            }
+
+            return units;
         }
 
         /// <summary>

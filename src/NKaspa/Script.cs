@@ -97,6 +97,36 @@ namespace NKaspa
             return string.Join(" ", parts);
         }
 
+        /// <summary>
+        /// Rusty-kaspa <c>script_to_str</c> form. Opcode names match the txscript type names,
+        /// and pushed bytes are <c>0x</c> hex so <c>ScriptShortForm</c> can parse the text back.
+        /// <see cref="ToString"/> stays the NKaspa form without the <c>0x</c> prefix.
+        /// </summary>
+        public string ToRustString()
+        {
+            if (_ops.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            var parts = new string[_ops.Length];
+            for (var i = 0; i < _ops.Length; i++)
+            {
+                var op = _ops[i];
+                var name = OpcodeRust.Name((byte)op.Code);
+                if (op.Data == null || op.Data.Length == 0)
+                {
+                    parts[i] = name;
+                }
+                else
+                {
+                    parts[i] = name + " 0x" + Encoders.Hex.EncodeData(op.Data);
+                }
+            }
+
+            return string.Join(" ", parts);
+        }
+
         /// <summary>Unkeyed BLAKE2b-256 of these script bytes. This is the Kaspa script hash.</summary>
         public uint256 GetScriptHash()
         {
@@ -513,7 +543,7 @@ namespace NKaspa
     /// <summary>
     /// Builds a script with canonical pushes. Kaspa counterpart of NBitcoin.Script.Builder / bitcoin script builder.
     /// </summary>
-    public sealed class ScriptBuilder
+    public sealed partial class ScriptBuilder
     {
         private readonly List<byte> _bytes = new List<byte>();
 

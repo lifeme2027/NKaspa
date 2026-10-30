@@ -159,7 +159,7 @@ namespace NKaspa
                 case (byte)OpcodeType.OP_WITHIN:
                     return OpWithin();
                 case (byte)OpcodeType.OP_ZKPRECOMPILE:
-                    return ScriptError.Unimplemented("OP_ZKPRECOMPILE");
+                    return ZkPrecompile.Execute(_dstack, _meter);
                 case (byte)OpcodeType.OP_BLAKE2BWITHKEY:
                     return OpBlake2b(keyed: true);
                 case (byte)OpcodeType.OP_SHA256:

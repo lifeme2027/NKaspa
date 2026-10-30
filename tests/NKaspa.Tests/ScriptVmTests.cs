@@ -108,7 +108,7 @@ namespace NKaspa.Tests
         {
             var zk = RunOfficial(string.Empty, "ZKPRECOMPILE");
             Assert.NotNull(zk);
-            Assert.Equal(ScriptErrorCode.Unimplemented, zk!.Code);
+            Assert.Equal(ScriptErrorCode.EmptyStack, zk!.Code);
 
             var chain = ChainScriptWithoutCompare();
             var bare = Fixture(Array.Empty<byte>(), chain);

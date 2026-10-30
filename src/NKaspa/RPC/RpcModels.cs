@@ -50,6 +50,40 @@ namespace NKaspa.RPC
 
         /// <summary>getFeeEstimate.</summary>
         Task<RpcFeeEstimate> GetFeeEstimateAsync(CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// getBlock. <paramref name="includeTransactions"/> false asks for the header only.
+        /// A missing block returns null. This method does not submit a transaction.
+        /// </summary>
+        Task<RpcChainBlock?> GetBlockAsync(uint256 hash, bool includeTransactions = false, CancellationToken cancellationToken = default);
+    }
+
+    /// <summary>
+    /// Header fields <c>OP_CHAINBLOCKSEQCOMMIT</c> reads from getBlock.
+    /// <see cref="AcceptedIdMerkleRoot"/> is the sequence commitment after KIP-21.
+    /// </summary>
+    public sealed class RpcChainBlock
+    {
+        /// <summary>Creates the header view.</summary>
+        public RpcChainBlock(uint256 hash, ulong blueScore, uint256? acceptedIdMerkleRoot, bool isChainBlock)
+        {
+            Hash = hash ?? throw new ArgumentNullException(nameof(hash));
+            BlueScore = blueScore;
+            AcceptedIdMerkleRoot = acceptedIdMerkleRoot;
+            IsChainBlock = isChainBlock;
+        }
+
+        /// <summary>Block hash.</summary>
+        public uint256 Hash { get; }
+
+        /// <summary>header blueScore, or verboseData blueScore when the header omits it.</summary>
+        public ulong BlueScore { get; }
+
+        /// <summary>header acceptedIdMerkleRoot. Null when the field is missing.</summary>
+        public uint256? AcceptedIdMerkleRoot { get; }
+
+        /// <summary>verboseData.isChainBlock. False when the node omits verbose data.</summary>
+        public bool IsChainBlock { get; }
     }
 
     /// <summary>getServerInfo body.</summary>
