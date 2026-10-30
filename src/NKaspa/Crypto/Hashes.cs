@@ -4,8 +4,9 @@ namespace NKaspa.Crypto
 {
     /// <summary>
     /// Kaspa counterpart of NBitcoin.Crypto.Hashes.
-    /// Bitcoin double-SHA256 and HASH160 are not the Kaspa consensus hashes.
     /// Script hashes are unkeyed BLAKE2b-256. Transaction ids use a keyed digest.
+    /// SHA256 and HASH160 exist only for BIP32 fingerprints and Base58Check.
+    /// They are not Kaspa address hashes and they are not consensus hashes.
     /// </summary>
     public static class Hashes
     {
@@ -57,6 +58,25 @@ namespace NKaspa.Crypto
             }
 
             return Blake2b.Hash256(data.AsSpan(offset, count));
+        }
+
+        /// <summary>
+        /// SHA-256. Used by BIP39 checksums, BIP32 Base58Check, and HASH160.
+        /// Not a Kaspa consensus hash.
+        /// </summary>
+        public static byte[] SHA256(ReadOnlySpan<byte> data)
+        {
+            using var hash = System.Security.Cryptography.SHA256.Create();
+            return hash.ComputeHash(data.ToArray());
+        }
+
+        /// <summary>
+        /// RIPEMD160(SHA256(data)). BIP32 parent fingerprint only.
+        /// Kaspa addresses do not use HASH160.
+        /// </summary>
+        public static byte[] Hash160(ReadOnlySpan<byte> data)
+        {
+            return Ripemd160.Compute(SHA256(data));
         }
     }
 }

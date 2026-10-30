@@ -15,4 +15,10 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\NKaspa\NKaspa.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Data\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 </Project>

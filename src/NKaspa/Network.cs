@@ -12,24 +12,26 @@ namespace NKaspa
     /// </remarks>
     public sealed class Network
     {
-        private Network(string name, string addressPrefix, int p2pPort)
+        private Network(string name, string addressPrefix, int p2pPort, uint extPubKeyVersion, uint extPrivKeyVersion)
         {
             Name = name;
             AddressPrefix = addressPrefix;
             P2PPort = p2pPort;
+            ExtPubKeyVersion = extPubKeyVersion;
+            ExtPrivKeyVersion = extPrivKeyVersion;
         }
 
-        /// <summary>Mainnet. Address prefix <c>kaspa</c>.</summary>
-        public static Network Mainnet { get; } = new Network("mainnet", "kaspa", 16111);
+        /// <summary>Mainnet. Address prefix <c>kaspa</c>. Extended keys use <c>kpub</c> and <c>kprv</c>.</summary>
+        public static Network Mainnet { get; } = new Network("mainnet", "kaspa", 16111, HdKeyVersions.Kpub, HdKeyVersions.Kprv);
 
-        /// <summary>Public testnet. Address prefix <c>kaspatest</c>.</summary>
-        public static Network Testnet { get; } = new Network("testnet", "kaspatest", 16211);
+        /// <summary>Public testnet. Address prefix <c>kaspatest</c>. Extended keys use <c>ktub</c> and <c>ktrv</c>.</summary>
+        public static Network Testnet { get; } = new Network("testnet", "kaspatest", 16211, HdKeyVersions.Ktub, HdKeyVersions.Ktrv);
 
-        /// <summary>Simulation network. Address prefix <c>kaspasim</c>.</summary>
-        public static Network Simnet { get; } = new Network("simnet", "kaspasim", 16511);
+        /// <summary>Simulation network. Address prefix <c>kaspasim</c>. Extended keys use <c>ktub</c> and <c>ktrv</c>.</summary>
+        public static Network Simnet { get; } = new Network("simnet", "kaspasim", 16511, HdKeyVersions.Ktub, HdKeyVersions.Ktrv);
 
-        /// <summary>Development network. Address prefix <c>kaspadev</c>.</summary>
-        public static Network Devnet { get; } = new Network("devnet", "kaspadev", 16611);
+        /// <summary>Development network. Address prefix <c>kaspadev</c>. Extended keys use <c>ktub</c> and <c>ktrv</c>.</summary>
+        public static Network Devnet { get; } = new Network("devnet", "kaspadev", 16611, HdKeyVersions.Ktub, HdKeyVersions.Ktrv);
 
         /// <summary>Short network name: mainnet, testnet, simnet, or devnet.</summary>
         public string Name { get; }
@@ -39,6 +41,18 @@ namespace NKaspa
 
         /// <summary>Default kaspad P2P port for this network.</summary>
         public int P2PPort { get; }
+
+        /// <summary>
+        /// Base58Check version of an extended public key.
+        /// Mainnet is <c>kpub</c> (<c>0x038f332e</c>). Testnet, simnet, and devnet are <c>ktub</c> (<c>0x0390a241</c>).
+        /// </summary>
+        public uint ExtPubKeyVersion { get; }
+
+        /// <summary>
+        /// Base58Check version of an extended private key.
+        /// Mainnet is <c>kprv</c> (<c>0x038f2ef4</c>). Testnet, simnet, and devnet are <c>ktrv</c> (<c>0x03909e07</c>).
+        /// </summary>
+        public uint ExtPrivKeyVersion { get; }
 
         /// <summary>The four built-in networks.</summary>
         public static IReadOnlyList<Network> All { get; } = new[]

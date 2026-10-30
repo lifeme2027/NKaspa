@@ -6,9 +6,13 @@ named as counterparts of NBitcoin (https://github.com/MetacoSA/NBitcoin).
 NBitcoin is licensed under the MIT License. Copyright for NBitcoin is held
 by its contributors, including Nicolas Dorier and Metaco SA.
 
-NKaspa does not vendor NBitcoin source. Elliptic-curve operations are
-intended to use the NBitcoin.Secp256k1 NuGet package, which is also under
-the MIT License.
+NKaspa does not vendor the rest of the NBitcoin source. One exception:
+src/NKaspa/BIP39/english.txt is the BIP39 English wordlist copied from
+NBitcoin/BIP39/IWordlistSource.cs. Its MIT notice is
+src/NKaspa/BIP39/WORDLIST-LICENSE.txt. Copyright (c) 2023 Metaco SA.
+
+Elliptic-curve operations use the NBitcoin.Secp256k1 NuGet package, which
+is also under the MIT License.
 
 BLAKE2b is implemented in this repository from RFC 7693.
 Kaspa address encoding follows the cashaddr-style bech32 used by Kaspa
