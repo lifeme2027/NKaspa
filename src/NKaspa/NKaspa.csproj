@@ -3,7 +3,7 @@
     <TargetFrameworks>net8.0;netstandard2.1</TargetFrameworks>
     <RootNamespace>NKaspa</RootNamespace>
     <AssemblyName>NKaspa</AssemblyName>
-    <Version>0.1.3-alpha</Version>
+    <Version>0.1.4-alpha</Version>
     <PackageId>NKaspa</PackageId>
     <Title>NKaspa</Title>
     <Description>A .NET library for Kaspa, structured as a counterpart of NBitcoin. Alpha: keys, Schnorr and ECDSA signatures, scripts, version-0 and Toccata version-1 transactions, BLAKE2b and BLAKE3, sighash, BIP39, BIP32, a transaction builder with must-spend coin selection and version-1 payments, PSKT (partially signed Kaspa transactions) aligned with rusty-kaspa wallet/pskt, mass and fees, a minimal wRPC JSON client, encoders, uint256, networks, and addresses. The script engine and covenant execution are not included.</Description>

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>NKaspa.Samples.NodeQuery</RootNamespace>
+    <AssemblyName>NKaspa.Sample.NodeQuery</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\NKaspa\NKaspa.csproj" />
+  </ItemGroup>
+</Project>

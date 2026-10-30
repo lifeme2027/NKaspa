@@ -4,7 +4,7 @@
 
 状态只用三种：
 
-- **已实现**：这一版（0.1.3-alpha）里有对应类型，范围以代码为准。
+- **已实现**：这一版（0.1.4-alpha）里有对应类型，范围以代码为准。
 - **计划中**：后面阶段要做，或只做 Kaspa 自己的等价物，不照搬比特币协议。
 - **无需实现**：Kaspa 没有这套机制，或它不该出现在这个库里。
 
@@ -123,7 +123,7 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 | 状态 | 原因 |
 | --- | --- |
 | 已实现（最小子集） | `IKaspaRpcClient`、`KaspaWrpcJsonClient`、`KaspaWebSocketChannel`。方法是 `getServerInfo`、`getBlockDagInfo`、`getUtxosByAddresses`、`getBalanceByAddress`、`submitTransaction`、`getFeeEstimate`。信封是 workflow-rpc：`id`、`method`、`params`。成功体在 `params`，读的时候也接受 `result`。错误是 `error.code` / `error.message`。不是 JSON-RPC 2.0。 |
-| 未接真实节点 | 单元测试用内存里的 JSON 通道。`KaspaWebSocketChannel` 能发一帧文本，但没有 workflow-rpc 订阅握手，也没有对套接字或公共节点跑过。 |
+| 单元测试不连节点 | 单元测试用内存里的 JSON 通道和本地回环 WebSocket。`samples/NodeQuery` 在 2026-10-30 对 `wss://eva.kaspa.green/kaspa/mainnet/wrpc/json` 做过一次只读查询：`getServerInfo` 返回 rusty-kaspa 2.1.0、mainnet、已同步、有 UTXO 索引；`getBlockDagInfo`、`getBalanceByAddress`、`getUtxosByAddresses` 都有响应。没有调用 `submitTransaction`。 |
 | 费用估计的内层字段 | `priorityBucket`、`normalBuckets`、`lowBuckets`，以及 `feerate` / `estimatedSeconds`，对齐 kaswallet `WalletRestClient` 和公开的 Kaspa WASM `IFeeEstimate`。rusty-kaspa 里对应的 `feerate.rs` 路径没有取到（404），内层结构没有从那份 Rust 源码确认。 |
 | PSBT 相关的 RPC 参数 | 无需实现。见 BIP174。PSKT 在库内交换，不通过这些 RPC 参数提交或广播。 |
 
@@ -178,9 +178,9 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 
 ## 当前进度
 
-0.1.3-alpha。第一阶段的编码器、BLAKE2b、`uint256`、网络和三种地址仍在。第二阶段的密钥、签名、脚本、版本 0 交易和 sighash 仍在。第三阶段补上 BIP39、BIP32、mass / 费率、交易构建器和最小 wRPC JSON 客户端。0.1.1 补上 Toccata 版本 1 交易号、找零与 mass 策略，以及 wRPC 帧分发。0.1.2 让构建器强制花掉指定输入、在一枚币够付时不拉小币，并直接产出版本 1 付款。0.1.3 加上 PSKT：部分签名、合并、单签与 P2SH 多签终结、提取，以及 `TransactionBuilder.BuildPSKT`。
+0.1.4-alpha。库的行为与 0.1.3 相同。这一版加上 `samples/` 里的控制台示例。第一阶段的编码器、BLAKE2b、`uint256`、网络和三种地址仍在。第二阶段的密钥、签名、脚本、版本 0 交易和 sighash 仍在。第三阶段补上 BIP39、BIP32、mass / 费率、交易构建器和最小 wRPC JSON 客户端。0.1.1 补上 Toccata 版本 1 交易号、找零与 mass 策略，以及 wRPC 帧分发。0.1.2 让构建器强制花掉指定输入、在一枚币够付时不拉小币，并直接产出版本 1 付款。0.1.3 加上 PSKT：部分签名、合并、单签与 P2SH 多签终结、提取，以及 `TransactionBuilder.BuildPSKT`。
 
-- 解决方案：`NKaspa.sln`，类库 `src/NKaspa`（`net8.0`、`netstandard2.1`），测试 `tests/NKaspa.Tests`（xUnit，`net8.0`）。
+- 解决方案：`NKaspa.sln`，类库 `src/NKaspa`（`net8.0`、`netstandard2.1`），测试 `tests/NKaspa.Tests`（xUnit，`net8.0`），示例 `samples/`（六个控制台项目，`net8.0`）。对照见下文「示例」。
 - 密钥：`Key`、`PubKey`（32 字节 x-only）、`PubKeyECDSA`（33 字节压缩）。`GetAddress` 默认是 Schnorr 地址。`Key.Create` 会清零临时缓冲区。`ExtKey.PrivateKey` 返回副本，处置副本不会让父密钥失效。
 - 签名：`SchnorrSignature`、`ECDSASignature`、`SigHashType`（`All=0x01`、`None=0x02`、`Single=0x04`，anyone-can-pay 是 `0x80`）。
 - 脚本：`OpcodeType`、`Op`、`Script`、`ScriptBuilder`。`ScriptPubKey` 仍带 u16 版本。标准模板是 Schnorr P2PK、ECDSA P2PK、P2SH。签名脚本是 66 字节的 `OP_DATA_65` 推送。不执行脚本。
@@ -192,7 +192,7 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 - BIP32：BIP-0032 的五组官方向量（含非法密钥）。Kaspa 前缀做了往返。没有找到外部钉死的「助记词 → kaspa 地址」字符串，测试只检查派生地址能通过 `KaspaAddress.IsValid`，以及账户公钥派生和私钥派生得到同一地址。
 - Mass：rusty-kaspa `test_storage_mass` 经 kaswallet `MassCalculatorTests` 移植。另有三组 api.kaspa.org `/transactions/mass` 的金额样本（83333、10003、2017），不是上游单元测试。mass 尺寸含 32 字节 payload 哈希、不含 sigop 字节，也不含 covenant 存在字节。空白交易是 94，不是 `ToBytes()` 的 62。版本 1 每个输入再加 2 字节 compute budget；有 covenant 时输出再加 34 字节。
 - 交易构建器：本地 Schnorr 与 ECDSA P2PK 端到端。默认 `MinimumChange` 是 0.02 KAS。找零低于这个数，或找零会让 mass 超限时，并进手续费。默认费用 mass 上限是块的 compute 限额 500000。`toccataActive: false` 恢复 100000。显式手续费低于最低中继费会拒绝，除非 `AllowBelowMinimumRelayFee`。最低中继费 = 100 sompi × max(compute mass, 归一化 transient mass)，不含 storage。标准单输入是 2036 gram，203600 sompi，约 0.002 KAS。`SendEstimatedFees` 按费率乘 fee mass（三项里最大的那个）。`SendMinimumRelayFee` 只付中继下限。`EstimateFee` 与 `EstimateMinimumRelayFee` 是对应的静态估算。选币按 outpoint 去重，不按脚本合并。一枚够付时只用最小的那一枚。`MustSpend` 与 `SpendAllCoins` 强制全部指定输入进入交易，每笔输入单独签名。`SetVersion(1)` 用版本 1 sighash，默认每输入 compute budget 10（1000 compute gram，相当于版本 0 的一次签名）。版本 1 的 wRPC JSON 同时写 `sigOpCount` 和 `computeBudget`。
-- RPC：内存 JSON 样例，加上本地回环 WebSocket。大整数用整数记号，不用 `double`（样本 `9007199254740993`）。`getBlockDagInfo` 的 `network` 接受字符串或 `{networkType, suffix}`。
+- RPC：内存 JSON 样例，加上本地回环 WebSocket。大整数用整数记号，不用 `double`（样本 `9007199254740993`）。`getBlockDagInfo` 的 `network` 接受字符串或 `{networkType, suffix}`。`samples/NodeQuery` 对公共主网端点做过一次只读查询，见上文。
 
 ## Toccata 兼容性
 
@@ -237,20 +237,33 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 
 版本 1 那笔的 wRPC JSON 同时有 `sigOpCount` 和 `computeBudget`，与 `d5f68e7` 的写法一致。
 
+## 示例
+
+示例是 `samples/` 下的控制台项目，对标 NBitcoin 文档里的短示例。默认不广播。离线示例由 `tests/NKaspa.Tests/SampleSmokeTests.cs` 和 `samples/smoke.ps1` 覆盖。`NodeQuery` 要连公共节点，不进单元测试。
+
+| 示例 | 项目 | NBitcoin | NKaspa |
+| --- | --- | --- | --- |
+| 助记词与派生地址 | `samples/Mnemonic` | `Mnemonic`、`ExtKey`、`KeyPath` | `Mnemonic.DeriveExtKey`、`KeyPath.KaspaReceive(i)` = `m/44'/111111'/0'/0/i`。主网 `kpub`，测试网 `ktub`。 |
+| 地址与 ScriptPubKey | `samples/Address` | `BitcoinAddress.Create`、`ScriptPubKey` | `KaspaAddress.Parse` / `TryParse` / `IsValid`，以及 `KaspaAddress.ScriptPubKey`。 |
+| 只读节点查询 | `samples/NodeQuery` | `RPCClient` 的只读调用 | `KaspaWebSocketChannel` + `KaspaWrpcJsonClient`。方法是 `getServerInfo`、`getBlockDagInfo`、`getBalanceByAddress`、`getUtxosByAddresses`。默认 `wss://eva.kaspa.green/kaspa/mainnet/wrpc/json`。不调用 `submitTransaction`。 |
+| 构建并签名 | `samples/Spend` | `TransactionBuilder` | 版本 0、版本 0 的 `MustSpend` 双输入、版本 1，费用是 `SendMinimumRelayFee`。默认打印交易十六进制和 wRPC JSON。`--broadcast` 且环境变量 `NKASPA_MNEMONIC` 都有，并且还传入 `--to` 与 `--amount` 时才提交。 |
+| PSKT 2-of-2 | `samples/PsktMultisig` | BIP174 `PartiallySignedTransaction`（不移植） | `NKaspa.PSKT.PSKT`：创建、双方 `Sign`、`Combine`、`Finalize`、`ExtractTransaction`。 |
+| 离线消息签名 | `samples/SignMessage` | `Key.SignMessage`。BIP322 仍无需实现 | 对 UTF-8 的 BLAKE2b-256 调用 `Key.SignSchnorr` / `Key.SignECDSA`，再用 `PubKey.Verify` / `PubKeyECDSA.Verify`。不是比特币消息前缀。 |
+
 ## 仍未完成
 
 - 脚本虚拟机。
 - Covenant 执行与零知识证明。
 - 与正在运行的 rusty-kaspa 做 PSKT 字节对照。上游测试没有钉死向量。
 - 版本 1 compute budget 进入 PSKT。rusty-kaspa 的 `unsigned_tx` 这里仍是 TODO。
-- 示例程序。
 - NuGet 发布。这一版只改版本号，不推包。
 - 通用 `JsonConverter`。
 - 未合并的 transient mass 改动（PR 1141）以及未能从源码确认的测试网激活 DAA。
+- 示例里的 `--broadcast` 路径没有对公共节点执行过。
 
 ## 下一步计划
 
 - 脚本虚拟机。
 - Covenant 执行。
 - 有上游向量之后，钉死多公钥 map 和多 xpub 的 JSON 键序。
-- 示例程序与 NuGet 打包准备。
+- NuGet 打包准备。示例已经在 `samples/`，默认不广播。

@@ -14,6 +14,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\NKaspa\NKaspa.csproj" />
+    <ProjectReference Include="..\..\samples\Mnemonic\Mnemonic.csproj" />
+    <ProjectReference Include="..\..\samples\Address\Address.csproj" />
+    <ProjectReference Include="..\..\samples\Spend\Spend.csproj" />
+    <ProjectReference Include="..\..\samples\PsktMultisig\PsktMultisig.csproj" />
+    <ProjectReference Include="..\..\samples\SignMessage\SignMessage.csproj" />
   </ItemGroup>
 
   <ItemGroup>
