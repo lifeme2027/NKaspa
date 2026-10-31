@@ -8,7 +8,7 @@ NKaspa is a .NET library for [Kaspa](https://kaspa.org/). Version **0.1.9-alpha*
 
 The public types follow [NBitcoin](https://github.com/MetacoSA/NBitcoin) where a Kaspa counterpart exists. `KaspaAddress` corresponds to `BitcoinAddress`. `uint256` corresponds to `NBitcoin.uint256`. `Encoders` corresponds to `NBitcoin.DataEncoders.Encoders`. The behavior is Kaspa's, not Bitcoin's: addresses use cashaddr-style bech32 (`kaspa`, `kaspatest`, `kaspasim`, `kaspadev`, 8-character checksum), and consensus hashes are unkeyed BLAKE2b-256.
 
-NBitcoin is MIT licensed. See [NOTICE](NOTICE). Elliptic-curve operations use the `NBitcoin.Secp256k1` package. BLAKE2b is implemented in this repository from [RFC 7693](https://www.rfc-editor.org/rfc/rfc7693). BLAKE3 is implemented from the BLAKE3 specification. No extra hash package was added.
+NBitcoin is MIT licensed. Copyright (c) .NET Foundation and Contributors / Nicolas Dorier. See [Acknowledgement](#acknowledgement) and [NOTICE](NOTICE). Elliptic-curve operations use the `NBitcoin.Secp256k1` package. BLAKE2b is implemented in this repository from [RFC 7693](https://www.rfc-editor.org/rfc/rfc7693). BLAKE3 is implemented from the BLAKE3 specification. No extra hash package was added.
 
 ### Status
 
@@ -161,11 +161,17 @@ Projects:
 - `tests/NKaspa.Tests` — xUnit, `net8.0`
 - `samples/` — console samples, `net8.0`
 
-Package id `NKaspa`. Repository placeholder: https://github.com/lifeme2027/NKaspa
+Package id `NKaspa`. Repository: https://github.com/lifeme2027/NKaspa
 
 ### License
 
 [MIT](LICENSE). Copyright (c) 2026 NKaspa contributors.
+
+### Acknowledgement
+
+NKaspa's API design references [NBitcoin](https://github.com/MetacoSA/NBitcoin). NBitcoin is licensed under the MIT License. Copyright (c) .NET Foundation and Contributors / Nicolas Dorier.
+
+NKaspa does not include the NBitcoin source tree. Elliptic-curve operations use the `NBitcoin.Secp256k1` package (MIT). The BIP39 English wordlist in `src/NKaspa/BIP39/english.txt` is the list shipped with NBitcoin; its notice is `src/NKaspa/BIP39/WORDLIST-LICENSE.txt`. Details are in [NOTICE](NOTICE).
 
 ## 中文
 
@@ -173,7 +179,7 @@ NKaspa 是 Kaspa 的 .NET 基础函数库，版本 **0.1.9-alpha**。
 
 公开类型尽量与 [NBitcoin](https://github.com/MetacoSA/NBitcoin) 一一对应，但语义按 Kaspa。地址是 cashaddr 风格的 bech32（前缀 `kaspa` / `kaspatest` / `kaspasim` / `kaspadev`，8 字符校验和）。共识哈希是不带密钥的 BLAKE2b-256，不是比特币的双 SHA256。
 
-NBitcoin 采用 MIT 许可，致谢见 [NOTICE](NOTICE)。椭圆曲线使用 NuGet 包 `NBitcoin.Secp256k1`（MIT）。BLAKE2b 按 RFC 7693 在本库实现。BLAKE3 按规范在本库实现，没有额外的哈希包。
+NBitcoin 采用 MIT 许可。Copyright (c) .NET Foundation and Contributors / Nicolas Dorier。致谢见 [致谢](#致谢) 和 [NOTICE](NOTICE)。椭圆曲线使用 NuGet 包 `NBitcoin.Secp256k1`（MIT）。BLAKE2b 按 RFC 7693 在本库实现。BLAKE3 按规范在本库实现，没有额外的哈希包。
 
 ### 状态
 
@@ -324,8 +330,14 @@ dotnet test NKaspa.sln
 - `tests/NKaspa.Tests`：xUnit，`net8.0`
 - `samples/`：控制台示例，`net8.0`
 
-包名 `NKaspa`。仓库地址暂为 https://github.com/lifeme2027/NKaspa
+包名 `NKaspa`。仓库：https://github.com/lifeme2027/NKaspa
 
 ### 许可证
 
 [MIT](LICENSE)。Copyright (c) 2026 NKaspa contributors.
+
+### 致谢
+
+NKaspa 的 API 设计参考 [NBitcoin](https://github.com/MetacoSA/NBitcoin)。NBitcoin 采用 MIT 许可。Copyright (c) .NET Foundation and Contributors / Nicolas Dorier。
+
+NKaspa 不包含 NBitcoin 源码树。椭圆曲线使用 `NBitcoin.Secp256k1` 包（MIT）。`src/NKaspa/BIP39/english.txt` 是随 NBitcoin 发布的 BIP39 英文词表，声明见 `src/NKaspa/BIP39/WORDLIST-LICENSE.txt`。详情见 [NOTICE](NOTICE)。

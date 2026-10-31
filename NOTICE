@@ -3,10 +3,10 @@ Copyright (c) 2026 NKaspa contributors
 
 This project is an independent .NET library for Kaspa. Its public types are
 named as counterparts of NBitcoin (https://github.com/MetacoSA/NBitcoin).
-NBitcoin is licensed under the MIT License. Copyright for NBitcoin is held
-by its contributors, including Nicolas Dorier and Metaco SA.
+NKaspa's API design references NBitcoin. NBitcoin is licensed under the MIT
+License. Copyright (c) .NET Foundation and Contributors / Nicolas Dorier.
 
-NKaspa does not vendor the rest of the NBitcoin source. One exception:
+NKaspa does not vendor the NBitcoin source tree. One exception:
 src/NKaspa/BIP39/english.txt is the BIP39 English wordlist copied from
 NBitcoin/BIP39/IWordlistSource.cs. Its MIT notice is
 src/NKaspa/BIP39/WORDLIST-LICENSE.txt. Copyright (c) 2023 Metaco SA.

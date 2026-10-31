@@ -5,13 +5,17 @@
     <AssemblyName>NKaspa</AssemblyName>
     <Version>0.1.9-alpha</Version>
     <PackageId>NKaspa</PackageId>
+    <Authors>lifeme2027</Authors>
     <Title>NKaspa</Title>
-    <Description>A .NET library for Kaspa, structured as a counterpart of NBitcoin. Alpha: keys, Schnorr and ECDSA signatures, scripts, version-0 and Toccata version-1 transactions, BLAKE2b and BLAKE3, sighash, BIP39, BIP32, a transaction builder with must-spend coin selection and version-1 payments, PSKT (partially signed Kaspa transactions) aligned with rusty-kaspa wallet/pskt, mass and fees, a minimal wRPC JSON client, System.Text.Json converters, encoders, uint256, networks, and addresses. The script engine executes version-0 scripts, including pay-to-script-hash. OP_ZKPRECOMPILE enforces the finalized structural checks and leaves the BN254 pairing and the RISC0 STARK unimplemented. ConsensusSeqCommitAccessor walks the selected-parent chain from a fixed sink snapshot through read-only getBlock and getBlockDagInfo calls. Forward growth of that chain is not a reorg, and a tip that runs more than 32 selected parents ahead is checked with a fresh isChainBlock instead of being chased block by block. It throws when the data is incomplete, inconsistent, or still reorged after a few retries. A light client can only approach consensus; matching it exactly requires a node. Newtonsoft.Json is not a dependency.</Description>
-    <PackageTags>kaspa;nkaspa;blockchain</PackageTags>
+    <Description>A .NET library for Kaspa. The public API follows NBitcoin where a Kaspa counterpart exists. This alpha covers addresses, keys, scripts, transactions, BIP39, BIP32, PSKT, fees, and a minimal wRPC client.</Description>
+    <PackageTags>kaspa;blockchain;crypto;nbitcoin</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/lifeme2027/NKaspa</PackageProjectUrl>
     <RepositoryUrl>https://github.com/lifeme2027/NKaspa</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 

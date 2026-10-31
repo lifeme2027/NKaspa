@@ -19,3 +19,11 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+Acknowledgement
+
+NKaspa's API design references NBitcoin (https://github.com/MetacoSA/NBitcoin).
+NBitcoin is licensed under the MIT License.
+Copyright (c) .NET Foundation and Contributors / Nicolas Dorier.
+
+NKaspa does not include the NBitcoin source tree. See NOTICE.
