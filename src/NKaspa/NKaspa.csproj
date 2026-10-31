@@ -3,7 +3,7 @@
     <TargetFrameworks>net8.0;netstandard2.1</TargetFrameworks>
     <RootNamespace>NKaspa</RootNamespace>
     <AssemblyName>NKaspa</AssemblyName>
-    <Version>0.1.9-alpha</Version>
+    <Version>0.1.10-alpha</Version>
     <PackageId>NKaspa</PackageId>
     <Authors>lifeme2027</Authors>
     <Title>NKaspa</Title>

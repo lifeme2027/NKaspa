@@ -4,7 +4,7 @@
 
 ## English
 
-NKaspa is a .NET library for [Kaspa](https://kaspa.org/). Version **0.1.9-alpha**.
+NKaspa is a .NET library for [Kaspa](https://kaspa.org/). Version **0.1.10-alpha**.
 
 The public types follow [NBitcoin](https://github.com/MetacoSA/NBitcoin) where a Kaspa counterpart exists. `KaspaAddress` corresponds to `BitcoinAddress`. `uint256` corresponds to `NBitcoin.uint256`. `Encoders` corresponds to `NBitcoin.DataEncoders.Encoders`. The behavior is Kaspa's, not Bitcoin's: addresses use cashaddr-style bech32 (`kaspa`, `kaspatest`, `kaspasim`, `kaspadev`, 8-character checksum), and consensus hashes are unkeyed BLAKE2b-256.
 
@@ -30,7 +30,8 @@ var fee = FeeRate.MinimumRelay.GetFee(2_036);
 
 // Change below 0.02 KAS, or change that would push mass over the block limit, is added to the fee.
 // The default mass ceiling is the post-Toccata block limit (compute and storage 500000, transient 1000000).
-// Pass `new TransactionBuilder(Network.Mainnet, toccataActive: false)` to keep the old 100000 cap.
+// Pass `new TransactionBuilder(Network.Mainnet, toccataActive: false)` to keep the old 100000 cap and 1 sompi/gram.
+// `new TransactionBuilder(network, virtualDaaScore)` selects that policy from the network activation score.
 var tx = new TransactionBuilder()
     .AddKeys(receive.PrivateKey)
     .AddCoins(coin)
@@ -43,7 +44,7 @@ IKaspaRpcClient rpc = new KaspaWrpcJsonClient(channel);
 var info = await rpc.GetServerInfoAsync();
 ```
 
-`coin` is an `OutPoint` plus the `UtxoEntry` it spends. `payee` is a `KaspaAddress`. `channel` is an `IKaspaJsonChannel`. `KaspaWebSocketChannel` can open a socket. The tests do not. `KeyPath.KaspaReceive(0)` is `m/44'/111111'/0'/0/0`. Extended keys on mainnet use the `kprv` / `kpub` prefix. Testnet, simnet, and devnet use `ktrv` / `ktub`. `FeeRate` is sompi per gram of mass.
+`coin` is an `OutPoint` plus the `UtxoEntry` it spends. `payee` is a `KaspaAddress`. `channel` is an `IKaspaJsonChannel`. `KaspaWebSocketChannel` can open a socket. Pass `KaspaWebSocketOptions` for the 15 second connect timeout, the 30 second request timeout, and optional reconnect. A drop fails requests that are still waiting. The tests do not dial a public node. `KeyPath.KaspaReceive(0)` is `m/44'/111111'/0'/0/0`. Extended keys on mainnet use the `kprv` / `kpub` prefix. Testnet, simnet, and devnet use `ktrv` / `ktub`. `ExtKey.ToString()` returns `NKaspa.ExtKey`. Export the private extended key with `GetWif(network)`, `ToString(network)`, or `ToBase58()`. `FeeRate` is sompi per gram of mass.
 
 The minimum relay fee is 100 sompi times the larger of compute mass and normalized transient mass. Storage mass is not part of that floor. A standard one-input Schnorr payment with change is 2036 grams, 203600 sompi, about 0.002 KAS. `SendEstimatedFees` multiplies a rate by the fee mass, which also includes normalized storage. `SendMinimumRelayFee` pays the relay floor. `MustSpend` and `SpendAllCoins` put every named coin in the transaction and sign each input. Coins that share a script are not merged. `SetVersion(1)` is a Toccata payment. The default compute budget is 10 per input. wRPC JSON for version 1 includes both `sigOpCount` and `computeBudget`.
 
@@ -175,7 +176,7 @@ NKaspa does not include the NBitcoin source tree. Elliptic-curve operations use 
 
 ## 中文
 
-NKaspa 是 Kaspa 的 .NET 基础函数库，版本 **0.1.9-alpha**。
+NKaspa 是 Kaspa 的 .NET 基础函数库，版本 **0.1.10-alpha**。
 
 公开类型尽量与 [NBitcoin](https://github.com/MetacoSA/NBitcoin) 一一对应，但语义按 Kaspa。地址是 cashaddr 风格的 bech32（前缀 `kaspa` / `kaspatest` / `kaspasim` / `kaspadev`，8 字符校验和）。共识哈希是不带密钥的 BLAKE2b-256，不是比特币的双 SHA256。
 
@@ -201,7 +202,8 @@ var fee = FeeRate.MinimumRelay.GetFee(2_036);
 
 // 低于 0.02 KAS 的找零，或会把 mass 顶过块限额的找零，会并进手续费。
 // 默认 mass 上限是 Toccata 之后的块限额（compute 与 storage 500000，transient 1000000）。
-// `new TransactionBuilder(Network.Mainnet, toccataActive: false)` 保留旧的 100000 上限。
+// `new TransactionBuilder(Network.Mainnet, toccataActive: false)` 保留旧的 100000 上限和 1 sompi/gram。
+// `new TransactionBuilder(network, virtualDaaScore)` 按该网络的激活分数选择。
 var tx = new TransactionBuilder()
     .AddKeys(receive.PrivateKey)
     .AddCoins(coin)
@@ -214,7 +216,7 @@ IKaspaRpcClient rpc = new KaspaWrpcJsonClient(channel);
 var info = await rpc.GetServerInfoAsync();
 ```
 
-`coin` 是 `OutPoint` 加上它花费的 `UtxoEntry`。`payee` 是 `KaspaAddress`。`channel` 是 `IKaspaJsonChannel`。`KaspaWebSocketChannel` 可以打开套接字。测试用本地回环服务器，没有连过真实节点。`KeyPath.KaspaReceive(0)` 是 `m/44'/111111'/0'/0/0`。主网扩展密钥前缀是 `kprv` / `kpub`。测试网、模拟网和开发网是 `ktrv` / `ktub`。`FeeRate` 的单位是 sompi/gram。
+`coin` 是 `OutPoint` 加上它花费的 `UtxoEntry`。`payee` 是 `KaspaAddress`。`channel` 是 `IKaspaJsonChannel`。`KaspaWebSocketChannel` 可以打开套接字。`KaspaWebSocketOptions` 设置 15 秒连接超时、30 秒请求超时，以及可选的自动重连。断开时，还在等待的请求会失败。测试用本地回环服务器，没有连过真实节点。`KeyPath.KaspaReceive(0)` 是 `m/44'/111111'/0'/0/0`。主网扩展密钥前缀是 `kprv` / `kpub`。测试网、模拟网和开发网是 `ktrv` / `ktub`。`ExtKey.ToString()` 返回 `NKaspa.ExtKey`。导出扩展私钥用 `GetWif(network)`、`ToString(network)` 或 `ToBase58()`。`FeeRate` 的单位是 sompi/gram。
 
 最低中继费 = 100 sompi × max(compute mass, 归一化 transient mass)。storage mass 不计入这个下限。标准单输入 Schnorr 付款（带一笔找零）是 2036 gram，即 203600 sompi，约 0.002 KAS。`SendEstimatedFees` 用费率乘以 fee mass，fee mass 含归一化后的 storage。`SendMinimumRelayFee` 只付中继下限。`MustSpend` 和 `SpendAllCoins` 让指定的每一枚币都进入交易，并且每笔输入单独签名。相同脚本的币不会被并成一笔输入。`SetVersion(1)` 是 Toccata 付款。每个输入的默认 compute budget 是 10。版本 1 的 wRPC JSON 同时写出 `sigOpCount` 和 `computeBudget`。
 
