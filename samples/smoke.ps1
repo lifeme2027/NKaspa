@@ -43,4 +43,5 @@ Invoke-Sample "samples\Spend\Spend.csproj"
 Invoke-Sample "samples\PsktMultisig\PsktMultisig.csproj"
 Invoke-Sample "samples\SignMessage\SignMessage.csproj" @("NKaspa")
 Invoke-Sample "samples\Json\Json.csproj"
+Invoke-Sample "samples\Tutorials\Tutorials.csproj"
 Write-Host "smoke ok"

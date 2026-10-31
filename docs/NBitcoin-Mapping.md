@@ -1,5 +1,7 @@
 # NBitcoin 与 NKaspa 对照
 
+英文版：[NBitcoin and NKaspa](NBitcoin-Mapping.en.md)。
+
 对照的 NBitcoin 树是只读参考 `01NBitcoin/NBitcoin-master/NBitcoin`（本文件描述的是该树里的核心目录和主要类型）。NKaspa 的类型名尽量沿用对应名字，XML 注释里写 `Kaspa counterpart of NBitcoin.X`。行为按 Kaspa，不按比特币。
 
 状态只用三种：
@@ -127,7 +129,7 @@ Case-insensitivity and zero-width removal (a leading BOM and marks inside a word
 
 | 状态 | 原因 |
 | --- | --- |
-| 已实现（最小子集） | `IKaspaRpcClient` 同时由 `KaspaWrpcJsonClient` 和 `KaspaWrpcBorshClient` 实现。`KaspaRpcClient.Create(url, encoding = Auto)` 返回 `KaspaRpcConnection`，本身不连接。Auto 按 rusty-kaspa `4edcbbcc` `consensus/core/src/network.rs` 选端口：Borsh 是 17110、17210、17510、17610，JSON 是 18110、18210、18510、18610。Simnet 是 17510 与 18510，不是 17310 或 18310。未知端口抛异常。显式传入 `KaspaRpcEncoding.Borsh` 或 `Json` 可以覆盖端口。方法是 `getServerInfo`、`getBlockDagInfo`、`getUtxosByAddresses`、`getBalanceByAddress`、`getBalancesByAddresses`、`submitTransaction`、`getFeeEstimate`、`getBlock`，以及 `NotifyUtxosChanged`、`NotifyVirtualDaaScoreChanged`、`NotifyBlockAdded`。JSON 信封是 workflow-rpc：`id`、`method`、`params`。成功体在 `params`，读的时候也接受 `result`。错误是 `error.code` / `error.message`。不是 JSON-RPC 2.0。Borsh 是同一套 workflow-rpc 二进制帧：可选 u64 id、一个字节的 `RpcApiOps`，再加上带版本头的 serializer。订阅在线上是 `Subscribe`（op 3）和 `Unsubscribe`（op 4），载荷是 `Scope`。节点没有注册旧的 `Notify*` 操作码。 |
+| 已实现（最小子集） | `IKaspaRpcClient` 同时由 `KaspaWrpcJsonClient` 和 `KaspaWrpcBorshClient` 实现。`KaspaRpcClient.Create(url, encoding = Auto)` 返回 `KaspaRpcConnection`，本身不连接。Auto 先看 URL 路径，再看端口，路径优先。路径以 `/wrpc/borsh` 结尾或包含 `/borsh` 时选 Borsh；以 `/wrpc/json` 结尾或包含 `/json` 时选 JSON。比较不区分大小写。结尾检查会去掉末尾斜杠。两条都匹配时先测 Borsh，所以同时含 `/json` 和 `/borsh` 的路径选 Borsh。端口仍按 rusty-kaspa `4edcbbcc` `consensus/core/src/network.rs`：Borsh 是 17110、17210、17510、17610，JSON 是 18110、18210、18510、18610。Simnet 是 17510 与 18510，不是 17310 或 18310。路径和端口都对不上时抛 `ArgumentException`，不会默认成某一种编码。例如 443 端口的 `wss`，路径里没有 `/json` 或 `/borsh`。gRPC 端口 16110、16210、16510、16610 也抛 `ArgumentException`，说明本库说的是 wRPC（上面的 Borsh 或 JSON 端口），不是 gRPC。显式传入 `KaspaRpcEncoding.Borsh` 或 `Json` 可以覆盖路径和 wRPC 端口，不能把 gRPC 端口变成 wRPC。JSON 客户端收到二进制帧，或 Borsh 客户端收到文本帧，抛 `KaspaRpcEncodingMismatchException`。Borsh 客户端收到 JSON 握手文本时 `HandshakeFailed` 为 true。进行中的请求以这个异常失败，不等待请求超时，也不重连。`KaspaWrpcPorts` 记下四个 gRPC 端口，并提供 `TrySelectPath`。方法是 `getServerInfo`、`getBlockDagInfo`、`getUtxosByAddresses`、`getBalanceByAddress`、`getBalancesByAddresses`、`submitTransaction`、`getFeeEstimate`、`getBlock`，以及 `NotifyUtxosChanged`、`NotifyVirtualDaaScoreChanged`、`NotifyBlockAdded`。JSON 信封是 workflow-rpc：`id`、`method`、`params`。成功体在 `params`，读的时候也接受 `result`。错误是 `error.code` / `error.message`。不是 JSON-RPC 2.0。Borsh 是同一套 workflow-rpc 二进制帧：可选 u64 id、一个字节的 `RpcApiOps`，再加上带版本头的 serializer。订阅在线上是 `Subscribe`（op 3）和 `Unsubscribe`（op 4），载荷是 `Scope`。节点没有注册旧的 `Notify*` 操作码。 |
 | 单元测试不连节点 | 单元测试用内存里的 JSON 通道和本地回环 WebSocket。`samples/NodeQuery` 在 2026-10-30 对 `wss://eva.kaspa.green/kaspa/mainnet/wrpc/json` 做过一次只读查询：`getServerInfo` 返回 rusty-kaspa 2.1.0、mainnet、已同步、有 UTXO 索引；`getBlockDagInfo`、`getBalanceByAddress`、`getUtxosByAddresses` 都有响应。没有调用 `submitTransaction`。 |
 | 费用估计的内层字段 | `priorityBucket`、`normalBuckets`、`lowBuckets`，以及每桶的 `feerate` / `estimatedSeconds`（两个小端 f64）。已按 rusty-kaspa `4edcbbcc` `rpc/core/src/model/feerate_estimate.rs` 确认。`priorityBucket` 必填。响应是 serializer 版本 u16，再套一层 `serialize!(RpcFeeEstimate)`。JSON 形状仍与 kaswallet `WalletRestClient` 和 Kaspa WASM `IFeeEstimate` 一致。早先 `feerate.rs` 的 404 是路径不对，不是字段未定。 |
 | PSBT 相关的 RPC 参数 | 无需实现。见 BIP174。PSKT 在库内交换，不通过这些 RPC 参数提交或广播。 |
@@ -213,7 +215,7 @@ Case-insensitivity and zero-width removal (a leading BOM and marks inside a word
 
 0.1.9-alpha。这一版让 `ConsensusSeqCommitAccessor` 在回推开始时固定 sink 及其蓝分。主网大约每秒 10 块，回推期间 `getBlockDagInfo` 会看到新的 sink。新 sink 的 selected parent 链如果仍包含该快照，视为链向前增长，按快照返回结果，不抛 `Reorg`。只有快照视点或回推路径上的区块离开选定链（`isChainBlock` 变为 false，或新链不经过它）才算重组。`StableDepth` 默认 20，大约是 10 块每秒下的 2 秒，可以把视点沿 selected parent 退到尖端之后。设为 0 则视点就是锁定的 sink。真正的重组默认自动重试 3 次，请求计数不归零，耗尽才抛 `Reorg`。默认请求上限是 256，含回推期间新长出来的块；到顶就停，不扫整个 finality 窗口。新 sink 比快照超前超过 32 个 selected parent，或预算不够把新链走完时，重读快照区块，用最新的 `isChainBlock` 判断它是否还在选定链上。`WrpcSeqCommitAccessor` 的视点仍是 DAG sink。0.1.8-alpha 加上了可选的 `ConsensusSeqCommitAccessor`：用只读的 `getBlock` 与 `getBlockDagInfo` 沿 selected parent 链回推，确定共识使用的区块和 seq commitment，并核对 selected parent、蓝分和 `isChainBlock`。数据不全、不一致或重组时抛异常，不静默当成剪枝或过深。轻客户端只能尽量接近共识，完全等同需要运行节点。0.1.7-alpha 补上 `OP_ZKPRECOMPILE` 已定稿的结构检查、内省与 covenant 构造助手、示例脚本，以及只读的 `WrpcSeqCommitAccessor`。0.1.6 起执行脚本。0.1.5 的通用 JSON 转换器还在。0.1.4 的行为还在：`samples/` 里的控制台示例。第一阶段的编码器、BLAKE2b、`uint256`、网络和三种地址仍在。第二阶段的密钥、签名、脚本、版本 0 交易和 sighash 仍在。第三阶段补上 BIP39、BIP32、mass / 费率、交易构建器和最小 wRPC JSON 客户端。0.1.1 补上 Toccata 版本 1 交易号、找零与 mass 策略，以及 wRPC 帧分发。0.1.2 让构建器强制花掉指定输入、在一枚币够付时不拉小币，并直接产出版本 1 付款。0.1.3 加上 PSKT：部分签名、合并、单签与 P2SH 多签终结、提取，以及 `TransactionBuilder.BuildPSKT`。
 
-- 解决方案：`NKaspa.sln`，类库 `src/NKaspa`（`net8.0`、`netstandard2.1`），测试 `tests/NKaspa.Tests`（xUnit，`net8.0`），示例 `samples/`（七个控制台项目，`net8.0`）。对照见下文「示例」。
+- 解决方案：`NKaspa.sln`，类库 `src/NKaspa`（`net8.0`、`netstandard2.1`），测试 `tests/NKaspa.Tests`（xUnit，`net8.0`），示例 `samples/`（八个控制台项目，`net8.0`，含 `samples/Tutorials`）。对照见下文「示例」。
 - 密钥：`Key`、`PubKey`（32 字节 x-only）、`PubKeyECDSA`（33 字节压缩）。`GetAddress` 默认是 Schnorr 地址。`Key.Create` 会清零临时缓冲区。`ExtKey.PrivateKey` 返回副本，处置副本不会让父密钥失效。
 - 签名：`SchnorrSignature`、`ECDSASignature`、`SigHashType`（`All=0x01`、`None=0x02`、`Single=0x04`，anyone-can-pay 是 `0x80`）。
 - 脚本：`OpcodeType`、`Op`、`Script`、`ScriptBuilder`、`ScriptEvaluationContext`、`TxScriptEngine`。`ScriptPubKey` 仍带 u16 版本。标准模板是 Schnorr P2PK、ECDSA P2PK、P2SH。签名脚本是 66 字节的 `OP_DATA_65` 推送。版本 0 脚本会执行，P2SH 会再跑赎回脚本。推送、流程控制、栈、位运算、算术、Schnorr 与 ECDSA 的 `OP_CHECKSIG` / `OP_CHECKMULTISIG`、`OP_BLAKE2B`、`OP_BLAKE3`、`OP_SHA256`、`OP_CHECKLOCKTIMEVERIFY`、`OP_CHECKSEQUENCEVERIFY`、内省操作码 `0xb2`–`0xc9`、covenant 操作码 `0xcb`–`0xd6`、`OP_NUM2BIN`、`OP_BIN2NUM`、`OP_CHECKSIGFROMSTACK` 都已实现。`OP_ZKPRECOMPILE` 执行已定稿的结构检查；BN254 配对、曲线点检查和 RISC0 STARK 仍返回未实现，不压入 true。`ScriptBuilder` 给 `0xb2`–`0xc9` 和 `0xcb`–`0xd6` 提供构造助手。`CovenantScripts` 里有三条例子，引擎可以执行，不广播。没有 `ISeqCommitAccessor` 时 `OP_CHAINBLOCKSEQCOMMIT` 是非法操作码。数字是小端，符号在末字节高位，算术宽度最多 8 字节。
@@ -282,9 +284,9 @@ Mass：当前 rusty-kaspa master 的 mainnet、testnet（suffix 10）、simnet�
 
 ## 0.1.11 Borsh wRPC
 
-`KaspaWrpcBorshClient` 与原来的 `KaspaWrpcJsonClient` 都实现 `IKaspaRpcClient`。`KaspaRpcClient.Create` 按端口选择编码，也可以显式指定。Borsh 套接字的超时、重连、16 MiB 上限、`State`、`StateChanged`、`Reconnected` 与 JSON 套接字相同。第一次 `ConnectAsync` 不触发 `Reconnected`。
+`KaspaWrpcBorshClient` 与原来的 `KaspaWrpcJsonClient` 都实现 `IKaspaRpcClient`。`KaspaRpcClient.Create` 在 `KaspaRpcEncoding.Auto` 下先按路径、再按端口选择编码，路径优先。路径和端口都未知时抛异常，不默认。gRPC 端口 16110、16210、16510、16610 被拒绝。显式的 `Borsh` 或 `Json` 覆盖路径和 wRPC 端口，不覆盖 gRPC 端口。编码对不上时抛 `KaspaRpcEncodingMismatchException`。Borsh 套接字的超时、重连、16 MiB 上限、`State`、`StateChanged`、`Reconnected` 与 JSON 套接字相同。第一次 `ConnectAsync` 不触发 `Reconnected`。
 
-线上格式对照 rusty-kaspa `4edcbbccb449f84832afb1ca157904b35f37d006` 和 workflow-rs `7e2958098bbe0647adcfcc0dfc174e438a60699e`（workflow-rpc / workflow-serializer 0.19.0）。请求是 `BorshReqHeader`（可选 u64 id、一个字节的 `RpcApiOps`）拼上带 u32 长度的 serializer 正文。成功响应的载荷是 Borsh `Result` 再加那个 serializer 字节串。borsh 1.8.1 里 `Ok` 是 `1u8`，`Err` 是 `0u8`。协议层 kind 仍是 Success。通知的载荷是 `Serializable<Notification>`，不是 `Result`。没有握手帧。
+线上格式对照 rusty-kaspa `4edcbbccb449f84832afb1ca157904b35f37d006` 和 workflow-rs `7e2958098bbe0647adcfcc0dfc174e438a60699e`（workflow-rpc / workflow-serializer 0.19.0）。请求是 `BorshReqHeader`（可选 u64 id、一个字节的 `RpcApiOps`）拼上带 u32 长度的 serializer 正文。成功响应的载荷是 Borsh `Result` 再加那个 serializer 字节串。borsh 1.8.1 里 `Ok` 是 `1u8`，`Err` 是 `0u8`。协议层 kind 仍是 Success。通知的载荷是 `Serializable<Notification>`，不是 `Result`。节点并不发送握手问候（`KaspaRpcHandler::handshake` 仍是 TODO），本库也不发送握手。JSON 客户端收到二进制帧，或 Borsh 客户端收到文本帧，立即抛 `KaspaRpcEncodingMismatchException`。进行中的请求一起失败，不等待请求超时，也不重连。Borsh 客户端收到 JSON 握手文本时 `HandshakeFailed` 为 true。
 
 `NetworkType` 的 Borsh 顺序是 Mainnet、Testnet、Devnet、Simnet。地址前缀的顺序是 Mainnet、Testnet、Simnet、Devnet。两套编号不一样。
 
@@ -346,6 +348,7 @@ WebSocket。托管 `HttpListener`（Linux）的 `NetworkStream` 不拥有 TCP �
 | 构建并签名 | `samples/Spend` | `TransactionBuilder` | 版本 0、版本 0 的 `MustSpend` 双输入、版本 1，费用是 `SendMinimumRelayFee`。默认打印交易十六进制和 wRPC JSON。`--broadcast` 且环境变量 `NKASPA_MNEMONIC` 都有，并且还传入 `--to` 与 `--amount` 时才提交。提交前检查付款输出、最低中继费和 `Transaction.Verify`。`--from` 与 `--max-fee-sompi` 可选。 |
 | PSKT 2-of-2 | `samples/PsktMultisig` | BIP174 `PartiallySignedTransaction`（不移植） | `NKaspa.PSKT.PSKT`：创建、双方 `Sign`、`Combine`、`Finalize`、`ExtractTransaction`。 |
 | 离线消息签名 | `samples/SignMessage` | `Key.SignMessage`。BIP322 仍无需实现 | 对 UTF-8 的 BLAKE2b-256 调用 `Key.SignSchnorr` / `Key.SignECDSA`，再用 `PubKey.Verify` / `PubKeyECDSA.Verify`。不是比特币消息前缀。 |
+| 教程片段 | `samples/Tutorials` | 短示例 | `AddressTutorial` 与 `SendTutorial.RunOffline`，对应 `docs/tutorials/`。编译这些片段，不开套接字，不调用 `SubmitTransactionAsync`。`SendOnTestnetAsync` 只为编译广播路径，默认测试网，示例入口不调用它。 |
 | JSON | `samples/Json` | `NBitcoin.JsonConverters.Serializer` | `NKaspaJsonSerializer` 与 `AddNKaspaConverters(network)`。版本 0 / 版本 1（`computeBudget`、`covenant`）、`scriptPublicKey` 的版本前缀十六进制。私钥默认拒绝。 |
 
 ## 仍未完成

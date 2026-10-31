@@ -20,6 +20,7 @@
     <ProjectReference Include="..\..\samples\PsktMultisig\PsktMultisig.csproj" />
     <ProjectReference Include="..\..\samples\SignMessage\SignMessage.csproj" />
     <ProjectReference Include="..\..\samples\Json\Json.csproj" />
+    <ProjectReference Include="..\..\samples\Tutorials\Tutorials.csproj" />
   </ItemGroup>
 
   <ItemGroup>

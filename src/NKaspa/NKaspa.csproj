@@ -7,8 +7,8 @@
     <PackageId>NKaspa</PackageId>
     <Authors>lifeme2027</Authors>
     <Title>NKaspa</Title>
-    <Description>A .NET library for Kaspa. The public API follows NBitcoin where a Kaspa counterpart exists. This alpha covers addresses, keys, scripts, transactions, BIP39, BIP32, PSKT, fees, and wRPC JSON and Borsh clients.</Description>
-    <PackageTags>kaspa;blockchain;crypto;nbitcoin</PackageTags>
+    <Description>NKaspa is a .NET (C#) SDK for Kaspa: addresses, keys, BIP39 and BIP32 wallets, transactions, PSKT, and a wRPC client for JSON and Borsh. Community alpha (MIT). It does not speak gRPC. Install with: dotnet add package NKaspa --prerelease.</Description>
+    <PackageTags>kaspa;blockchain;crypto;nbitcoin;csharp;dotnet;sdk;wallet;kas;bip39;bip32;wrpc</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/lifeme2027/NKaspa</PackageProjectUrl>

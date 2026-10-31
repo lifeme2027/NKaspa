@@ -5,6 +5,8 @@ using MnemonicSample = NKaspa.Samples.Mnemonic.Program;
 using PsktSample = NKaspa.Samples.PsktMultisig.Program;
 using SignSample = NKaspa.Samples.SignMessage.Program;
 using SpendSample = NKaspa.Samples.Spend.Program;
+using AddressTutorial = NKaspa.Samples.Tutorials.AddressTutorial;
+using SendTutorial = NKaspa.Samples.Tutorials.SendTutorial;
 using Xunit;
 
 namespace NKaspa.Tests
@@ -52,6 +54,25 @@ namespace NKaspa.Tests
             Assert.Contains("kaspa:", text, StringComparison.Ordinal);
             Assert.Contains("kaspatest:", text, StringComparison.Ordinal);
             Assert.Contains("m/44'/111111'/0'/0/0", text, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Tutorial_samples_match_the_public_vectors_and_do_not_broadcast()
+        {
+            var writer = new StringWriter();
+            var code = AddressTutorial.Run(writer);
+            Assert.Equal(0, code);
+            code = SendTutorial.RunOffline(writer);
+            var text = writer.ToString();
+            Assert.Equal(0, code);
+            Assert.Contains("mainnet: kaspa:qqd6e65yefepe9wk0m9vuxdufxd80sphy67gwwd0vdaumzdt4tc9s3qt0lqeh", text, StringComparison.Ordinal);
+            Assert.Contains("schnorr: kaspa:qr0lr4ml9fn3chekrqmjdkergxl93l4wrk3dankcgvjq776s9wn9jkdskewva", text, StringComparison.Ordinal);
+            Assert.Contains("script-hex: 20dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659ac", text, StringComparison.Ordinal);
+            Assert.Contains("json-key: refused", text, StringComparison.Ordinal);
+            Assert.Contains("fee-sompi: 203600", text, StringComparison.Ordinal);
+            Assert.Contains("relay-mass: 2036", text, StringComparison.Ordinal);
+            Assert.Contains("broadcast: no", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("submitted:", text, StringComparison.Ordinal);
         }
 
         [Fact]

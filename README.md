@@ -1,10 +1,34 @@
 # NKaspa
 
+NKaspa is a .NET (C#) library for Kaspa: addresses, keys, BIP39/BIP32 wallets, transactions, PSKT and a wRPC client. Install: `dotnet add package NKaspa --prerelease`.
+
 [English](#english) · [中文](#中文)
 
 ## English
 
-NKaspa is a .NET library for [Kaspa](https://kaspa.org/). Version **0.1.11-alpha**.
+This repository is **0.1.11-alpha**. The NuGet package index lists **0.1.10-alpha** as the newest published version (`0.1.9-alpha` is also published). Snippets here track the repository. `KaspaRpcClient`, Borsh, path-based Auto encoding, gRPC-port rejection, and `KaspaRpcEncodingMismatchException` require 0.1.11-alpha. `Mnemonic.ToPhrase`, `KaspaWebSocketOptions`, `MassPolicy`, and the folded-change cap require 0.1.10-alpha.
+
+### FAQ
+
+**Is there a Kaspa SDK for C#/.NET?** Official SDKs are Rust, WASM, and Python. NKaspa is a community .NET library (MIT, see [LICENSE](LICENSE)).
+
+**How do I install it?** `dotnet add package NKaspa --prerelease`. The library targets `net8.0` and `netstandard2.1`.
+
+**How do I generate an address?** `Key.Create().GetAddress(Network.Mainnet)`. The longer walk-through is [Generate a Kaspa address in C#](docs/tutorials/generate-kaspa-address-csharp.md).
+
+**How do I send KAS?** Build with `TransactionBuilder`, then broadcast with `SubmitTransactionAsync`. See [Send a Kaspa transaction in .NET](docs/tutorials/send-kaspa-transaction-dotnet.md). Nothing in the library broadcasts on its own.
+
+**Is it like NBitcoin?** The same type names are used where Kaspa has a counterpart (`KaspaAddress` and `BitcoinAddress`). The behavior is Kaspa's. `uint256.ToString()` is the Kaspa wire order. It is not the byte-reversed hex from `NBitcoin.uint256.ToString()`. The map is [docs/NBitcoin-Mapping.md](docs/NBitcoin-Mapping.md) and [docs/NBitcoin-Mapping.en.md](docs/NBitcoin-Mapping.en.md).
+
+**What derivation path?** `m/44'/111111'/0'/0/0`, which is `KeyPath.KaspaReceive(0)`.
+
+**Which RPC?** wRPC over WebSocket, both JSON and Borsh, through `KaspaRpcClient` (requires 0.1.11-alpha). There is no gRPC client. A path ending in `/wrpc/borsh` or containing `/borsh` selects Borsh. A path ending in `/wrpc/json` or containing `/json` selects JSON. The path wins over the port. Ports 16110, 16210, 16510, and 16610 are gRPC ports and are rejected. If the port and the path are both unknown, for example `wss` on port 443 with no `/json` or `/borsh` hint, `Create` throws. It does not default to either encoding.
+
+**Is it production ready?** It is alpha. Block types are not implemented. BN254 pairing and RISC0 STARK verification are not implemented.
+
+**Toccata support?** Version-1 transactions and the post-Toccata mass and fee policy are implemented. `SetVersion(1)` builds a version-1 payment. The minimum relay fee is 100 sompi per gram of the larger of compute mass and normalized transient mass.
+
+NKaspa is a .NET library for [Kaspa](https://kaspa.org/). The public types follow [NBitcoin](https://github.com/MetacoSA/NBitcoin) where a Kaspa counterpart exists.
 
 The public types follow [NBitcoin](https://github.com/MetacoSA/NBitcoin) where a Kaspa counterpart exists. `KaspaAddress` corresponds to `BitcoinAddress`. `uint256` corresponds to `NBitcoin.uint256`. `Encoders` corresponds to `NBitcoin.DataEncoders.Encoders`. The behavior is Kaspa's, not Bitcoin's: addresses use cashaddr-style bech32 (`kaspa`, `kaspatest`, `kaspasim`, `kaspadev`, 8-character checksum), and consensus hashes are unkeyed BLAKE2b-256.
 
@@ -12,7 +36,7 @@ NBitcoin is MIT licensed. Copyright (c) .NET Foundation and Contributors / Nicol
 
 ### Status
 
-Alpha. This release contains encoders (hex, Kaspa bech32, Base58Check), BLAKE2b-256, BLAKE3-256, `uint256`, the four networks, and addresses (Schnorr public key, ECDSA public key, script hash). It also contains keys, BIP-340 Schnorr and compact ECDSA signatures, script parsing and the standard pay-to-pubkey / pay-to-script-hash templates, version-0 and Toccata version-1 transactions and sighash, BIP39 mnemonics, BIP32 extended keys, a transaction builder, Kaspa mass and fee rates, wRPC JSON and Borsh clients, PSKT (partially signed Kaspa transactions), and System.Text.Json converters in `NKaspa.JsonConverters`. PSKT follows rusty-kaspa `wallet/pskt`: the roles Creator, Constructor, Updater, Signer, Combiner, Finalizer, and Extractor; Schnorr and ECDSA partial signatures; combine; finalize for single-sig P2PK and multisig P2SH; and extract. `TransactionBuilder.BuildPSKT` covers version 0 and version 1. The hex form is the prefix `PSKT` plus lowercase hex of the compact JSON. A bundle uses `PSKB`. The builder can force every named coin into the transaction, prefer one coin when that coin covers the payment, and emit a version-1 payment. The script engine executes version-0 scripts, including pay-to-script-hash redeem scripts. `Script.VerifyScript`, `Transaction.Verify`, and `TransactionBuilder.Verify` check every input against its sigop count or version-1 compute budget. `OP_ZKPRECOMPILE` enforces the finalized tag, cost, and layout checks. The BN254 pairing and the RISC0 STARK stay unimplemented and do not push true. `OP_CHAINBLOCKSEQCOMMIT` needs a caller-supplied block accessor. `WrpcSeqCommitAccessor` answers from read-only `getBlock` and `getBlockDagInfo`, using the DAG sink as its point of view. `ConsensusSeqCommitAccessor` walks the selected-parent chain from those same read-only calls. It freezes a chain sink and its blue score, steps the viewpoint back 20 selected parents by default, checks the KIP-21 window against that snapshot, and treats a later sink as ordinary growth when the new selected-parent chain still contains the snapshot. A tip more than 32 selected parents ahead is not chased block by block: the snapshot blocks are read again and kept when isChainBlock stays true. It throws if the node data is incomplete, inconsistent, or still reorged after a few retries. A light client can only approach consensus. Matching it exactly requires a running node: the walk stops at a request limit and cannot see pruned reachability. Nothing in this library broadcasts a transaction on its own. The console samples under `samples/` print transactions or query a node. `samples/Spend` submits a transaction only when `--broadcast` is set and the environment variable `NKASPA_MNEMONIC` is set. The JSON wRPC client is covered by canned JSON and a loopback WebSocket. The Borsh client is covered by hand-computed frames, a fake binary WebSocket, and a subscription notification. `samples/NodeQuery` is the read-only call to a public node. The map of NBitcoin areas is in [docs/NBitcoin-Mapping.md](docs/NBitcoin-Mapping.md).
+Alpha. This release contains encoders (hex, Kaspa bech32, Base58Check), BLAKE2b-256, BLAKE3-256, `uint256`, the four networks, and addresses (Schnorr public key, ECDSA public key, script hash). It also contains keys, BIP-340 Schnorr and compact ECDSA signatures, script parsing and the standard pay-to-pubkey / pay-to-script-hash templates, version-0 and Toccata version-1 transactions and sighash, BIP39 mnemonics, BIP32 extended keys, a transaction builder, Kaspa mass and fee rates, wRPC JSON and Borsh clients, PSKT (partially signed Kaspa transactions), and System.Text.Json converters in `NKaspa.JsonConverters`. PSKT follows rusty-kaspa `wallet/pskt`: the roles Creator, Constructor, Updater, Signer, Combiner, Finalizer, and Extractor; Schnorr and ECDSA partial signatures; combine; finalize for single-sig P2PK and multisig P2SH; and extract. `TransactionBuilder.BuildPSKT` covers version 0 and version 1. The hex form is the prefix `PSKT` plus lowercase hex of the compact JSON. A bundle uses `PSKB`. The builder can force every named coin into the transaction, prefer one coin when that coin covers the payment, and emit a version-1 payment. The script engine executes version-0 scripts, including pay-to-script-hash redeem scripts. `Script.VerifyScript`, `Transaction.Verify`, and `TransactionBuilder.Verify` check every input against its sigop count or version-1 compute budget. `OP_ZKPRECOMPILE` enforces the finalized tag, cost, and layout checks. The BN254 pairing and the RISC0 STARK stay unimplemented and do not push true. `OP_CHAINBLOCKSEQCOMMIT` needs a caller-supplied block accessor. `WrpcSeqCommitAccessor` answers from read-only `getBlock` and `getBlockDagInfo`, using the DAG sink as its point of view. `ConsensusSeqCommitAccessor` walks the selected-parent chain from those same read-only calls. It freezes a chain sink and its blue score, steps the viewpoint back 20 selected parents by default, checks the KIP-21 window against that snapshot, and treats a later sink as ordinary growth when the new selected-parent chain still contains the snapshot. A tip more than 32 selected parents ahead is not chased block by block: the snapshot blocks are read again and kept when isChainBlock stays true. It throws if the node data is incomplete, inconsistent, or still reorged after a few retries. A light client can only approach consensus. Matching it exactly requires a running node: the walk stops at a request limit and cannot see pruned reachability. Nothing in this library broadcasts a transaction on its own. The console samples under `samples/` print transactions or query a node. `samples/Spend` submits a transaction only when `--broadcast` is set and the environment variable `NKASPA_MNEMONIC` is set. The JSON wRPC client is covered by canned JSON and a loopback WebSocket. The Borsh client is covered by hand-computed frames, a fake binary WebSocket, and a subscription notification. `samples/NodeQuery` is the read-only call to a public node. The map of NBitcoin areas is in [docs/NBitcoin-Mapping.md](docs/NBitcoin-Mapping.md) ([English](docs/NBitcoin-Mapping.en.md)). Tutorials: [generate an address](docs/tutorials/generate-kaspa-address-csharp.md), [send a transaction](docs/tutorials/send-kaspa-transaction-dotnet.md).
 
 ### Usage
 
@@ -52,8 +76,14 @@ var info = await rpc.GetServerInfoAsync();
 ```
 
 ```csharp
-// Auto picks Borsh for 17110, 17210, 17510, and 17610, and JSON for 18110, 18210, 18510, and 18610.
-// Simnet is 17510 / 18510. Pass KaspaRpcEncoding.Borsh or KaspaRpcEncoding.Json to override the port.
+// Requires 0.1.11-alpha.
+// Auto reads the path, then the port. The path wins.
+// A path ending in /wrpc/borsh or containing /borsh is Borsh. A path ending in /wrpc/json or containing /json is JSON.
+// Borsh ports are 17110, 17210, 17510, and 17610. JSON ports are 18110, 18210, 18510, and 18610.
+// wss on port 443 with no /borsh or /json hint throws. NKaspa does not default to either encoding.
+// gRPC ports 16110, 16210, 16510, and 16610 throw. NKaspa speaks wRPC, not gRPC.
+// Pass KaspaRpcEncoding.Borsh or KaspaRpcEncoding.Json to override the path and a wRPC port.
+// A binary frame on a JSON client, or a text frame on a Borsh client, throws KaspaRpcEncodingMismatchException.
 // Create does not connect. The same timeouts, reconnect, 16 MiB cap, State, and Reconnected apply to both encodings.
 await using var node = KaspaRpcClient.Create("ws://127.0.0.1:17110");
 await node.ConnectAsync();
@@ -162,6 +192,7 @@ dotnet run --project samples/PsktMultisig
 dotnet run --project samples/SignMessage
 dotnet run --project samples/SignMessage -- NKaspa
 dotnet run --project samples/Json
+dotnet run --project samples/Tutorials
 powershell -File samples/smoke.ps1
 ```
 
@@ -171,7 +202,7 @@ powershell -File samples/smoke.ps1
 
 **Warning:** `dotnet run --project samples/Spend -- --broadcast` submits a transaction. It runs only when `--broadcast` is set and `NKASPA_MNEMONIC` is set. You also pass `--to` and `--amount`. Optional flags are `--url`, `--network`, `--version`, `--must-spend`, `--from`, and `--max-fee-sompi`. Before `submitTransaction`, the sample checks that an output pays `--amount` to `--to`, that the fee is the minimum relay fee, and that `Transaction.Verify` succeeds. `--from` must match the derived receive address when it is set. `--max-fee-sompi` refuses a fee above that sompi count. The sample does not read a secrets directory. Do not set that variable unless you intend to spend.
 
-`PsktMultisig` is a 2-of-2 Schnorr PSKT: create, both parties sign, combine, finalize, extract. `SignMessage` signs a UTF-8 string with Schnorr and ECDSA over its BLAKE2b-256 digest and verifies both. That is not Bitcoin's message-signing prefix and it is not BIP322.
+`PsktMultisig` is a 2-of-2 Schnorr PSKT: create, both parties sign, combine, finalize, extract. `SignMessage` signs a UTF-8 string with Schnorr and ECDSA over its BLAKE2b-256 digest and verifies both. That is not Bitcoin's message-signing prefix and it is not BIP322. `samples/Tutorials` is the compilable form of the two English tutorials. It stays offline.
 
 ### Build
 
@@ -202,7 +233,9 @@ NKaspa does not include the NBitcoin source tree. Elliptic-curve operations use 
 
 ## 中文
 
-NKaspa 是 Kaspa 的 .NET 基础函数库，版本 **0.1.11-alpha**。
+NKaspa 是 Kaspa 的 .NET（C#）基础函数库：地址、密钥、BIP39/BIP32 钱包、交易、PSKT，以及 wRPC 客户端。安装：`dotnet add package NKaspa --prerelease`。
+
+本仓库是 **0.1.11-alpha**。NuGet 上已发布的最新版本是 **0.1.10-alpha**（另有 **0.1.9-alpha**）。这里的片段跟仓库走。`KaspaRpcClient`、Borsh、按路径选择的 Auto、拒绝 gRPC 端口，以及 `KaspaRpcEncodingMismatchException` 需要 0.1.11-alpha。`Mnemonic.ToPhrase`、`KaspaWebSocketOptions`、`MassPolicy` 和找零并入上限需要 0.1.10-alpha。英文教程：[生成地址](docs/tutorials/generate-kaspa-address-csharp.md)，[发送交易](docs/tutorials/send-kaspa-transaction-dotnet.md)。英文对照表：[docs/NBitcoin-Mapping.en.md](docs/NBitcoin-Mapping.en.md)。
 
 公开类型尽量与 [NBitcoin](https://github.com/MetacoSA/NBitcoin) 一一对应，但语义按 Kaspa。地址是 cashaddr 风格的 bech32（前缀 `kaspa` / `kaspatest` / `kaspasim` / `kaspadev`，8 字符校验和）。共识哈希是不带密钥的 BLAKE2b-256，不是比特币的双 SHA256。
 
@@ -249,8 +282,14 @@ var info = await rpc.GetServerInfoAsync();
 ```
 
 ```csharp
-// Auto 在 17110、17210、17510、17610 上选 Borsh，在 18110、18210、18510、18610 上选 JSON。
-// Simnet 是 17510 / 18510。传入 KaspaRpcEncoding.Borsh 或 Json 可以覆盖端口。
+// 需要 0.1.11-alpha。
+// Auto 先看路径，再看端口。路径优先。
+// 以 /wrpc/borsh 结尾或包含 /borsh 的是 Borsh。以 /wrpc/json 结尾或包含 /json 的是 JSON。
+// Borsh 端口是 17110、17210、17510、17610。JSON 端口是 18110、18210、18510、18610。
+// 443 上的 wss，路径里没有 /borsh 或 /json 时抛异常。不会默认成某一种编码。
+// gRPC 端口 16110、16210、16510、16610 会抛异常。本库说的是 wRPC，不是 gRPC。
+// 传入 KaspaRpcEncoding.Borsh 或 Json 可以覆盖路径和 wRPC 端口，不能把 gRPC 端口变成 wRPC。
+// JSON 客户端收到二进制帧，或 Borsh 客户端收到文本帧，抛 KaspaRpcEncodingMismatchException。
 // Create 不会连接。两种编码共用同一套超时、重连、16 MiB 上限、State 和 Reconnected。
 await using var node = KaspaRpcClient.Create("ws://127.0.0.1:17110");
 await node.ConnectAsync();
@@ -359,6 +398,7 @@ dotnet run --project samples/PsktMultisig
 dotnet run --project samples/SignMessage
 dotnet run --project samples/SignMessage -- NKaspa
 dotnet run --project samples/Json
+dotnet run --project samples/Tutorials
 powershell -File samples/smoke.ps1
 ```
 
@@ -368,7 +408,7 @@ powershell -File samples/smoke.ps1
 
 **警告：** `dotnet run --project samples/Spend -- --broadcast` 会提交交易。只有同时传入 `--broadcast` 并且设置了 `NKASPA_MNEMONIC` 才会提交。还要传入 `--to` 和 `--amount`。可选参数是 `--url`、`--network`、`--version`、`--must-spend`、`--from`、`--max-fee-sompi`。调用 `submitTransaction` 之前，示例会检查有一笔输出把 `--amount` 付给 `--to`、手续费是最低中继费，并且 `Transaction.Verify` 通过。设置了 `--from` 时，它必须等于派生出的收款地址。`--max-fee-sompi` 会拒绝更高的手续费。示例不读密钥目录。不打算花钱就不要设置那个变量。
 
-`PsktMultisig` 是 2-of-2 Schnorr PSKT：创建、双方签名、合并、完成、提取。`SignMessage` 对 UTF-8 字符串做 BLAKE2b-256，再分别做 Schnorr 和 ECDSA 签名并验证。这不是比特币的消息签名前缀，也不是 BIP322。
+`PsktMultisig` 是 2-of-2 Schnorr PSKT：创建、双方签名、合并、完成、提取。`SignMessage` 对 UTF-8 字符串做 BLAKE2b-256，再分别做 Schnorr 和 ECDSA 签名并验证。这不是比特币的消息签名前缀，也不是 BIP322。`samples/Tutorials` 是两篇英文教程里的代码，只做离线检查。
 
 ### 构建
 
