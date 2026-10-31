@@ -8,7 +8,10 @@ namespace NKaspa
     /// BIP32 extended private key. Kaspa counterpart of NBitcoin.ExtKey.
     /// The master key is HMAC-SHA512 with the key <c>Bitcoin seed</c>.
     /// Child keys use the parent chain code. Hardened children hash the private key.
-    /// <see cref="ToString(Network)"/> uses the Kaspa prefix for that network (<c>kprv</c> or <c>ktrv</c>).
+    /// <see cref="ToString()"/> returns <c>NKaspa.ExtKey</c> and does not contain the key.
+    /// NBitcoin's <c>ExtKey</c> does not override <c>ToString()</c>, so a log prints the type name there as well.
+    /// <see cref="GetWif(Network)"/>, <see cref="ToString(Network)"/>, and <see cref="ToBase58()"/> return the extended private key.
+    /// Those strings are secret. Do not write them to logs.
     /// </summary>
     public sealed class ExtKey : IDisposable, IEquatable<ExtKey>
     {
@@ -356,7 +359,23 @@ namespace NKaspa
             }
         }
 
-        /// <summary>Base58Check with the Kaspa private prefix of <paramref name="network"/>.</summary>
+        /// <summary>
+        /// Base58Check extended private key for <paramref name="network"/> (<c>kprv</c> or <c>ktrv</c>).
+        /// NBitcoin's <c>GetWif</c> returns a <c>BitcoinExtKey</c>. This method returns the same text as <see cref="ToString(Network)"/>.
+        /// The result is a secret. Do not log it.
+        /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed. The ExtKey has been disposed.</exception>
+        public string GetWif(Network network)
+        {
+            return ToString(network);
+        }
+
+        /// <summary>
+        /// Base58Check with the Kaspa private prefix of <paramref name="network"/>.
+        /// This is a secret. <see cref="GetWif(Network)"/> is the explicit export.
+        /// <see cref="ToString()"/> does not return this value.
+        /// </summary>
         /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
         /// <exception cref="System.ObjectDisposedException">The Key has been disposed. The ExtKey has been disposed.</exception>
         public string ToString(Network network)
@@ -369,11 +388,14 @@ namespace NKaspa
             return ToBase58(network.ExtPrivKeyVersion);
         }
 
-        /// <summary>Base58Check with the stored version.</summary>
-        /// <exception cref="System.ObjectDisposedException">The Key has been disposed. The ExtKey has been disposed.</exception>
+        /// <summary>
+        /// Type name only (<c>NKaspa.ExtKey</c>). Safe to log.
+        /// NBitcoin's parameterless <c>ExtKey.ToString()</c> is the inherited type name and does not print <c>xprv</c>.
+        /// Use <see cref="GetWif(Network)"/>, <see cref="ToString(Network)"/>, or <see cref="ToBase58()"/> to serialize the key.
+        /// </summary>
         public override string ToString()
         {
-            return ToBase58();
+            return "NKaspa.ExtKey";
         }
 
         /// <summary>Zeros the private key.</summary>

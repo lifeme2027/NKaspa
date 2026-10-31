@@ -242,7 +242,10 @@ namespace NKaspa
             return ToBase58(network.ExtPubKeyVersion);
         }
 
-        /// <summary>Base58Check with the stored version.</summary>
+        /// <summary>
+        /// Base58Check with the stored public version (<c>kpub</c>, <c>ktub</c>, or <c>xpub</c>).
+        /// This is not a spending secret. It still identifies the account. <see cref="ToString(Network)"/> selects the network prefix.
+        /// </summary>
         public override string ToString()
         {
             return ToBase58();

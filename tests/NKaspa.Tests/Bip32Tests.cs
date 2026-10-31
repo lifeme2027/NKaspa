@@ -164,6 +164,12 @@ namespace NKaspa.Tests
             using var parsed = ExtKey.Parse(kprv);
             Assert.Equal(master.PrivateKey.ToHex(), parsed.PrivateKey.ToHex());
             Assert.Equal(kprv, parsed.ToBase58());
+            Assert.Equal(kprv, master.GetWif(Network.Mainnet));
+            Assert.Equal(ktrv, master.GetWif(Network.Testnet));
+            Assert.Equal("NKaspa.ExtKey", master.ToString());
+            Assert.DoesNotContain(kprv, master.ToString(), StringComparison.Ordinal);
+            Assert.DoesNotContain("kprv", master.ToString(), StringComparison.Ordinal);
+            Assert.DoesNotContain("xprv", master.ToString(), StringComparison.Ordinal);
 
             Assert.Equal("m/44'/111111'/0'/0/1", KeyPath.KaspaReceive(1).ToString());
             Assert.Equal("m/44'/111111'/0'/1/0", KeyPath.KaspaChange(0).ToString());
