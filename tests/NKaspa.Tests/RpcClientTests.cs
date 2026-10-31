@@ -102,6 +102,8 @@ namespace NKaspa.Tests
             Assert.Equal(new byte[] { 1, 2, 3 }, parsed.Payload);
             Assert.Equal(4UL, parsed.Inputs[0].Sequence);
             Assert.Equal(1, parsed.Inputs[0].SigOpCount);
+            Assert.Contains("\"verboseData\":null", submitted, StringComparison.Ordinal);
+            Assert.Contains("\"covenant\":null", submitted, StringComparison.Ordinal);
 
             var alias = submitted!.Replace("\"value\":", "\"amount\":").Replace("\"script\":", "\"scriptPublicKey\":");
             var fromAlias = KaspaRpcJson.ReadTransaction(alias);

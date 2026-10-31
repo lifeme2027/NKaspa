@@ -17,6 +17,8 @@ namespace NKaspa.Samples.Spend
     /// <c>--broadcast</c> submits a signed transaction to a node.
     /// It runs only when <c>--broadcast</c> is present AND the environment variable
     /// <c>NKASPA_MNEMONIC</c> holds the mnemonic. You must also pass <c>--to</c> and <c>--amount</c>.
+    /// The sample refuses to submit unless the payment output, the minimum relay fee, and <c>Transaction.Verify</c> all succeed.
+    /// Optional <c>--from</c> must match the derived address. Optional <c>--max-fee-sompi</c> caps the fee.
     /// This sample does not read a secrets directory. Do not set the variable unless you intend to spend.
     /// <c>--broadcast</c> 会把签好的交易提交到节点。
     /// 只有同时传入 <c>--broadcast</c>，并且环境变量 <c>NKASPA_MNEMONIC</c> 里有助记词，才会进入广播。
@@ -351,6 +353,14 @@ namespace NKaspa.Samples.Spend
             using var changeKey = change.PrivateKey;
             var own = spendKey.GetAddress(network);
             var changeAddress = changeKey.GetAddress(network);
+            var expectFrom = Option(args, "--from");
+            if (expectFrom != null && !string.Equals(own.ToString(), expectFrom, StringComparison.Ordinal))
+            {
+                error.WriteLine("Refusing to broadcast: derived address does not match --from.");
+                error.WriteLine("拒绝广播：派生地址和 --from 不一致。");
+                error.WriteLine("derived: " + own);
+                return 2;
+            }
 
             try
             {
@@ -382,7 +392,96 @@ namespace NKaspa.Samples.Spend
                 }
 
                 var tx = builder.Send(payee, amount).SetChange(changeAddress).SendMinimumRelayFee().BuildTransaction(true);
+                var entries = new UtxoEntry[tx.Inputs.Count];
+                ulong inputSum = 0;
+                for (var i = 0; i < tx.Inputs.Count; i++)
+                {
+                    Coin? spent = null;
+                    for (var c = 0; c < coins.Length; c++)
+                    {
+                        if (coins[c].Outpoint.Equals(tx.Inputs[i].PreviousOutpoint))
+                        {
+                            spent = coins[c];
+                            break;
+                        }
+                    }
+
+                    if (spent == null)
+                    {
+                        error.WriteLine("Refusing to broadcast: an input is not a listed UTXO.");
+                        error.WriteLine("拒绝广播：有一个输入不在查到的 UTXO 里。");
+                        return 2;
+                    }
+
+                    entries[i] = spent.Utxo;
+                    inputSum += spent.Amount.Sompi;
+                }
+
+                ulong outputSum = 0;
+                var paid = false;
+                for (var i = 0; i < tx.Outputs.Count; i++)
+                {
+                    var output = tx.Outputs[i];
+                    outputSum += output.Value.Sompi;
+                    if (output.Value.Sompi == amount.Sompi && output.ScriptPublicKey.Equals(payee.ScriptPubKey))
+                    {
+                        paid = true;
+                    }
+                }
+
+                if (!paid || outputSum > inputSum)
+                {
+                    error.WriteLine("Refusing to broadcast: the payment output is missing or the amounts do not balance.");
+                    error.WriteLine("拒绝广播：没有付给收款地址的金额，或者输入输出对不上。");
+                    return 2;
+                }
+
+                var fee = inputSum - outputSum;
+                var mass = MassCalculator.Calculate(tx, entries);
+                var minimum = MassCalculator.MinimumRelayFee(mass);
+                if (fee != minimum)
+                {
+                    error.WriteLine("Refusing to broadcast: fee is not the minimum relay fee.");
+                    error.WriteLine("拒绝广播：手续费不是最低中继费。");
+                    error.WriteLine("fee-sompi: " + fee.ToString(CultureInfo.InvariantCulture));
+                    error.WriteLine("minimum-sompi: " + minimum.ToString(CultureInfo.InvariantCulture));
+                    return 2;
+                }
+
+                var maxFeeText = Option(args, "--max-fee-sompi");
+                if (maxFeeText != null)
+                {
+                    if (!ulong.TryParse(maxFeeText, NumberStyles.None, CultureInfo.InvariantCulture, out var maxFee))
+                    {
+                        error.WriteLine("Refusing to broadcast: --max-fee-sompi is not an integer.");
+                        error.WriteLine("拒绝广播：--max-fee-sompi 不是整数。");
+                        return 2;
+                    }
+
+                    if (fee > maxFee)
+                    {
+                        error.WriteLine("Refusing to broadcast: fee is above --max-fee-sompi.");
+                        error.WriteLine("拒绝广播：手续费超过 --max-fee-sompi。");
+                        error.WriteLine("fee-sompi: " + fee.ToString(CultureInfo.InvariantCulture));
+                        return 2;
+                    }
+                }
+
+                if (!tx.Verify(entries))
+                {
+                    error.WriteLine("Refusing to broadcast: Transaction.Verify failed.");
+                    error.WriteLine("拒绝广播：Transaction.Verify 没有通过。");
+                    return 2;
+                }
+
                 var json = KaspaRpcJson.WriteTransaction(tx);
+                writer.WriteLine("from: " + own);
+                writer.WriteLine("to: " + payee);
+                writer.WriteLine("amount-sompi: " + amount.Sompi.ToString(CultureInfo.InvariantCulture));
+                writer.WriteLine("amount: " + amount);
+                writer.WriteLine("fee-sompi: " + fee.ToString(CultureInfo.InvariantCulture));
+                writer.WriteLine("fee: " + new Money(fee));
+                writer.WriteLine("verified: true");
                 writer.WriteLine("id: " + tx.GetId());
                 writer.WriteLine("hex: " + tx.ToHex());
                 writer.WriteLine("json: " + json);

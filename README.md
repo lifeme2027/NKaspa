@@ -142,7 +142,7 @@ powershell -File samples/smoke.ps1
 
 `Spend` builds three signed payments from public test keys and fake coins: version 0, version 0 with `MustSpend` on two inputs, and version 1. Each pays `SendMinimumRelayFee`. It prints the transaction hex and the wRPC JSON. It does not open a socket.
 
-**Warning:** `dotnet run --project samples/Spend -- --broadcast` submits a transaction. It runs only when `--broadcast` is set and `NKASPA_MNEMONIC` is set. You also pass `--to` and `--amount`. Optional flags are `--url`, `--network`, `--version`, and `--must-spend`. The sample does not read a secrets directory. Do not set that variable unless you intend to spend.
+**Warning:** `dotnet run --project samples/Spend -- --broadcast` submits a transaction. It runs only when `--broadcast` is set and `NKASPA_MNEMONIC` is set. You also pass `--to` and `--amount`. Optional flags are `--url`, `--network`, `--version`, `--must-spend`, `--from`, and `--max-fee-sompi`. Before `submitTransaction`, the sample checks that an output pays `--amount` to `--to`, that the fee is the minimum relay fee, and that `Transaction.Verify` succeeds. `--from` must match the derived receive address when it is set. `--max-fee-sompi` refuses a fee above that sompi count. The sample does not read a secrets directory. Do not set that variable unless you intend to spend.
 
 `PsktMultisig` is a 2-of-2 Schnorr PSKT: create, both parties sign, combine, finalize, extract. `SignMessage` signs a UTF-8 string with Schnorr and ECDSA over its BLAKE2b-256 digest and verifies both. That is not Bitcoin's message-signing prefix and it is not BIP322.
 
@@ -307,7 +307,7 @@ powershell -File samples/smoke.ps1
 
 `Spend` 用公开测试密钥和本地假币签三笔付款：版本 0、版本 0 的双输入 `MustSpend`、版本 1。费用都是 `SendMinimumRelayFee`。它打印交易十六进制和 wRPC JSON，不开套接字。
 
-**警告：** `dotnet run --project samples/Spend -- --broadcast` 会提交交易。只有同时传入 `--broadcast` 并且设置了 `NKASPA_MNEMONIC` 才会提交。还要传入 `--to` 和 `--amount`。可选参数是 `--url`、`--network`、`--version`、`--must-spend`。示例不读密钥目录。不打算花钱就不要设置那个变量。
+**警告：** `dotnet run --project samples/Spend -- --broadcast` 会提交交易。只有同时传入 `--broadcast` 并且设置了 `NKASPA_MNEMONIC` 才会提交。还要传入 `--to` 和 `--amount`。可选参数是 `--url`、`--network`、`--version`、`--must-spend`、`--from`、`--max-fee-sompi`。调用 `submitTransaction` 之前，示例会检查有一笔输出把 `--amount` 付给 `--to`、手续费是最低中继费，并且 `Transaction.Verify` 通过。设置了 `--from` 时，它必须等于派生出的收款地址。`--max-fee-sompi` 会拒绝更高的手续费。示例不读密钥目录。不打算花钱就不要设置那个变量。
 
 `PsktMultisig` 是 2-of-2 Schnorr PSKT：创建、双方签名、合并、完成、提取。`SignMessage` 对 UTF-8 字符串做 BLAKE2b-256，再分别做 Schnorr 和 ECDSA 签名并验证。这不是比特币的消息签名前缀，也不是 BIP322。
 

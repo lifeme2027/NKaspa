@@ -277,7 +277,7 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 | 助记词与派生地址 | `samples/Mnemonic` | `Mnemonic`、`ExtKey`、`KeyPath` | `Mnemonic.DeriveExtKey`、`KeyPath.KaspaReceive(i)` = `m/44'/111111'/0'/0/i`。主网 `kpub`，测试网 `ktub`。 |
 | 地址与 ScriptPubKey | `samples/Address` | `BitcoinAddress.Create`、`ScriptPubKey` | `KaspaAddress.Parse` / `TryParse` / `IsValid`，以及 `KaspaAddress.ScriptPubKey`。 |
 | 只读节点查询 | `samples/NodeQuery` | `RPCClient` 的只读调用 | `KaspaWebSocketChannel` + `KaspaWrpcJsonClient`。方法是 `getServerInfo`、`getBlockDagInfo`、`getBalanceByAddress`、`getUtxosByAddresses`。默认 `wss://eva.kaspa.green/kaspa/mainnet/wrpc/json`。不调用 `submitTransaction`。 |
-| 构建并签名 | `samples/Spend` | `TransactionBuilder` | 版本 0、版本 0 的 `MustSpend` 双输入、版本 1，费用是 `SendMinimumRelayFee`。默认打印交易十六进制和 wRPC JSON。`--broadcast` 且环境变量 `NKASPA_MNEMONIC` 都有，并且还传入 `--to` 与 `--amount` 时才提交。 |
+| 构建并签名 | `samples/Spend` | `TransactionBuilder` | 版本 0、版本 0 的 `MustSpend` 双输入、版本 1，费用是 `SendMinimumRelayFee`。默认打印交易十六进制和 wRPC JSON。`--broadcast` 且环境变量 `NKASPA_MNEMONIC` 都有，并且还传入 `--to` 与 `--amount` 时才提交。提交前检查付款输出、最低中继费和 `Transaction.Verify`。`--from` 与 `--max-fee-sompi` 可选。 |
 | PSKT 2-of-2 | `samples/PsktMultisig` | BIP174 `PartiallySignedTransaction`（不移植） | `NKaspa.PSKT.PSKT`：创建、双方 `Sign`、`Combine`、`Finalize`、`ExtractTransaction`。 |
 | 离线消息签名 | `samples/SignMessage` | `Key.SignMessage`。BIP322 仍无需实现 | 对 UTF-8 的 BLAKE2b-256 调用 `Key.SignSchnorr` / `Key.SignECDSA`，再用 `PubKey.Verify` / `PubKeyECDSA.Verify`。不是比特币消息前缀。 |
 | JSON | `samples/Json` | `NBitcoin.JsonConverters.Serializer` | `NKaspaJsonSerializer` 与 `AddNKaspaConverters(network)`。版本 0 / 版本 1（`computeBudget`、`covenant`）、`scriptPublicKey` 的版本前缀十六进制。私钥默认拒绝。 |
@@ -290,7 +290,7 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 - NuGet 发布。这一版只改版本号，不推包。
 - Newtonsoft.Json 适配。序列化只走 System.Text.Json，没有加这个包。
 - 未合并的 transient mass 改动（PR 1141）以及未能从源码确认的测试网激活 DAA。
-- 示例里的 `--broadcast` 路径没有对公共节点执行过。
+- 示例里的 `--broadcast` 已在公共主网节点提交过一笔。wRPC JSON 必须写出 `verboseData` 和没有 covenant 时的 `covenant: null`，否则 `submitTransaction` 会被拒绝。提交前会检查派生地址、付款输出、最低中继费和 `Transaction.Verify`。
 - `ConsensusSeqCommitAccessor` 仍然不是节点。默认请求上限 256，到顶就抛异常，不会扫完整个 finality 窗口，也不会把缺块当成 `BlockAlreadyPruned`。链向前增长不再误判为重组。超前超过 32 步时用最新的 `isChainBlock`，不逐块追尖端。`StableDepth` 默认 20。重组重试默认 3 次。`WrpcSeqCommitAccessor` 的视点仍是 DAG sink。
 
 ## 下一步计划

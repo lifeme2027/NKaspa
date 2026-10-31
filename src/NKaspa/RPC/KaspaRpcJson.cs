@@ -15,6 +15,9 @@ namespace NKaspa.RPC
     /// <c>scriptPublicKey</c> on that object, and the human-readable rusty-kaspa string:
     /// four hex digits of the big-endian version followed by the script hex.
     /// <c>storageMass</c> and the deprecated <c>mass</c> field are both written, and they are equal.
+    /// <c>verboseData</c> is written as null on the transaction, each input, and each output.
+    /// An output without a covenant writes <c>covenant</c> as null. rusty-kaspa's serde types
+    /// require those fields; omitting them makes <c>submitTransaction</c> fail.
     /// </summary>
     public static class KaspaRpcJson
     {
@@ -79,6 +82,7 @@ namespace NKaspa.RPC
             writer.WriteString("payload", Encoders.Hex.EncodeData(transaction.Payload));
             writer.WriteNumber("mass", transaction.StorageMass);
             writer.WriteNumber("storageMass", transaction.StorageMass);
+            writer.WriteNull("verboseData");
             writer.WriteEndObject();
         }
 
@@ -198,6 +202,7 @@ namespace NKaspa.RPC
                 writer.WriteNumber("computeBudget", input.ComputeBudget ?? 0);
             }
 
+            writer.WriteNull("verboseData");
             writer.WriteEndObject();
         }
 
@@ -240,7 +245,12 @@ namespace NKaspa.RPC
                 writer.WritePropertyName("covenant");
                 WriteCovenant(writer, output.Covenant);
             }
+            else
+            {
+                writer.WriteNull("covenant");
+            }
 
+            writer.WriteNull("verboseData");
             writer.WriteEndObject();
         }
 
