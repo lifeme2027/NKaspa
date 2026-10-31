@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net.WebSockets;
+using System.Text;
 
 namespace NKaspa.RPC
 {
@@ -8,6 +9,8 @@ namespace NKaspa.RPC
     /// Timeouts, reconnect, the 16 MiB cap, <see cref="State"/>, <see cref="StateChanged"/>, and <see cref="Reconnected"/>
     /// match <see cref="KaspaWebSocketChannel"/>. Frames are workflow-rpc Borsh, not JSON text.
     /// rusty-kaspa <c>KaspaRpcHandler::handshake</c> is still a TODO and is not sent. This channel does not invent one.
+    /// A text frame, including a JSON handshake, throws <see cref="KaspaRpcEncodingMismatchException"/>,
+    /// fails every pending request, and does not reconnect.
     /// </summary>
     public sealed class KaspaBorshWebSocketChannel : IKaspaBorshChannel, IAsyncDisposable
     {
@@ -28,6 +31,7 @@ namespace NKaspa.RPC
         private Task? _reconnectTask;
         private volatile bool _hasConnected;
         private int _disposed;
+        private KaspaRpcEncodingMismatchException? _terminal;
 
         /// <summary>Creates a channel for <paramref name="uri"/> with the default timeouts and reconnect off.</summary>
         /// <exception cref="System.ArgumentNullException"><paramref name="uri"/> is null.</exception>
@@ -143,6 +147,7 @@ namespace NKaspa.RPC
         /// <exception cref="System.TimeoutException">WebSocket request timed out.</exception>
         /// <exception cref="System.OperationCanceledException">The caller's token was canceled.</exception>
         /// <exception cref="System.ObjectDisposedException">The KaspaBorshWebSocketChannel has been disposed.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcEncodingMismatchException">Borsh wRPC client received a text WebSocket frame, or a JSON handshake frame.</exception>
         public async Task<byte[]> ExchangeAsync(byte[] request, CancellationToken cancellationToken = default)
         {
             if (request == null)
@@ -151,13 +156,18 @@ namespace NKaspa.RPC
             }
 
             ThrowIfDisposed();
+            ThrowIfTerminal();
             await EnsureOpenAsync(cancellationToken).ConfigureAwait(false);
             var id = KaspaBorshCodec.ReadRequestId(request);
             var pending = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
             byte[]? early;
             lock (_gate)
             {
-                if (_early.TryGetValue(id, out early))
+                if (_terminal != null)
+                {
+                    early = null;
+                }
+                else if (_early.TryGetValue(id, out early))
                 {
                     _early.Remove(id);
                 }
@@ -167,6 +177,7 @@ namespace NKaspa.RPC
                 }
             }
 
+            ThrowIfTerminal();
             if (early != null)
             {
                 return early;
@@ -178,9 +189,11 @@ namespace NKaspa.RPC
                 await _sendGate.WaitAsync(budget.Token).ConfigureAwait(false);
                 try
                 {
+                    ThrowIfTerminal();
                     var socket = _socket;
                     if (socket == null || socket.State != WebSocketState.Open)
                     {
+                        ThrowIfTerminal();
                         throw new InvalidOperationException("WebSocket disconnected.");
                     }
 
@@ -261,10 +274,13 @@ namespace NKaspa.RPC
 
         private async Task EnsureOpenAsync(CancellationToken cancellationToken)
         {
+            ThrowIfTerminal();
             if (IsOpen)
             {
                 return;
             }
+
+            ThrowIfTerminal();
 
             if (!_hasConnected || !_options.AutoReconnect)
             {
@@ -428,6 +444,42 @@ namespace NKaspa.RPC
                         if (result.MessageType == WebSocketMessageType.Close)
                         {
                             await CompleteCloseAsync(socket).ConfigureAwait(false);
+                            return;
+                        }
+
+                        if (result.MessageType == WebSocketMessageType.Text)
+                        {
+                            if (result.Count > 0)
+                            {
+                                message.Write(buffer, 0, result.Count);
+                            }
+
+                            while (!result.EndOfMessage)
+                            {
+                                result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken).ConfigureAwait(false);
+                                if ((long)message.Length + result.Count > _options.MaxMessageBytes)
+                                {
+                                    fatal = new InvalidOperationException(
+                                        "WebSocket message exceeds the maximum of "
+                                        + _options.MaxMessageBytes.ToString(CultureInfo.InvariantCulture)
+                                        + " bytes.");
+                                    return;
+                                }
+
+                                if (result.Count > 0)
+                                {
+                                    message.Write(buffer, 0, result.Count);
+                                }
+                            }
+
+                            var text = Encoding.UTF8.GetString(message.ToArray());
+                            var mismatch = KaspaRpcEncodingMismatchException.BorshReceivedText(KaspaWebSocketChannel.IsHandshakeFrame(text));
+                            fatal = mismatch;
+                            lock (_gate)
+                            {
+                                _terminal ??= mismatch;
+                            }
+
                             return;
                         }
 
@@ -633,6 +685,14 @@ namespace NKaspa.RPC
 
         private void FailPending(Exception exception)
         {
+            if (exception is KaspaRpcEncodingMismatchException mismatch)
+            {
+                lock (_gate)
+                {
+                    _terminal ??= mismatch;
+                }
+            }
+
             List<TaskCompletionSource<byte[]>> waiters;
             lock (_gate)
             {
@@ -660,6 +720,20 @@ namespace NKaspa.RPC
             if (_disposed != 0)
             {
                 throw new ObjectDisposedException(nameof(KaspaBorshWebSocketChannel));
+            }
+        }
+
+        private void ThrowIfTerminal()
+        {
+            KaspaRpcEncodingMismatchException? terminal;
+            lock (_gate)
+            {
+                terminal = _terminal;
+            }
+
+            if (terminal != null)
+            {
+                throw new KaspaRpcEncodingMismatchException(terminal.ExpectedEncoding, terminal.Message, terminal.HandshakeFailed);
             }
         }
 

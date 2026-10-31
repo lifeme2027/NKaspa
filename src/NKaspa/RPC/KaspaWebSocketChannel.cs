@@ -32,6 +32,8 @@ namespace NKaspa.RPC
     /// A text frame with method <c>handshake</c>, or a <c>handshake</c> property, and no request id,
     /// is recorded in <see cref="HandshakeMessage"/> so a node that starts sending one can be recognized.
     /// This channel does not invent a handshake the current node does not send.
+    /// A binary frame is a Borsh peer. The reader throws <see cref="KaspaRpcEncodingMismatchException"/>,
+    /// fails every pending request, and does not reconnect.
     /// </para>
     /// </remarks>
     public sealed class KaspaWebSocketChannel : IKaspaJsonChannel, IAsyncDisposable
@@ -53,6 +55,7 @@ namespace NKaspa.RPC
         private Task? _reconnectTask;
         private volatile bool _hasConnected;
         private int _disposed;
+        private KaspaRpcEncodingMismatchException? _terminal;
 
         /// <summary>Creates a channel for <paramref name="uri"/> with the default timeouts and reconnect off.</summary>
         /// <exception cref="System.ArgumentNullException"><paramref name="uri"/> is null.</exception>
@@ -190,6 +193,7 @@ namespace NKaspa.RPC
         /// <exception cref="System.TimeoutException">WebSocket request timed out.</exception>
         /// <exception cref="System.OperationCanceledException">The caller's token was canceled.</exception>
         /// <exception cref="System.ObjectDisposedException">The KaspaWebSocketChannel has been disposed.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcEncodingMismatchException">JSON wRPC client received a binary WebSocket frame.</exception>
         public async Task<string> ExchangeAsync(string requestJson, CancellationToken cancellationToken = default)
         {
             if (requestJson == null)
@@ -198,6 +202,7 @@ namespace NKaspa.RPC
             }
 
             ThrowIfDisposed();
+            ThrowIfTerminal();
             await EnsureOpenAsync(cancellationToken).ConfigureAwait(false);
 
             var id = ReadRequestId(requestJson);
@@ -205,7 +210,11 @@ namespace NKaspa.RPC
             string? early;
             lock (_gate)
             {
-                if (_early.TryGetValue(id, out early))
+                if (_terminal != null)
+                {
+                    early = null;
+                }
+                else if (_early.TryGetValue(id, out early))
                 {
                     _early.Remove(id);
                 }
@@ -215,6 +224,7 @@ namespace NKaspa.RPC
                 }
             }
 
+            ThrowIfTerminal();
             if (early != null)
             {
                 return early;
@@ -227,9 +237,11 @@ namespace NKaspa.RPC
                 await _sendGate.WaitAsync(budget.Token).ConfigureAwait(false);
                 try
                 {
+                    ThrowIfTerminal();
                     var socket = _socket;
                     if (socket == null || socket.State != WebSocketState.Open)
                     {
+                        ThrowIfTerminal();
                         throw new InvalidOperationException("WebSocket disconnected.");
                     }
 
@@ -310,10 +322,13 @@ namespace NKaspa.RPC
 
         private async Task EnsureOpenAsync(CancellationToken cancellationToken)
         {
+            ThrowIfTerminal();
             if (IsOpen)
             {
                 return;
             }
+
+            ThrowIfTerminal();
 
             if (!_hasConnected || !_options.AutoReconnect)
             {
@@ -480,6 +495,18 @@ namespace NKaspa.RPC
                             return;
                         }
 
+                        if (result.MessageType == WebSocketMessageType.Binary)
+                        {
+                            var mismatch = KaspaRpcEncodingMismatchException.JsonReceivedBinary();
+                            fatal = mismatch;
+                            lock (_gate)
+                            {
+                                _terminal ??= mismatch;
+                            }
+
+                            return;
+                        }
+
                         if ((long)message.Length + result.Count > _options.MaxMessageBytes)
                         {
                             fatal = new InvalidOperationException(
@@ -606,7 +633,7 @@ namespace NKaspa.RPC
         {
             if (!TryReadId(json, out var id))
             {
-                if (IsHandshake(json))
+                if (IsHandshakeFrame(json))
                 {
                     HandshakeMessage = json;
                     return;
@@ -678,6 +705,14 @@ namespace NKaspa.RPC
 
         private void FailPending(Exception exception)
         {
+            if (exception is KaspaRpcEncodingMismatchException mismatch)
+            {
+                lock (_gate)
+                {
+                    _terminal ??= mismatch;
+                }
+            }
+
             List<TaskCompletionSource<string>> waiters;
             lock (_gate)
             {
@@ -917,7 +952,21 @@ namespace NKaspa.RPC
             }
         }
 
-        private static bool IsHandshake(string json)
+        private void ThrowIfTerminal()
+        {
+            KaspaRpcEncodingMismatchException? terminal;
+            lock (_gate)
+            {
+                terminal = _terminal;
+            }
+
+            if (terminal != null)
+            {
+                throw new KaspaRpcEncodingMismatchException(terminal.ExpectedEncoding, terminal.Message, terminal.HandshakeFailed);
+            }
+        }
+
+        internal static bool IsHandshakeFrame(string json)
         {
             try
             {

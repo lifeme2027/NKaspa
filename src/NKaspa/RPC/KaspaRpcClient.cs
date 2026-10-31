@@ -1,9 +1,63 @@
 namespace NKaspa.RPC
 {
+    /// <summary>
+    /// The WebSocket frame type does not match the wRPC client.
+    /// A JSON client received a binary frame, or a Borsh client received a text frame.
+    /// A JSON handshake text frame on a Borsh client sets <see cref="HandshakeFailed"/>.
+    /// Pending requests fail with this exception. The client does not wait for the request timeout and does not reconnect.
+    /// </summary>
+    public sealed class KaspaRpcEncodingMismatchException : Exception
+    {
+        /// <summary>Creates an exception for <paramref name="expectedEncoding"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="message"/> is null.</exception>
+        public KaspaRpcEncodingMismatchException(KaspaRpcEncoding expectedEncoding, string message)
+            : this(expectedEncoding, message, false)
+        {
+        }
+
+        /// <summary>Creates an exception for <paramref name="expectedEncoding"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="message"/> is null.</exception>
+        public KaspaRpcEncodingMismatchException(KaspaRpcEncoding expectedEncoding, string message, bool handshakeFailed)
+            : base(message ?? throw new ArgumentNullException(nameof(message)))
+        {
+            ExpectedEncoding = expectedEncoding;
+            HandshakeFailed = handshakeFailed;
+        }
+
+        /// <summary>The encoding this client was built for.</summary>
+        public KaspaRpcEncoding ExpectedEncoding { get; }
+
+        /// <summary>True when a Borsh client received a JSON handshake text frame.</summary>
+        public bool HandshakeFailed { get; }
+
+        internal static KaspaRpcEncodingMismatchException JsonReceivedBinary()
+        {
+            return new KaspaRpcEncodingMismatchException(
+                KaspaRpcEncoding.Json,
+                "JSON wRPC client received a binary WebSocket frame. The peer is speaking Borsh, not JSON. Pending requests fail with KaspaRpcEncodingMismatchException. NKaspa does not wait for the request timeout.");
+        }
+
+        internal static KaspaRpcEncodingMismatchException BorshReceivedText(bool handshakeFailed)
+        {
+            var message = handshakeFailed
+                ? "Borsh wRPC client received a JSON handshake text frame. The handshake failed because the peer is speaking JSON, not Borsh. Pending requests fail with KaspaRpcEncodingMismatchException."
+                : "Borsh wRPC client received a text WebSocket frame. The peer is speaking JSON, not Borsh. Pending requests fail with KaspaRpcEncodingMismatchException. NKaspa does not wait for the request timeout.";
+            return new KaspaRpcEncodingMismatchException(KaspaRpcEncoding.Borsh, message, handshakeFailed);
+        }
+    }
+
     /// <summary>Which wRPC encoding <see cref="KaspaRpcClient.Create"/> should open.</summary>
     public enum KaspaRpcEncoding
     {
-        /// <summary>Pick Borsh or JSON from the URL port. An unknown port throws.</summary>
+        /// <summary>
+        /// Pick Borsh or JSON from the URL path, then from the port. The path wins over the port.
+        /// A path ending in <c>/wrpc/borsh</c> or containing <c>/borsh</c> is Borsh.
+        /// A path ending in <c>/wrpc/json</c> or containing <c>/json</c> is JSON.
+        /// Borsh is tested first. The comparison is ordinal and case-insensitive, and trailing slashes are ignored for the ending check.
+        /// When the path has no hint and the port is not a default wRPC port, <see cref="KaspaRpcClient.Create"/> throws.
+        /// NKaspa does not default to either encoding. <c>wss</c> on port 443 with no path hint is that case.
+        /// gRPC ports 16110, 16210, 16510, and 16610 are rejected.
+        /// </summary>
         Auto = 0,
 
         /// <summary>workflow-rpc Borsh on a binary WebSocket.</summary>
@@ -45,6 +99,18 @@ namespace NKaspa.RPC
         /// <summary>Devnet JSON. rusty-kaspa default 18610.</summary>
         public const int DevnetJson = 18610;
 
+        /// <summary>Mainnet gRPC. NKaspa does not speak gRPC. rusty-kaspa default 16110.</summary>
+        public const int MainnetGrpc = 16110;
+
+        /// <summary>Testnet gRPC. NKaspa does not speak gRPC. rusty-kaspa default 16210.</summary>
+        public const int TestnetGrpc = 16210;
+
+        /// <summary>Simnet gRPC. NKaspa does not speak gRPC. rusty-kaspa default 16510.</summary>
+        public const int SimnetGrpc = 16510;
+
+        /// <summary>Devnet gRPC. NKaspa does not speak gRPC. rusty-kaspa default 16610.</summary>
+        public const int DevnetGrpc = 16610;
+
         /// <summary>True when <paramref name="port"/> is one of the eight default wRPC ports.</summary>
         public static bool TrySelect(int port, out KaspaRpcEncoding encoding)
         {
@@ -63,6 +129,50 @@ namespace NKaspa.RPC
             encoding = KaspaRpcEncoding.Auto;
             return false;
         }
+
+        /// <summary>True when <paramref name="port"/> is a default Kaspa gRPC port. NKaspa does not open those ports.</summary>
+        public static bool IsGrpcPort(int port)
+        {
+            return port == MainnetGrpc || port == TestnetGrpc || port == SimnetGrpc || port == DevnetGrpc;
+        }
+
+        /// <summary>
+        /// True when <paramref name="absolutePath"/> selects an encoding.
+        /// A path ending in <c>/wrpc/borsh</c>, or containing <c>/borsh</c>, selects Borsh.
+        /// A path ending in <c>/wrpc/json</c>, or containing <c>/json</c>, selects JSON.
+        /// Borsh is tested first, so a path that contains both selects Borsh.
+        /// Comparison is ordinal and case-insensitive. Trailing slashes are ignored for the ending check.
+        /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="absolutePath"/> is null.</exception>
+        public static bool TrySelectPath(string absolutePath, out KaspaRpcEncoding encoding)
+        {
+            if (absolutePath == null)
+            {
+                throw new ArgumentNullException(nameof(absolutePath));
+            }
+
+            if (PathSelects(absolutePath, "/wrpc/borsh", "/borsh"))
+            {
+                encoding = KaspaRpcEncoding.Borsh;
+                return true;
+            }
+
+            if (PathSelects(absolutePath, "/wrpc/json", "/json"))
+            {
+                encoding = KaspaRpcEncoding.Json;
+                return true;
+            }
+
+            encoding = KaspaRpcEncoding.Auto;
+            return false;
+        }
+
+        private static bool PathSelects(string absolutePath, string ending, string fragment)
+        {
+            var end = absolutePath.TrimEnd('/');
+            return end.EndsWith(ending, StringComparison.OrdinalIgnoreCase)
+                || absolutePath.IndexOf(fragment, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
     }
 
     /// <summary>Opens a Kaspa wRPC connection. <see cref="Create"/> does not connect. Call <see cref="KaspaRpcConnection.ConnectAsync"/>.</summary>
@@ -70,10 +180,16 @@ namespace NKaspa.RPC
     {
         /// <summary>
         /// Builds a client for <paramref name="url"/>.
-        /// <see cref="KaspaRpcEncoding.Auto"/> uses <see cref="KaspaWrpcPorts"/>. Pass <see cref="KaspaRpcEncoding.Borsh"/> or <see cref="KaspaRpcEncoding.Json"/> to override the port.
+        /// <see cref="KaspaRpcEncoding.Auto"/> uses the URL path, then <see cref="KaspaWrpcPorts"/>. The path wins over the port.
+        /// Pass <see cref="KaspaRpcEncoding.Borsh"/> or <see cref="KaspaRpcEncoding.Json"/> to override both the path and the port.
+        /// An explicit encoding does not override a gRPC port. Ports 16110, 16210, 16510, and 16610 always throw.
+        /// When the path has no <c>/borsh</c> or <c>/json</c> hint and the port is not a default wRPC port, this method throws.
+        /// NKaspa does not default to either encoding in that case. <c>wss</c> on port 443 with no path hint is an example.
         /// </summary>
         /// <exception cref="System.ArgumentNullException"><paramref name="url"/> is null.</exception>
-        /// <exception cref="System.ArgumentException"><paramref name="url"/> is not an absolute WebSocket URL, or <see cref="KaspaRpcEncoding.Auto"/> cannot tell Borsh from JSON for that port.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// <paramref name="url"/> is not an absolute WebSocket URL, the port is a gRPC port, or <see cref="KaspaRpcEncoding.Auto"/> cannot tell Borsh from JSON.
+        /// </exception>
         /// <exception cref="System.ArgumentOutOfRangeException">A timeout or reconnect option is outside the allowed range.</exception>
         public static KaspaRpcConnection Create(string url, KaspaRpcEncoding encoding = KaspaRpcEncoding.Auto, KaspaWebSocketOptions? options = null)
         {
@@ -87,14 +203,23 @@ namespace NKaspa.RPC
                 throw new ArgumentException("wRPC URL must be an absolute ws or wss URI.", nameof(url));
             }
 
+            if (KaspaWrpcPorts.IsGrpcPort(uri.Port))
+            {
+                throw new ArgumentException(
+                    "Port " + uri.Port.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + " is a Kaspa gRPC port. NKaspa speaks wRPC, not gRPC. Borsh wRPC ports are 17110 (mainnet), 17210 (testnet), 17510 (simnet), and 17610 (devnet). JSON wRPC ports are 18110, 18210, 18510, and 18610. A path ending in /wrpc/borsh or containing /borsh selects Borsh. A path ending in /wrpc/json or containing /json selects JSON. The path wins over a wRPC port. Passing KaspaRpcEncoding does not turn a gRPC port into wRPC.",
+                    nameof(url));
+            }
+
             var selected = encoding;
             if (selected == KaspaRpcEncoding.Auto)
             {
-                if (!KaspaWrpcPorts.TrySelect(uri.Port, out selected) || selected == KaspaRpcEncoding.Auto)
+                if (!KaspaWrpcPorts.TrySelectPath(uri.AbsolutePath, out selected)
+                    && (!KaspaWrpcPorts.TrySelect(uri.Port, out selected) || selected == KaspaRpcEncoding.Auto))
                 {
                     throw new ArgumentException(
                         "wRPC encoding could not be selected from port " + uri.Port.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                        + ". Borsh ports are 17110 (mainnet), 17210 (testnet), 17510 (simnet), and 17610 (devnet). JSON ports are 18110, 18210, 18510, and 18610. Pass KaspaRpcEncoding.Borsh or KaspaRpcEncoding.Json.",
+                        + " or the URL path. NKaspa does not default to Borsh or JSON when both the port and the path are unknown (for example wss on port 443 with no /borsh or /json hint). A path ending in /wrpc/borsh or containing /borsh selects Borsh. A path ending in /wrpc/json or containing /json selects JSON. The path wins over the port. Borsh ports are 17110 (mainnet), 17210 (testnet), 17510 (simnet), and 17610 (devnet). JSON ports are 18110, 18210, 18510, and 18610. Pass KaspaRpcEncoding.Borsh or KaspaRpcEncoding.Json.",
                         nameof(url));
                 }
             }
@@ -113,6 +238,7 @@ namespace NKaspa.RPC
     /// <summary>
     /// One wRPC connection created by <see cref="KaspaRpcClient.Create"/>.
     /// It implements <see cref="IKaspaRpcClient"/> and owns the socket.
+    /// A binary frame on a JSON connection, or a text frame on a Borsh connection, fails pending calls with <see cref="KaspaRpcEncodingMismatchException"/>.
     /// </summary>
     public sealed class KaspaRpcConnection : IKaspaRpcClient, IAsyncDisposable
     {
