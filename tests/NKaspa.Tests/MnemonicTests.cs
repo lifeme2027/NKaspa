@@ -96,5 +96,44 @@ namespace NKaspa.Tests
             Assert.Throws<FormatException>(() => new Mnemonic("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon notaword"));
             Assert.Throws<FormatException>(() => new Mnemonic("abandon abandon"));
         }
+
+        [Fact]
+        public void Upper_case_ideographic_spaces_and_zero_width_match_the_canonical_sentence()
+        {
+            const string Canonical = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+            var canonical = new Mnemonic(Canonical);
+            Assert.True(canonical.IsValidChecksum);
+
+            var upper = Canonical.ToUpperInvariant();
+            var ideographic = string.Join("\u3000\u3000", Canonical.Split(' '));
+            var noisy = "\uFEFF" + ideographic.Replace("abandon", "aban\u200bdon", StringComparison.Ordinal);
+            var fullwidth = "\uFF21bandon " + Canonical.Substring("abandon ".Length);
+            var spaced = " \t" + Canonical.Replace(" ", "  \t ") + "\u3000";
+
+            foreach (var input in new[] { upper, ideographic, noisy, fullwidth, spaced })
+            {
+                var parsed = new Mnemonic(input);
+                Assert.Equal(Canonical, parsed.ToString());
+                Assert.True(parsed.IsValidChecksum);
+                Assert.Equal(Encoders.Hex.EncodeData(canonical.DeriveSeed()), Encoders.Hex.EncodeData(parsed.DeriveSeed()));
+                Assert.Equal(Encoders.Hex.EncodeData(canonical.DeriveSeed("TREZOR")), Encoders.Hex.EncodeData(parsed.DeriveSeed("TREZOR")));
+            }
+
+            Assert.Throws<FormatException>(() => new Mnemonic(Canonical.Replace(" ", "\u200b", StringComparison.Ordinal)));
+        }
+
+        [Fact]
+        public void Passphrase_nfkd_folds_composed_and_decomposed_grave()
+        {
+            var mnemonic = new Mnemonic("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about");
+            var composed = "nullius\u3000\u00e0";
+            var decomposed = "nullius\u3000a\u0300";
+            Assert.Equal(
+                Encoders.Hex.EncodeData(mnemonic.DeriveSeed(composed)),
+                Encoders.Hex.EncodeData(mnemonic.DeriveSeed(decomposed)));
+            Assert.NotEqual(
+                Encoders.Hex.EncodeData(mnemonic.DeriveSeed(composed)),
+                Encoders.Hex.EncodeData(mnemonic.DeriveSeed(composed + "\u200b")));
+        }
     }
 }
