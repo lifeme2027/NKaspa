@@ -12,7 +12,7 @@ namespace NKaspa
     /// </remarks>
     public sealed class Network
     {
-        private Network(string name, string addressPrefix, int p2pPort, uint extPubKeyVersion, uint extPrivKeyVersion, Policy.BlockMassLimits massLimits)
+        private Network(string name, string addressPrefix, int p2pPort, uint extPubKeyVersion, uint extPrivKeyVersion, Policy.BlockMassLimits massLimits, ulong toccataActivationDaaScore)
         {
             Name = name;
             AddressPrefix = addressPrefix;
@@ -20,6 +20,7 @@ namespace NKaspa
             ExtPubKeyVersion = extPubKeyVersion;
             ExtPrivKeyVersion = extPrivKeyVersion;
             MassLimits = massLimits;
+            ToccataActivationDaaScore = toccataActivationDaaScore;
         }
 
         /// <summary>
@@ -27,21 +28,35 @@ namespace NKaspa
         /// commit <c>90dbf074275d60c1fe74a3491883196f110970c0</c>, about 2026-06-30 16:15 UTC.
         /// Current rusty-kaspa master no longer branches on this score.
         /// params.rs sets the same post-fork block mass limits on mainnet, testnet, simnet, and devnet.
-        /// Those networks' activation scores are not in that file.
+        /// The activation scores themselves are not in that file.
         /// </summary>
         public const ulong MainnetToccataActivationDaaScore = 474_165_565;
 
+        /// <summary>
+        /// Testnet-10 Toccata activation DAA score, 467579632.
+        /// rusty-kaspa pull request 1082 (Toccata cleanup) records this as the testnet activation,
+        /// the tn10-toc2 score. It is not a field in current <c>params.rs</c>.
+        /// </summary>
+        public const ulong TestnetToccataActivationDaaScore = 467_579_632;
+
         /// <summary>Mainnet. Address prefix <c>kaspa</c>. Extended keys use <c>kpub</c> and <c>kprv</c>.</summary>
-        public static Network Mainnet { get; } = new Network("mainnet", "kaspa", 16111, HdKeyVersions.Kpub, HdKeyVersions.Kprv, Policy.BlockMassLimits.Default);
+        public static Network Mainnet { get; } = new Network("mainnet", "kaspa", 16111, HdKeyVersions.Kpub, HdKeyVersions.Kprv, Policy.BlockMassLimits.Default, MainnetToccataActivationDaaScore);
 
         /// <summary>Public testnet. Address prefix <c>kaspatest</c>. Extended keys use <c>ktub</c> and <c>ktrv</c>.</summary>
-        public static Network Testnet { get; } = new Network("testnet", "kaspatest", 16211, HdKeyVersions.Ktub, HdKeyVersions.Ktrv, Policy.BlockMassLimits.Default);
+        public static Network Testnet { get; } = new Network("testnet", "kaspatest", 16211, HdKeyVersions.Ktub, HdKeyVersions.Ktrv, Policy.BlockMassLimits.Default, TestnetToccataActivationDaaScore);
 
-        /// <summary>Simulation network. Address prefix <c>kaspasim</c>. Extended keys use <c>ktub</c> and <c>ktrv</c>.</summary>
-        public static Network Simnet { get; } = new Network("simnet", "kaspasim", 16511, HdKeyVersions.Ktub, HdKeyVersions.Ktrv, Policy.BlockMassLimits.Default);
+        /// <summary>
+        /// Simulation network. Address prefix <c>kaspasim</c>. Extended keys use <c>ktub</c> and <c>ktrv</c>.
+        /// Activation score 0: current rusty-kaspa simnet is post-Toccata at every DAA score.
+        /// </summary>
+        public static Network Simnet { get; } = new Network("simnet", "kaspasim", 16511, HdKeyVersions.Ktub, HdKeyVersions.Ktrv, Policy.BlockMassLimits.Default, 0);
 
-        /// <summary>Development network. Address prefix <c>kaspadev</c>. Extended keys use <c>ktub</c> and <c>ktrv</c>.</summary>
-        public static Network Devnet { get; } = new Network("devnet", "kaspadev", 16611, HdKeyVersions.Ktub, HdKeyVersions.Ktrv, Policy.BlockMassLimits.Default);
+        /// <summary>
+        /// Development network. Address prefix <c>kaspadev</c>. Extended keys use <c>ktub</c> and <c>ktrv</c>.
+        /// Activation score 0 matches current rusty-kaspa master, which turned devnet on in pull request 1082.
+        /// A devnet node from before that cleanup is still pre-Toccata. Pass <see cref="Policy.MassPolicy.PreToccata"/> to the builder for that node.
+        /// </summary>
+        public static Network Devnet { get; } = new Network("devnet", "kaspadev", 16611, HdKeyVersions.Ktub, HdKeyVersions.Ktrv, Policy.BlockMassLimits.Default, 0);
 
         /// <summary>Short network name: mainnet, testnet, simnet, or devnet.</summary>
         public string Name { get; }
@@ -67,8 +82,32 @@ namespace NKaspa
         /// <summary>
         /// Block mass limits used for fee normalization.
         /// Every built-in network uses the post-Toccata limits: compute 500000, storage 500000, transient 1000000.
+        /// Current rusty-kaspa <c>params.rs</c> writes that same triple on mainnet, testnet, simnet, and devnet.
+        /// The per-transaction cap is separate. See <see cref="MassPolicyAt"/>.
         /// </summary>
         public Policy.BlockMassLimits MassLimits { get; }
+
+        /// <summary>
+        /// DAA score at which <see cref="MassPolicyAt"/> returns <see cref="Policy.MassPolicy.PostToccata"/>.
+        /// Zero means every score is post-Toccata. That is simnet, and devnet on current rusty-kaspa master.
+        /// </summary>
+        public ulong ToccataActivationDaaScore { get; }
+
+        /// <summary>True when <paramref name="virtualDaaScore"/> has reached <see cref="ToccataActivationDaaScore"/>.</summary>
+        public bool IsToccataActive(ulong virtualDaaScore)
+        {
+            return virtualDaaScore >= ToccataActivationDaaScore;
+        }
+
+        /// <summary>
+        /// Mass policy a builder should use at <paramref name="virtualDaaScore"/>.
+        /// Below the activation score this is <see cref="Policy.MassPolicy.PreToccata"/> (cap 100000, relay rate 1).
+        /// At and above it, this is <see cref="Policy.MassPolicy.PostToccata"/> (cap 500000, relay rate 100).
+        /// </summary>
+        public Policy.MassPolicy MassPolicyAt(ulong virtualDaaScore)
+        {
+            return IsToccataActive(virtualDaaScore) ? Policy.MassPolicy.PostToccata : Policy.MassPolicy.PreToccata;
+        }
 
         /// <summary>The four built-in networks.</summary>
         public static IReadOnlyList<Network> All { get; } = new[]

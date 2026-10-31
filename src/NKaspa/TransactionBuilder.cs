@@ -37,6 +37,7 @@ namespace NKaspa
         /// <summary>
         /// Change below this amount is added to the fee instead of creating an output.
         /// The default is <c>C / storage limit</c>: 0.02 KAS when the storage limit is 500000.
+        /// <see cref="MassPolicy.PreToccata"/> uses <c>C / 100000</c>, which is 0.1 KAS.
         /// A change at or above this amount is still folded in when keeping it would exceed <see cref="MaximumMass"/> or <see cref="MassLimits"/>.
         /// </summary>
         public Money MinimumChange { get; set; }
@@ -44,12 +45,18 @@ namespace NKaspa
         /// <summary>
         /// Maximum allowed fee mass.
         /// The default is the post-Toccata block compute limit, 500000.
-        /// Set this to <see cref="MassCalculator.MaxStandardTransactionMass"/> (100000) for the pre-Toccata relay cap.
+        /// <see cref="MassPolicy.PreToccata"/> and <c>toccataActive: false</c> set this to <see cref="MassCalculator.MaxStandardTransactionMass"/> (100000).
         /// </summary>
         public ulong MaximumMass { get; set; }
 
         /// <summary>Block dimension limits used for normalization and for the mass check. The default is the post-Toccata mainnet limits.</summary>
         public BlockMassLimits MassLimits { get; set; }
+
+        /// <summary>
+        /// Sompi charged for one gram when <see cref="SendMinimumRelayFee"/> runs, and the lowest rate <see cref="SendEstimatedFees"/> accepts.
+        /// The default is 100. <see cref="MassPolicy.PreToccata"/> sets 1.
+        /// </summary>
+        public ulong MinimumRelayFeeRate { get; set; }
 
         /// <summary>
         /// When false, an explicit <see cref="SendFees"/> below the minimum relay fee throws.
@@ -92,27 +99,50 @@ namespace NKaspa
         /// <summary>Creates a builder for mainnet after Toccata. Fee mass may use the full block compute limit.</summary>
         /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
         public TransactionBuilder()
-            : this(Network.Mainnet, toccataActive: true)
+            : this(Network.Mainnet, MassPolicy.PostToccata)
         {
         }
 
         /// <summary>
-        /// Creates a builder for <paramref name="network"/>.
-        /// <paramref name="toccataActive"/> false keeps the pre-Toccata fee-mass cap of 100000.
-        /// Every built-in network currently publishes the same post-Toccata block limits.
+        /// Creates a builder for <paramref name="network"/> using the current post-cleanup policy when <paramref name="toccataActive"/> is true.
+        /// False selects <see cref="MassPolicy.PreToccata"/>: fee-mass cap 100000 and relay rate 1 sompi per gram.
+        /// Every built-in network publishes the same post-Toccata block limits. The cap and the relay rate are what activation changes.
+        /// <see cref="TransactionBuilder(Network, ulong)"/> picks the policy from the node's virtual DAA score.
         /// </summary>
         /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
         public TransactionBuilder(Network network, bool toccataActive = true)
+            : this(network, toccataActive ? MassPolicy.PostToccata : MassPolicy.PreToccata)
+        {
+        }
+
+        /// <summary>
+        /// Creates a builder for <paramref name="network"/> at <paramref name="virtualDaaScore"/>.
+        /// Scores below <see cref="Network.ToccataActivationDaaScore"/> use the pre-Toccata cap and relay rate.
+        /// Simnet and current devnet use score 0, so every score is post-Toccata.
+        /// An old devnet node needs <see cref="MassPolicy.PreToccata"/> explicitly.
+        /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
+        public TransactionBuilder(Network network, ulong virtualDaaScore)
+            : this(network, RequireNetwork(network).MassPolicyAt(virtualDaaScore))
+        {
+        }
+
+        /// <summary>
+        /// Creates a builder for <paramref name="network"/> with an explicit <paramref name="policy"/>.
+        /// The network selects address prefixes. The policy selects mass limits, the transaction cap, the relay rate, and minimum change.
+        /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
+        public TransactionBuilder(Network network, MassPolicy policy)
         {
             if (network == null)
             {
                 throw new ArgumentNullException(nameof(network));
             }
 
-            MassLimits = network.MassLimits;
-            MaximumMass = toccataActive ? network.MassLimits.Compute : MassCalculator.MaxStandardTransactionMass;
-            var storageCeiling = toccataActive ? network.MassLimits.Storage : MassCalculator.MaxStandardTransactionMass;
-            MinimumChange = new Money(MassCalculator.StorageMassParameter / storageCeiling);
+            MassLimits = policy.BlockLimits;
+            MaximumMass = policy.MaximumTransactionMass;
+            MinimumChange = policy.MinimumChange;
+            MinimumRelayFeeRate = policy.MinimumRelayFeeRate;
         }
 
         /// <summary>Adds private keys used to sign pay-to-pubkey inputs.</summary>
@@ -319,15 +349,17 @@ namespace NKaspa
         /// <summary>
         /// Estimates the fee from the signed fee mass and <paramref name="feeRate"/>.
         /// Fee mass is the maximum of compute mass, normalized transient mass, and normalized storage mass.
-        /// A rate below 100 sompi per gram is rejected.
-        /// The minimum relay floor is narrower. See <see cref="SendMinimumRelayFee"/>.
+        /// A rate below <see cref="MinimumRelayFeeRate"/> sompi per gram is rejected. The default floor is 100.
+        /// <see cref="MassPolicy.PreToccata"/> lowers that floor to 1. The relay mass is still narrower than fee mass. See <see cref="SendMinimumRelayFee"/>.
         /// </summary>
-        /// <exception cref="System.ArgumentOutOfRangeException">Fee rate is below 100 sompi per gram.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">Fee rate is below the builder minimum relay rate.</exception>
         public TransactionBuilder SendEstimatedFees(FeeRate feeRate)
         {
-            if (feeRate.SompiPerGram < FeeRate.MinimumRelaySompiPerGram)
+            if (feeRate.SompiPerGram < MinimumRelayFeeRate)
             {
-                throw new ArgumentOutOfRangeException(nameof(feeRate), "Fee rate is below 100 sompi per gram.");
+                throw new ArgumentOutOfRangeException(
+                    nameof(feeRate),
+                    "Fee rate is below " + MinimumRelayFeeRate.ToString(System.Globalization.CultureInfo.InvariantCulture) + " sompi per gram.");
             }
 
             _estimatedRate = feeRate;
@@ -336,8 +368,8 @@ namespace NKaspa
 
         /// <summary>
         /// Pays the minimum relay fee, solved from the signed transaction.
-        /// The fee is 100 sompi times the larger of compute mass and normalized transient mass.
-        /// Storage mass is not included. A standard one-input Schnorr payment with change is 2036 grams, 203600 sompi, about 0.002 KAS.
+        /// The fee is <see cref="MinimumRelayFeeRate"/> sompi times the larger of compute mass and normalized transient mass.
+        /// The default rate is 100. Storage mass is not included. A standard one-input Schnorr payment with change is 2036 grams, 203600 sompi, about 0.002 KAS.
         /// Cannot be combined with <see cref="SendFees"/> or <see cref="SendEstimatedFees"/>.
         /// </summary>
         public TransactionBuilder SendMinimumRelayFee()
@@ -895,10 +927,10 @@ namespace NKaspa
             EnsureWithin(mass);
             if (mode == FeeChoice.Rate)
             {
-                return MassCalculator.EstimateFee(mass.FeeMass, _estimatedRate!.Value.SompiPerGram);
+                return checked(mass.FeeMass * _estimatedRate!.Value.SompiPerGram);
             }
 
-            return MassCalculator.MinimumRelayFee(mass);
+            return checked(MassCalculator.RelayMass(mass) * MinimumRelayFeeRate);
         }
 
         private FeeChoice ResolveFeeMode()
@@ -955,9 +987,11 @@ namespace NKaspa
             }
 
             var mass = MassCalculator.Calculate(transaction, Entries(selected), MassLimits);
-            if (fee < MassCalculator.MinimumRelayFee(mass))
+            var floor = checked(MassCalculator.RelayMass(mass) * MinimumRelayFeeRate);
+            if (fee < floor)
             {
-                throw new InvalidOperationException("Fee is below the minimum relay rate of 100 sompi per gram.");
+                throw new InvalidOperationException(
+                    "Fee is below the minimum relay rate of " + MinimumRelayFeeRate.ToString(System.Globalization.CultureInfo.InvariantCulture) + " sompi per gram.");
             }
         }
 
@@ -1119,6 +1153,16 @@ namespace NKaspa
             }
 
             return string.CompareOrdinal(left.Outpoint.ToString(), right.Outpoint.ToString());
+        }
+
+        private static Network RequireNetwork(Network network)
+        {
+            if (network == null)
+            {
+                throw new ArgumentNullException(nameof(network));
+            }
+
+            return network;
         }
 
         private enum FeeChoice
