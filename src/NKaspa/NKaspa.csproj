@@ -3,10 +3,10 @@
     <TargetFrameworks>net8.0;netstandard2.1</TargetFrameworks>
     <RootNamespace>NKaspa</RootNamespace>
     <AssemblyName>NKaspa</AssemblyName>
-    <Version>0.1.7-alpha</Version>
+    <Version>0.1.8-alpha</Version>
     <PackageId>NKaspa</PackageId>
     <Title>NKaspa</Title>
-    <Description>A .NET library for Kaspa, structured as a counterpart of NBitcoin. Alpha: keys, Schnorr and ECDSA signatures, scripts, version-0 and Toccata version-1 transactions, BLAKE2b and BLAKE3, sighash, BIP39, BIP32, a transaction builder with must-spend coin selection and version-1 payments, PSKT (partially signed Kaspa transactions) aligned with rusty-kaspa wallet/pskt, mass and fees, a minimal wRPC JSON client, System.Text.Json converters, encoders, uint256, networks, and addresses. The script engine executes version-0 scripts, including pay-to-script-hash. OP_ZKPRECOMPILE enforces the finalized structural checks and leaves the BN254 pairing and the RISC0 STARK unimplemented. Newtonsoft.Json is not a dependency.</Description>
+    <Description>A .NET library for Kaspa, structured as a counterpart of NBitcoin. Alpha: keys, Schnorr and ECDSA signatures, scripts, version-0 and Toccata version-1 transactions, BLAKE2b and BLAKE3, sighash, BIP39, BIP32, a transaction builder with must-spend coin selection and version-1 payments, PSKT (partially signed Kaspa transactions) aligned with rusty-kaspa wallet/pskt, mass and fees, a minimal wRPC JSON client, System.Text.Json converters, encoders, uint256, networks, and addresses. The script engine executes version-0 scripts, including pay-to-script-hash. OP_ZKPRECOMPILE enforces the finalized structural checks and leaves the BN254 pairing and the RISC0 STARK unimplemented. ConsensusSeqCommitAccessor walks the selected-parent chain through read-only getBlock and getBlockDagInfo calls and throws when that data is incomplete, inconsistent, or reorged. A light client can only approach consensus; matching it exactly requires a node. Newtonsoft.Json is not a dependency.</Description>
     <PackageTags>kaspa;nkaspa;blockchain</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

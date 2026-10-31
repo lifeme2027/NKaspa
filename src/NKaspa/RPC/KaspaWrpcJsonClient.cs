@@ -186,9 +186,11 @@ namespace NKaspa.RPC
                 }
             }
 
+            var chainFlagPresent = false;
             var chain = false;
             if (verbose.ValueKind == JsonValueKind.Object && verbose.TryGetProperty("isChainBlock", out var chainElement))
             {
+                chainFlagPresent = true;
                 if (chainElement.ValueKind == JsonValueKind.True)
                 {
                     chain = true;
@@ -203,7 +205,126 @@ namespace NKaspa.RPC
                 }
             }
 
-            return new RpcChainBlock(hash, blueScore, root, chain);
+            ReadDirectParent(header, out var parentsPresent, out var directParent);
+            return new RpcChainBlock(
+                hash,
+                blueScore,
+                root,
+                chain,
+                ReadOptionalHash(verbose, "selectedParentHash"),
+                directParent,
+                parentsPresent,
+                chainFlagPresent,
+                ReadOptionalScore(header, "blueScore"),
+                ReadOptionalScore(verbose, "blueScore"),
+                ReadOptionalHash(header, "hash"),
+                ReadOptionalHash(verbose, "hash"));
+        }
+
+        private static ulong? ReadOptionalScore(JsonElement obj, string name)
+        {
+            if (obj.ValueKind != JsonValueKind.Object || !obj.TryGetProperty(name, out var element) || element.ValueKind == JsonValueKind.Null)
+            {
+                return null;
+            }
+
+            return KaspaRpcJson.ReadU64(element);
+        }
+
+        private static uint256? ReadOptionalHash(JsonElement obj, string name)
+        {
+            if (obj.ValueKind != JsonValueKind.Object || !obj.TryGetProperty(name, out var element) || element.ValueKind == JsonValueKind.Null)
+            {
+                return null;
+            }
+
+            if (element.ValueKind != JsonValueKind.String)
+            {
+                throw new FormatException("Expected a hex hash for " + name + ".");
+            }
+
+            var text = element.GetString();
+            if (string.IsNullOrEmpty(text))
+            {
+                return null;
+            }
+
+            return uint256.Parse(text);
+        }
+
+        private static void ReadDirectParent(JsonElement header, out bool parentsPresent, out uint256? directParent)
+        {
+            parentsPresent = false;
+            directParent = null;
+            if (header.ValueKind != JsonValueKind.Object)
+            {
+                return;
+            }
+
+            JsonElement levels;
+            if (header.TryGetProperty("parents", out var parents))
+            {
+                levels = parents;
+            }
+            else if (header.TryGetProperty("parentsByLevel", out var byLevel))
+            {
+                levels = byLevel;
+            }
+            else
+            {
+                return;
+            }
+
+            if (levels.ValueKind != JsonValueKind.Array)
+            {
+                throw new FormatException("Expected an array for parents.");
+            }
+
+            parentsPresent = true;
+            var levelEnumerator = levels.EnumerateArray();
+            if (!levelEnumerator.MoveNext())
+            {
+                return;
+            }
+
+            var firstLevel = levelEnumerator.Current;
+            JsonElement hashes;
+            if (firstLevel.ValueKind == JsonValueKind.Array)
+            {
+                hashes = firstLevel;
+            }
+            else if (firstLevel.ValueKind == JsonValueKind.Object && firstLevel.TryGetProperty("parentHashes", out var parentHashes))
+            {
+                hashes = parentHashes;
+            }
+            else
+            {
+                throw new FormatException("Expected parent hashes.");
+            }
+
+            if (hashes.ValueKind != JsonValueKind.Array)
+            {
+                throw new FormatException("Expected parent hashes.");
+            }
+
+            var hashEnumerator = hashes.EnumerateArray();
+            if (!hashEnumerator.MoveNext())
+            {
+                return;
+            }
+
+            if (hashEnumerator.Current.ValueKind != JsonValueKind.String)
+            {
+                throw new FormatException("Expected a parent hash.");
+            }
+
+            var text = hashEnumerator.Current.GetString();
+            if (string.IsNullOrEmpty(text))
+            {
+                throw new FormatException("Expected a parent hash.");
+            }
+
+            directParent = uint256.Parse(text);
         }
 
         private static ulong ReadScore(JsonElement header, JsonElement verbose)

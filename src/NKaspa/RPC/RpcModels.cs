@@ -64,19 +64,39 @@ namespace NKaspa.RPC
     /// </summary>
     public sealed class RpcChainBlock
     {
-        /// <summary>Creates the header view.</summary>
-        public RpcChainBlock(uint256 hash, ulong blueScore, uint256? acceptedIdMerkleRoot, bool isChainBlock)
+        /// <summary>Creates the header view. Omitted consensus fields stay null or false.</summary>
+        public RpcChainBlock(
+            uint256 hash,
+            ulong blueScore,
+            uint256? acceptedIdMerkleRoot,
+            bool isChainBlock,
+            uint256? selectedParentHash = null,
+            uint256? directParent = null,
+            bool parentsPresent = false,
+            bool chainFlagPresent = false,
+            ulong? headerBlueScore = null,
+            ulong? verboseBlueScore = null,
+            uint256? headerHash = null,
+            uint256? verboseHash = null)
         {
             Hash = hash ?? throw new ArgumentNullException(nameof(hash));
             BlueScore = blueScore;
             AcceptedIdMerkleRoot = acceptedIdMerkleRoot;
             IsChainBlock = isChainBlock;
+            SelectedParentHash = selectedParentHash;
+            DirectParent = directParent;
+            ParentsPresent = parentsPresent;
+            ChainFlagPresent = chainFlagPresent;
+            HeaderBlueScore = headerBlueScore;
+            VerboseBlueScore = verboseBlueScore;
+            HeaderHash = headerHash;
+            VerboseHash = verboseHash;
         }
 
-        /// <summary>Block hash.</summary>
+        /// <summary>Block hash requested from getBlock.</summary>
         public uint256 Hash { get; }
 
-        /// <summary>header blueScore, or verboseData blueScore when the header omits it.</summary>
+        /// <summary>header blueScore, or verboseData blueScore when the header omits it. Zero when both are missing.</summary>
         public ulong BlueScore { get; }
 
         /// <summary>header acceptedIdMerkleRoot. Null when the field is missing.</summary>
@@ -84,6 +104,30 @@ namespace NKaspa.RPC
 
         /// <summary>verboseData.isChainBlock. False when the node omits verbose data.</summary>
         public bool IsChainBlock { get; }
+
+        /// <summary>verboseData.selectedParentHash. Null when the field is missing.</summary>
+        public uint256? SelectedParentHash { get; }
+
+        /// <summary>First direct parent, header.parents[0] (or parentsByLevel[0]). Null when that list is empty.</summary>
+        public uint256? DirectParent { get; }
+
+        /// <summary>True when the header contained <c>parents</c> or <c>parentsByLevel</c>.</summary>
+        public bool ParentsPresent { get; }
+
+        /// <summary>True when verboseData contained <c>isChainBlock</c>.</summary>
+        public bool ChainFlagPresent { get; }
+
+        /// <summary>header.blueScore. Null when the header omits it.</summary>
+        public ulong? HeaderBlueScore { get; }
+
+        /// <summary>verboseData.blueScore. Null when verbose data omits it.</summary>
+        public ulong? VerboseBlueScore { get; }
+
+        /// <summary>header.hash. Null when the header omits it.</summary>
+        public uint256? HeaderHash { get; }
+
+        /// <summary>verboseData.hash. Null when verbose data omits it.</summary>
+        public uint256? VerboseHash { get; }
     }
 
     /// <summary>getServerInfo body.</summary>

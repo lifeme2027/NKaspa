@@ -4,7 +4,7 @@
 
 状态只用三种：
 
-- **已实现**：这一版（0.1.7-alpha）里有对应类型，范围以代码为准。
+- **已实现**：这一版（0.1.8-alpha）里有对应类型，范围以代码为准。
 - **计划中**：后面阶段要做，或只做 Kaspa 自己的等价物，不照搬比特币协议。
 - **无需实现**：Kaspa 没有这套机制，或它不该出现在这个库里。
 
@@ -20,7 +20,7 @@
 | `TaprootAddress` 及 Taproot 脚本树 | — | 无需实现 | Kaspa 的 Schnorr 不是比特币 BIP341 Taproot。 |
 | `Key` / `PubKey` / `BitcoinSecret` | `Key` / `PubKey` / `PubKeyECDSA` | 已实现 | `PubKey` 是 32 字节 Schnorr x-only。33 字节压缩公钥是 `PubKeyECDSA`。没有比特币 WIF / `BitcoinSecret`。 |
 | `Script` | `Script` / `ScriptPubKey` | 已实现 | 解析、构建、`ToString`、标准模板和签名脚本。`Script.VerifyScript` 执行版本 0 脚本，包括 P2SH 赎回脚本。 |
-| `ScriptEvaluationContext` | `ScriptEvaluationContext` / `TxScriptEngine` | 已实现 | 对标 NBitcoin 的执行上下文，规则对齐 rusty-kaspa `crypto/txscript` 的 `TxScriptEngine`。版本 0 预算是 `sigOpCount * 100000 + 9999`。版本 1 预算是 `computeBudget * 10000 + 9999`。脚本最长 1000000 字节，元素最长 1000000 字节，数据栈加备用栈最深 244，非推送操作码最多 1000000。`OP_ZKPRECOMPILE` 执行已定稿的标签、脚本单位、字段长度、BN254 标量范围、Groth16 元数与 gamma 计量，并且 RISC0 只接受 Poseidon2。BN254 配对、曲线点检查和 RISC0 STARK 仍返回未实现，不压入 true。没有 `ISeqCommitAccessor` 时 `OP_CHAINBLOCKSEQCOMMIT` 是非法操作码。`WrpcSeqCommitAccessor` 只读 `getBlock` 与 `getBlockDagInfo`，视点是 DAG sink，不是共识的 selected parent。 |
+| `ScriptEvaluationContext` | `ScriptEvaluationContext` / `TxScriptEngine` | 已实现 | 对标 NBitcoin 的执行上下文，规则对齐 rusty-kaspa `crypto/txscript` 的 `TxScriptEngine`。版本 0 预算是 `sigOpCount * 100000 + 9999`。版本 1 预算是 `computeBudget * 10000 + 9999`。脚本最长 1000000 字节，元素最长 1000000 字节，数据栈加备用栈最深 244，非推送操作码最多 1000000。`OP_ZKPRECOMPILE` 执行已定稿的标签、脚本单位、字段长度、BN254 标量范围、Groth16 元数与 gamma 计量，并且 RISC0 只接受 Poseidon2。BN254 配对、曲线点检查和 RISC0 STARK 仍返回未实现，不压入 true。没有 `ISeqCommitAccessor` 时 `OP_CHAINBLOCKSEQCOMMIT` 是非法操作码。`WrpcSeqCommitAccessor` 只读 `getBlock` 与 `getBlockDagInfo`，视点是 DAG sink，不是共识的 selected parent。`ConsensusSeqCommitAccessor` 沿 selected parent 链回推并做一致性核对；数据不全、不一致或重组时抛异常。轻客户端只能尽量接近共识，完全等同需要运行节点。 |
 | `Transaction` / `TxIn` / `TxOut` / `OutPoint` | 同名 | 已实现 | 版本 0 与 Toccata 版本 1 的序列化、交易号和交易哈希。版本 1 交易号是 BLAKE3。`Transaction.Verify` 对每个输入跑脚本引擎。已确定规则的内省和 covenant 操作码会执行。 |
 | `TransactionBuilder` / `Coin` | `TransactionBuilder` / `Coin` | 已实现 | 精简构建器：选币、Schnorr 与 ECDSA P2PK 签名、找零、显式费用、按费率估价，或只付最低中继费。`Verify` 检查每一个输入的脚本。`Coin` 是 `OutPoint` 加 `UtxoEntry`。默认版本 0。`SetVersion(1)` 产出版本 1，默认 compute budget 是 10。`MustSpend` / `SpendAllCoins` 强制每一枚指定的币进入交易并单独签名。 |
 | `TransactionSignature` / sighash | `SchnorrSignature` / `ECDSASignature` / `SigHashType` | 已实现 | Kaspa sighash。`SigHashType.Single` 是 `0x04`，比特币的 SINGLE 是 `0x03`。 |
@@ -205,7 +205,7 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 
 ## 当前进度
 
-0.1.7-alpha。这一版补上 `OP_ZKPRECOMPILE` 已定稿的结构检查、内省与 covenant 构造助手、示例脚本，以及只读的 `WrpcSeqCommitAccessor`。0.1.6 起执行脚本。0.1.5 的通用 JSON 转换器还在。0.1.4 的行为还在：`samples/` 里的控制台示例。第一阶段的编码器、BLAKE2b、`uint256`、网络和三种地址仍在。第二阶段的密钥、签名、脚本、版本 0 交易和 sighash 仍在。第三阶段补上 BIP39、BIP32、mass / 费率、交易构建器和最小 wRPC JSON 客户端。0.1.1 补上 Toccata 版本 1 交易号、找零与 mass 策略，以及 wRPC 帧分发。0.1.2 让构建器强制花掉指定输入、在一枚币够付时不拉小币，并直接产出版本 1 付款。0.1.3 加上 PSKT：部分签名、合并、单签与 P2SH 多签终结、提取，以及 `TransactionBuilder.BuildPSKT`。
+0.1.8-alpha。这一版加上可选的 `ConsensusSeqCommitAccessor`：用只读的 `getBlock` 与 `getBlockDagInfo` 沿 selected parent 链回推，确定共识使用的区块和 seq commitment，并核对 selected parent、蓝分和 `isChainBlock`。数据不全、不一致或重组时抛异常，不静默当成剪枝或过深。默认请求上限是 64。`WrpcSeqCommitAccessor` 保持 DAG sink 视点，行为不变。轻客户端只能尽量接近共识，完全等同需要运行节点。0.1.7-alpha 补上 `OP_ZKPRECOMPILE` 已定稿的结构检查、内省与 covenant 构造助手、示例脚本，以及只读的 `WrpcSeqCommitAccessor`。0.1.6 起执行脚本。0.1.5 的通用 JSON 转换器还在。0.1.4 的行为还在：`samples/` 里的控制台示例。第一阶段的编码器、BLAKE2b、`uint256`、网络和三种地址仍在。第二阶段的密钥、签名、脚本、版本 0 交易和 sighash 仍在。第三阶段补上 BIP39、BIP32、mass / 费率、交易构建器和最小 wRPC JSON 客户端。0.1.1 补上 Toccata 版本 1 交易号、找零与 mass 策略，以及 wRPC 帧分发。0.1.2 让构建器强制花掉指定输入、在一枚币够付时不拉小币，并直接产出版本 1 付款。0.1.3 加上 PSKT：部分签名、合并、单签与 P2SH 多签终结、提取，以及 `TransactionBuilder.BuildPSKT`。
 
 - 解决方案：`NKaspa.sln`，类库 `src/NKaspa`（`net8.0`、`netstandard2.1`），测试 `tests/NKaspa.Tests`（xUnit，`net8.0`），示例 `samples/`（七个控制台项目，`net8.0`）。对照见下文「示例」。
 - 密钥：`Key`、`PubKey`（32 字节 x-only）、`PubKeyECDSA`（33 字节压缩）。`GetAddress` 默认是 Schnorr 地址。`Key.Create` 会清零临时缓冲区。`ExtKey.PrivateKey` 返回副本，处置副本不会让父密钥失效。
@@ -241,7 +241,7 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 
 `OP_ZKPRECOMPILE` 的标签、费用和结构检查已按上游定稿规则执行。Groth16 标签 `0x20` 收费 14000000 脚本单位，RISC0 标签 `0x21` 收费 25000000。未知标签在收费前以 `ZkIntegrity` 拒绝。元数吻合之后，每个 `gamma_abc_g1` 元素再收 250000。BN254 配对、点是否在曲线上、子群检查，以及 RISC0 的 succinct STARK，仍返回未实现，不压入 true。长度正确但点不在曲线上时，上游会在 gamma 计费之前拒绝；本库做不到这个检查，所以会先计费，再以未实现失败关闭。证明长度不是 128 字节时按过短或尾随字节拒绝，这是长度检查，不是点解码。
 
-`ISeqCommitAccessor` 说明 KIP-21 的窗口：`X.blue_score + F > P.blue_score`。10 块每秒时 `F` 是 432000。祖先未知返回 `BlockAlreadyPruned`，不在链上返回 `BlockNotSelected`，超出窗口返回 `BlockIsTooDeep`。`WrpcSeqCommitAccessor` 用 `getBlock` 和 `getBlockDagInfo`，视点是 DAG sink 的蓝分，不是正在验证的块的 selected parent，所以它不是共识实现。它不调用 `submitTransaction`，也不自己打开套接字。
+`ISeqCommitAccessor` 说明 KIP-21 的窗口：`X.blue_score + F > P.blue_score`。10 块每秒时 `F` 是 432000。祖先未知返回 `BlockAlreadyPruned`，不在链上返回 `BlockNotSelected`，超出窗口返回 `BlockIsTooDeep`。对照 rusty-kaspa master 的 `seq_commit_within_threshold` 和 `Header::post_toccata_chainblock_selected_parent`：视点 `P` 是正在验证的链块的 selected parent，链块的第一个直接父块就是 selected parent。Toccata 清理之后，master 不再按 DAA 分数切换这支访问器。`WrpcSeqCommitAccessor` 用 `getBlock` 和 `getBlockDagInfo`，视点是 DAG sink 的蓝分，不是正在验证的块的 selected parent，所以它不是共识实现。它不调用 `submitTransaction`，也不自己打开套接字。`ConsensusSeqCommitAccessor` 用同样两个只读方法沿 selected parent 回推。默认视点是 sink，也就是区块模板的 virtual selected parent。设置 `ChainBlock` 时，视点改成该链块的 selected parent。窗口按这个 `P` 的蓝分计算。它核对 `selectedParentHash` 与第一个直接父块、header 与 verbose 的蓝分、`isChainBlock` 与回推结果是否一致，并要求蓝分沿链严格下降。缺块、缺父块或字段缺失抛 `IncompleteNodeData`，不当作已剪枝。同一次调用里 sink 变化，或调用者指定的链块已经不在 selected parent 链上，抛 `Reorg`，这次调用不返回结果。rusty-kaspa 的 `is_chain_block(hash)` 是 `is_chain_ancestor_of(hash, sink)`，所以 sink 自己一定是链块。回推走到的块如果 `isChainBlock` 为 false，会再读一次 `getBlockDagInfo`：sink 已变则抛 `Reorg`（10 BPS 上虚拟选定父块可以在两次只读请求之间离开选定链），sink 未变则抛 `InconsistentData`。请求数达到上限抛 `RequestLimit`。缓存命中不再请求。轻客户端只能尽量接近共识：完整 finality 窗口有几十万步 selected parent，剪枝后的可达性只在节点里。完全等同需要运行节点。
 
 ### 审查条目
 
@@ -291,7 +291,7 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 - Newtonsoft.Json 适配。序列化只走 System.Text.Json，没有加这个包。
 - 未合并的 transient mass 改动（PR 1141）以及未能从源码确认的测试网激活 DAA。
 - 示例里的 `--broadcast` 路径没有对公共节点执行过。
-- `WrpcSeqCommitAccessor` 的视点是 DAG sink，不是共识 selected parent。
+- `ConsensusSeqCommitAccessor` 仍然不是节点。默认请求上限 64，到顶就抛异常，不会扫完整个 finality 窗口，也不会把缺块当成 `BlockAlreadyPruned`。`WrpcSeqCommitAccessor` 的视点仍是 DAG sink。
 
 ## 下一步计划
 
