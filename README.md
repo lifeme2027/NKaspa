@@ -36,7 +36,7 @@ var fee = FeeRate.MinimumRelay.GetFee(2_036);
 // After a successful build, ChangeFoldedIntoFee is the sompi removed from change and added to the fee.
 // It is 0 when change is kept or the build throws. It is not the total fee. TransactionMass does not repeat it.
 // The default mass ceiling is the post-Toccata block limit (compute and storage 500000, transient 1000000).
-// Pass `new TransactionBuilder(Network.Mainnet, toccataActive: false)` to keep the old 100000 cap. The relay rate stays 100 sompi/gram.
+// Pass `new TransactionBuilder(Network.Mainnet, toccataActive: false)` to keep the old 100000 cap and 1 sompi/gram relay rate.
 // `new TransactionBuilder(network, virtualDaaScore)` selects that policy from the network activation score.
 // Network.IsToccataActive(daaScore) is that comparison.
 var tx = new TransactionBuilder()
@@ -214,7 +214,7 @@ var fee = FeeRate.MinimumRelay.GetFee(2_036);
 // 超过上限会抛异常，不把整笔找零烧掉。成功构建后 ChangeFoldedIntoFee 是从找零拿掉并加进手续费的 sompi。
 // 找零保留或构建抛出时它是 0。它不是总手续费。TransactionMass 不重复这个数。
 // 默认 mass 上限是 Toccata 之后的块限额（compute 与 storage 500000，transient 1000000）。
-// `new TransactionBuilder(Network.Mainnet, toccataActive: false)` 保留旧的 100000 上限。中继费率仍是 100 sompi/gram。
+// `new TransactionBuilder(Network.Mainnet, toccataActive: false)` 保留旧的 100000 上限和 1 sompi/gram 中继费率。
 // `new TransactionBuilder(network, virtualDaaScore)` 按该网络的激活分数选择。
 // `Network.IsToccataActive(daaScore)` 就是这个比较。
 var tx = new TransactionBuilder()

@@ -88,7 +88,7 @@ namespace NKaspa
 
         /// <summary>
         /// Sompi charged for one gram when <see cref="SendMinimumRelayFee"/> runs, and the lowest rate <see cref="SendEstimatedFees"/> accepts.
-        /// The default is 100. <see cref="MassPolicy.PreToccata"/> keeps 100.
+        /// The default is 100. <see cref="MassPolicy.PreToccata"/> uses 1.
         /// </summary>
         public ulong MinimumRelayFeeRate { get; set; }
 
@@ -139,8 +139,8 @@ namespace NKaspa
 
         /// <summary>
         /// Creates a builder for <paramref name="network"/> using the current post-cleanup policy when <paramref name="toccataActive"/> is true.
-        /// False selects <see cref="MassPolicy.PreToccata"/>: fee-mass cap 100000 and the same 100 sompi per gram relay rate.
-        /// Every built-in network publishes the same post-Toccata block limits. Activation changes the cap. The relay rate stays 100.
+        /// False selects <see cref="MassPolicy.PreToccata"/>: fee-mass cap 100000 and 1 sompi per gram relay rate.
+        /// Every built-in network publishes the same post-Toccata block limits. Activation changes the cap and the relay rate.
         /// <see cref="TransactionBuilder(Network, ulong)"/> picks the policy from the node's virtual DAA score.
         /// </summary>
         /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
@@ -151,7 +151,7 @@ namespace NKaspa
 
         /// <summary>
         /// Creates a builder for <paramref name="network"/> at <paramref name="virtualDaaScore"/>.
-        /// Scores below <see cref="Network.ToccataActivationDaaScore"/> use the pre-Toccata cap. The relay rate stays 100.
+        /// Scores below <see cref="Network.ToccataActivationDaaScore"/> use the pre-Toccata cap and 1 sompi per gram.
         /// Simnet and current devnet use score 0, so every score is post-Toccata.
         /// An old devnet node needs <see cref="MassPolicy.PreToccata"/> explicitly.
         /// </summary>
@@ -383,7 +383,7 @@ namespace NKaspa
         /// <summary>
         /// Estimates the fee from the signed fee mass and <paramref name="feeRate"/>.
         /// Fee mass is the maximum of compute mass, normalized transient mass, and normalized storage mass.
-        /// A rate below <see cref="MinimumRelayFeeRate"/> sompi per gram is rejected. The floor is 100 on both policies.
+        /// A rate below <see cref="MinimumRelayFeeRate"/> sompi per gram is rejected (100 after Toccata, 1 before).
         /// The relay mass is still narrower than fee mass. See <see cref="SendMinimumRelayFee"/>.
         /// </summary>
         /// <exception cref="System.ArgumentOutOfRangeException">Fee rate is below the builder minimum relay rate.</exception>

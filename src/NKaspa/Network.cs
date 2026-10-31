@@ -25,21 +25,22 @@ namespace NKaspa
 
         /// <summary>
         /// Mainnet Toccata activation DAA score, 474165565.
-        /// rusty-kaspa master <c>4edcbbccb449f84832afb1ca157904b35f37d006</c>,
-        /// <c>docs/toccata-guide.md</c> line 3.
-        /// The same guide was published with tag v2.0.0, commit <c>90dbf074275d60c1fe74a3491883196f110970c0</c>.
-        /// Current <c>consensus/core/src/config/params.rs</c> no longer has <c>toccata_activation</c>.
-        /// Its override parser rejects that field. Block mass limits in that file are already the post-fork triple.
+        /// rusty-kaspa commit <c>90dbf074275d60c1fe74a3491883196f110970c0</c>,
+        /// <c>consensus/core/src/config/params.rs</c> line 724:
+        /// <c>toccata_activation: ForkActivation::new(474_165_565)</c>.
+        /// Current master removed the field. Its override parser rejects it.
+        /// Block mass limits in that file are already the post-fork triple.
         /// </summary>
         public const ulong MainnetToccataActivationDaaScore = 474_165_565;
 
         /// <summary>
         /// Testnet-10 Toccata activation DAA score, 467579632.
-        /// rusty-kaspa tag tn10-toc2, commit <c>97415b689462bec8a1a36f1665302529ea8a3108</c>,
-        /// <c>consensus/core/src/config/params.rs</c> line 783:
+        /// rusty-kaspa commit <c>90dbf074275d60c1fe74a3491883196f110970c0</c>,
+        /// <c>consensus/core/src/config/params.rs</c> line 785:
         /// <c>toccata_activation: ForkActivation::new(467_579_632)</c>.
+        /// Tag tn10-toc2, commit <c>97415b689462bec8a1a36f1665302529ea8a3108</c>, repeats it at line 783.
         /// Tag tn10-toc3, commit <c>1015a62359e0d06e0b3b3b7f7d06bc1bd4bf0c1b</c>, repeats it at line 784.
-        /// Master <c>4edcbbccb449f84832afb1ca157904b35f37d006</c> removed the field.
+        /// Current master removed the field.
         /// <see cref="WithToccataActivationDaaScore"/> replaces this score for one network value.
         /// </summary>
         public const ulong TestnetToccataActivationDaaScore = 467_579_632;
@@ -112,8 +113,8 @@ namespace NKaspa
 
         /// <summary>
         /// Same network identity with a different <see cref="ToccataActivationDaaScore"/>.
-        /// Address prefix, ports, and extended-key versions stay. The relay rate does not change with the score.
-        /// Both policies charge 100 sompi per gram. The score only selects the per-transaction mass cap.
+        /// Address prefix, ports, and extended-key versions stay.
+        /// The score selects the per-transaction mass cap and the relay rate (1 sompi per gram before, 100 after).
         /// </summary>
         public Network WithToccataActivationDaaScore(ulong daaScore)
         {
@@ -128,7 +129,7 @@ namespace NKaspa
 
         /// <summary>
         /// Mass policy a builder should use at <paramref name="virtualDaaScore"/>.
-        /// Below the activation score this is <see cref="Policy.MassPolicy.PreToccata"/> (cap 100000, relay rate 100).
+        /// Below the activation score this is <see cref="Policy.MassPolicy.PreToccata"/> (cap 100000, relay rate 1).
         /// At and above it, this is <see cref="Policy.MassPolicy.PostToccata"/> (cap 500000, relay rate 100).
         /// </summary>
         public Policy.MassPolicy MassPolicyAt(ulong virtualDaaScore)
