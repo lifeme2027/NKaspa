@@ -9,7 +9,10 @@ namespace NKaspa.RPC
         /// <summary>The header, verbose data, and selected-parent links disagree.</summary>
         InconsistentData,
 
-        /// <summary>The sink changed, or the caller's chain block is no longer on the selected-parent chain.</summary>
+        /// <summary>
+        /// The snapshot viewpoint, or a block on the walk, left the selected chain.
+        /// Forward growth of the snapshot is not a reorg. Retries are used before this is thrown.
+        /// </summary>
         Reorg,
 
         /// <summary>The request cap was hit before the chain position was proven.</summary>
@@ -61,12 +64,23 @@ namespace NKaspa.RPC
     /// The default point of view is <c>getBlockDagInfo.sink</c>, the virtual selected parent used for a block template.
     /// Set <see cref="ChainBlock"/> to chain block <c>B</c> to use <c>selected_parent(B)</c>, which is the point of view
     /// used while validating transactions inside <c>B</c>. Set <see cref="PointOfView"/> when the caller already knows <c>P</c>.
-    /// A call that sees the sink change, or that names a chain block no longer on the sink's selected-parent chain, throws
-    /// <see cref="ConsensusSeqCommitFailure.Reorg"/> and does not return an answer. The next call can read the new chain.
+    /// Each call freezes that viewpoint and its blue score. The walk and the KIP-21 window use only the snapshot.
+    /// At 10 blocks per second the sink hash changes during the walk. A later sink whose selected-parent chain still
+    /// contains the snapshot is forward growth: the call returns the snapshot answer and does not throw.
+    /// <see cref="ConsensusSeqCommitFailure.Reorg"/> is reserved for a snapshot viewpoint, or a block on the walk,
+    /// that left the selected chain (<c>isChainBlock</c> false, or the new chain does not pass through it),
+    /// and for a caller chain block that is not on the chain. Real reorgs are retried
+    /// <see cref="MaxReorgRetries"/> times, then thrown. The request count is not reset.
+    /// A sink that is already off the selected chain is replaced before the snapshot is frozen.
+    /// <see cref="StableDepth"/> then steps the viewpoint back from that sink. The default is 20 steps,
+    /// about two seconds at 10 blocks per second. Zero keeps the locked sink.
+    /// A newer sink is walked for at most 32 selected parents. Farther growth, or a walk the request
+    /// budget cannot finish, is accepted when a fresh <c>isChainBlock</c> is still true for the snapshot
+    /// viewpoint and for every guarded block. That flag is the node's selected-chain test, so the call
+    /// does not chase every block a 10-per-second tip adds during the snapshot walk.
     /// rusty-kaspa defines <c>is_chain_block(hash)</c> as <c>is_chain_ancestor_of(hash, sink)</c>, so the sink itself is a chain block.
     /// A block reached by the walk with <c>isChainBlock</c> false is read against <c>getBlockDagInfo</c> again.
-    /// A new sink is a reorg: at 10 blocks per second the virtual selected parent can leave the chain between two reads.
-    /// The same sink is inconsistent node data.
+    /// The same sink with that flag clear is inconsistent node data. A moved sink means the block left the chain.
     /// </para>
     /// <para>
     /// A missing block, a missing parent, or a missing header field throws <see cref="ConsensusSeqCommitFailure.IncompleteNodeData"/>.
@@ -88,15 +102,41 @@ namespace NKaspa.RPC
         /// <summary>
         /// Default cap on getBlock and getBlockDagInfo calls for one accessor.
         /// The walk stops and throws instead of scanning the whole finality window.
+        /// Blocks added after the snapshot are part of this cap.
         /// </summary>
-        public const int DefaultMaxRequests = 64;
+        public const int DefaultMaxRequests = 256;
+
+        /// <summary>Default number of extra attempts after a real reorg. The request count is kept.</summary>
+        public const int DefaultReorgRetries = 3;
+
+        /// <summary>
+        /// Default selected-parent steps to step back from the sink. About two seconds at 10 blocks per second.
+        /// Zero uses the sink itself.
+        /// </summary>
+        public const int DefaultStableDepth = 20;
+
+        /// <summary>How many newer sinks to follow when the dag tip is already off the selected chain.</summary>
+        private const int CatchUpHops = 8;
+
+        /// <summary>
+        /// Selected-parent steps to follow past the snapshot before trusting a fresh isChainBlock.
+        /// At 10 blocks per second the tip moves while the snapshot walk is in flight.
+        /// </summary>
+        private const int MaxGrowthWalk = 32;
 
         private readonly IKaspaRpcClient _client;
         private readonly ulong _finalityDepth;
         private readonly int _maxRequests;
         private readonly Dictionary<string, RpcChainBlock> _blocks = new Dictionary<string, RpcChainBlock>(StringComparer.Ordinal);
+        private readonly List<uint256> _guards = new List<uint256>();
         private uint256? _sink;
+        private uint256? _snapshotSink;
+        private uint256? _anchor;
+        private ulong _anchorScore;
         private int _requests;
+        private int _maxReorgRetries = DefaultReorgRetries;
+        private int _stableDepth = DefaultStableDepth;
+        private bool _retryReorg;
 
         /// <summary>Creates an accessor. <paramref name="finalityDepth"/> is the KIP-21 window <c>F</c>.</summary>
         public ConsensusSeqCommitAccessor(IKaspaRpcClient client, ulong finalityDepth = DefaultFinalityDepth, int maxRequests = DefaultMaxRequests)
@@ -123,10 +163,48 @@ namespace NKaspa.RPC
             get { return _maxRequests; }
         }
 
-        /// <summary>Calls made so far. Cache hits are not counted. A reorg does not reset the count.</summary>
+        /// <summary>Calls made so far. Cache hits are not counted. A reorg retry does not reset the count.</summary>
         public int RequestCount
         {
             get { return _requests; }
+        }
+
+        /// <summary>
+        /// Extra attempts after a real reorg. Zero throws on the first one.
+        /// The count is not reset between attempts.
+        /// </summary>
+        public int MaxReorgRetries
+        {
+            get { return _maxReorgRetries; }
+            set
+            {
+                if (value < 0)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(value), "Reorg retries cannot be negative.");
+                }
+
+                _maxReorgRetries = value;
+            }
+        }
+
+        /// <summary>
+        /// Selected-parent steps to step back from the snapshot sink before using it as <c>P</c>.
+        /// The default is <see cref="DefaultStableDepth"/>. Zero keeps the sink.
+        /// Ignored when <see cref="PointOfView"/> or <see cref="ChainBlock"/> is set.
+        /// The steps count toward <see cref="MaxRequests"/>.
+        /// </summary>
+        public int StableDepth
+        {
+            get { return _stableDepth; }
+            set
+            {
+                if (value < 0)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(value), "Stable depth cannot be negative.");
+                }
+
+                _stableDepth = value;
+            }
         }
 
         /// <summary>
@@ -150,12 +228,15 @@ namespace NKaspa.RPC
             }
 
             RejectMixedView();
-            var dag = Begin();
-            var pov = Resolve(dag);
-            var target = RequireBlock(blockHash);
-            var answer = IsAncestor(pov, target);
-            Confirm(dag.Sink);
-            return answer;
+            return Attempt(() =>
+            {
+                var dag = Begin();
+                var pov = Resolve(dag);
+                var target = RequireBlock(blockHash);
+                var answer = IsAncestor(pov, target);
+                Confirm(pov);
+                return answer;
+            });
         }
 
         /// <inheritdoc />
@@ -167,17 +248,25 @@ namespace NKaspa.RPC
             }
 
             RejectMixedView();
-            var dag = Begin();
-            var pov = Resolve(dag);
-            var target = RequireBlock(blockHash);
-            var onChain = IsAncestor(pov, target);
-            Confirm(dag.Sink);
+            return Attempt(() =>
+            {
+                var dag = Begin();
+                var pov = Resolve(dag);
+                var target = RequireBlock(blockHash);
+                var onChain = IsAncestor(pov, target);
+                Confirm(pov);
+                return Commitment(pov, target, onChain);
+            });
+        }
+
+        private uint256? Commitment(RpcChainBlock pov, RpcChainBlock target, bool onChain)
+        {
             if (!onChain)
             {
                 throw Fail(
                     ConsensusSeqCommitFailure.InconsistentData,
-                    "seq commitment was requested for " + blockHash + ", which is not a selected-parent ancestor of " + pov.Hash + ".",
-                    blockHash);
+                    "seq commitment was requested for " + target.Hash + ", which is not a selected-parent ancestor of " + pov.Hash + ".",
+                    target.Hash);
             }
 
             if (!WithinWindow(Score(target), Score(pov), _finalityDepth))
@@ -204,43 +293,262 @@ namespace NKaspa.RPC
             }
         }
 
+        private T Attempt<T>(Func<T> body)
+        {
+            for (var attempt = 0; ; attempt++)
+            {
+                _retryReorg = false;
+                try
+                {
+                    return body();
+                }
+                catch (ConsensusSeqCommitException ex) when (ex.Failure == ConsensusSeqCommitFailure.Reorg && _retryReorg && attempt < _maxReorgRetries)
+                {
+                    _blocks.Clear();
+                    _sink = null;
+                    _snapshotSink = null;
+                    _anchor = null;
+                    _guards.Clear();
+                }
+            }
+        }
+
         private RpcBlockDagInfo Begin()
         {
             var dag = ReadDag();
             if (_sink != null && dag.Sink != _sink)
             {
-                var previous = _sink;
+                // The previous call's chain flags were proved against an older tip.
+                // Header links are immutable. isChainBlock is not, so drop the cache.
+                // A new call takes a new snapshot. Growth is not a reorg.
                 _blocks.Clear();
-                _sink = null;
-                throw Fail(
-                    ConsensusSeqCommitFailure.Reorg,
-                    "getBlockDagInfo.sink changed from " + previous + " to " + dag.Sink + ".",
-                    dag.Sink);
             }
 
             _sink = dag.Sink;
+            _snapshotSink = dag.Sink;
+            _anchor = null;
+            _guards.Clear();
             return dag;
         }
 
-        private void Confirm(uint256 sink)
+        private void Confirm(RpcChainBlock pov)
         {
+            var anchor = _anchor ?? pov.Hash;
+            var anchorScore = _anchor == null ? Score(pov) : _anchorScore;
+            var snapshot = _snapshotSink;
             var dag = ReadDag();
-            if (dag.Sink != sink)
+            if (snapshot != null && dag.Sink == snapshot)
             {
+                return;
+            }
+
+            if (!SelectedChainContains(dag.Sink, anchor, anchorScore))
+            {
+                var previous = snapshot;
                 _blocks.Clear();
                 _sink = null;
-                throw Fail(
-                    ConsensusSeqCommitFailure.Reorg,
-                    "getBlockDagInfo.sink changed from " + sink + " to " + dag.Sink + " during the selected-parent walk.",
-                    dag.Sink);
+                _snapshotSink = null;
+                _anchor = null;
+                _guards.Clear();
+                throw Reorg(
+                    "getBlockDagInfo.sink changed from " + previous + " to " + dag.Sink + " and the new selected chain does not contain " + anchor + ".",
+                    dag.Sink,
+                    retry: true);
             }
+
+            // Growth. Later calls may keep immutable headers. The answer stays on the snapshot.
+            _sink = dag.Sink;
+        }
+
+        private bool SelectedChainContains(uint256 tip, uint256 anchor, ulong anchorScore)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var current = RequireBlock(tip);
+            var walked = 0;
+            while (current.Hash != anchor)
+            {
+                if (!seen.Add(current.Hash.ToString()))
+                {
+                    throw Fail(ConsensusSeqCommitFailure.InconsistentData, "selected parent chain cycled at " + current.Hash + ".", current.Hash);
+                }
+
+                // The new chain passed this blue score without hitting the snapshot.
+                if (Score(current) <= anchorScore)
+                {
+                    return false;
+                }
+
+                var guardReads = _guards.Count == 0 ? 1 : _guards.Count;
+                if (walked >= MaxGrowthWalk || _maxRequests - _requests < guardReads + 1)
+                {
+                    // The tip ran farther than this call should chase at 10 blocks per second.
+                    // A fresh isChainBlock is rusty-kaspa is_chain_ancestor_of(hash, sink).
+                    return GuardsStillOnChain();
+                }
+
+                if (!current.ChainFlagPresent)
+                {
+                    throw Fail(ConsensusSeqCommitFailure.IncompleteNodeData, "verboseData.isChainBlock is missing for " + current.Hash + ".", current.Hash);
+                }
+
+                if (!current.IsChainBlock)
+                {
+                    // The dag named a sink that was already off the chain. Follow the newer one.
+                    current = FollowMovedTip(current.Hash);
+                    continue;
+                }
+
+                var parentHash = NextParent(current);
+                if (parentHash == null)
+                {
+                    return false;
+                }
+
+                var parent = RequireBlock(parentHash);
+                CheckLink(current, parent);
+                current = parent;
+                walked++;
+            }
+
+            if (seen.Count > 0)
+            {
+                // The anchor was loaded before the tip moved. Read its chain flag again.
+                current = Refresh(anchor);
+            }
+
+            NoteChainFlag(current);
+            seen.Add(current.Hash.ToString());
+            for (var i = 0; i < _guards.Count; i++)
+            {
+                if (!seen.Contains(_guards[i].ToString()))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private bool GuardsStillOnChain()
+        {
+            if (_guards.Count == 0)
+            {
+                if (_anchor == null)
+                {
+                    return true;
+                }
+
+                NoteChainFlag(Refresh(_anchor));
+                return true;
+            }
+
+            for (var i = 0; i < _guards.Count; i++)
+            {
+                NoteChainFlag(Refresh(_guards[i]));
+            }
+
+            return true;
+        }
+
+        private RpcChainBlock FollowMovedTip(uint256 rejected)
+        {
+            var hash = rejected;
+            for (var hop = 0; hop < CatchUpHops; hop++)
+            {
+                var again = ReadDag();
+                if (again.Sink == hash)
+                {
+                    throw Fail(
+                        ConsensusSeqCommitFailure.InconsistentData,
+                        "selected parent walk reached " + hash + " but isChainBlock is false.",
+                        hash);
+                }
+
+                var sink = RequireBlock(again.Sink);
+                if (!sink.ChainFlagPresent)
+                {
+                    throw Fail(ConsensusSeqCommitFailure.IncompleteNodeData, "verboseData.isChainBlock is missing for " + sink.Hash + ".", sink.Hash);
+                }
+
+                if (sink.IsChainBlock)
+                {
+                    return sink;
+                }
+
+                hash = sink.Hash;
+            }
+
+            throw Reorg(
+                "getBlockDagInfo.sink did not stay a chain block long enough to take a snapshot.",
+                hash,
+                retry: true);
+        }
+
+        private RpcChainBlock Refresh(uint256 hash)
+        {
+            _blocks.Remove(hash.ToString());
+            return RequireBlock(hash);
+        }
+
+        private void NoteChainFlag(RpcChainBlock block)
+        {
+            if (!block.ChainFlagPresent)
+            {
+                throw Fail(ConsensusSeqCommitFailure.IncompleteNodeData, "verboseData.isChainBlock is missing for " + block.Hash + ".", block.Hash);
+            }
+
+            if (!block.IsChainBlock)
+            {
+                throw Reorg("isChainBlock is false for " + block.Hash + " on the selected chain.", block.Hash, retry: true);
+            }
+        }
+
+        private RpcChainBlock CatchUpSink(RpcBlockDagInfo dag)
+        {
+            var hash = dag.Sink;
+            for (var hop = 0; hop < CatchUpHops; hop++)
+            {
+                var sink = RequireBlock(hash);
+                if (!sink.ChainFlagPresent)
+                {
+                    throw Fail(ConsensusSeqCommitFailure.IncompleteNodeData, "verboseData.isChainBlock is missing for " + sink.Hash + ".", sink.Hash);
+                }
+
+                if (sink.IsChainBlock)
+                {
+                    Score(sink);
+                    _snapshotSink = sink.Hash;
+                    _sink = sink.Hash;
+                    return sink;
+                }
+
+                if (hop == CatchUpHops - 1)
+                {
+                    break;
+                }
+
+                var again = ReadDag();
+                if (again.Sink == hash)
+                {
+                    throw Fail(
+                        ConsensusSeqCommitFailure.InconsistentData,
+                        "selected parent walk reached " + hash + " but isChainBlock is false.",
+                        hash);
+                }
+
+                hash = again.Sink;
+            }
+
+            throw Reorg(
+                "getBlockDagInfo.sink did not stay a chain block long enough to take a snapshot.",
+                hash,
+                retry: true);
         }
 
         private RpcChainBlock Resolve(RpcBlockDagInfo dag)
         {
-            var sink = RequireBlock(dag.Sink);
-            RequireOnChainFlag(sink);
-            Score(sink);
+            var sink = CatchUpSink(dag);
+            RpcChainBlock pov;
             if (ChainBlock != null)
             {
                 var block = RequireBlock(ChainBlock);
@@ -257,10 +565,9 @@ namespace NKaspa.RPC
 
                 var parent = RequireBlock(parentHash);
                 CheckLink(block, parent);
-                return parent;
+                pov = parent;
             }
-
-            if (PointOfView != null)
+            else if (PointOfView != null)
             {
                 var view = RequireBlock(PointOfView);
                 if (view.Hash != sink.Hash)
@@ -269,10 +576,42 @@ namespace NKaspa.RPC
                 }
 
                 RequireOnChainFlag(view);
-                return view;
+                pov = view;
+            }
+            else
+            {
+                pov = Retreat(sink);
             }
 
-            return sink;
+            _anchor = pov.Hash;
+            _anchorScore = Score(pov);
+            _guards.Clear();
+            _guards.Add(pov.Hash);
+            if (ChainBlock != null && ChainBlock != pov.Hash)
+            {
+                _guards.Add(ChainBlock);
+            }
+
+            return pov;
+        }
+
+        private RpcChainBlock Retreat(RpcChainBlock sink)
+        {
+            var current = sink;
+            for (var step = 0; step < _stableDepth; step++)
+            {
+                var parentHash = NextParent(current);
+                if (parentHash == null)
+                {
+                    return current;
+                }
+
+                var parent = RequireBlock(parentHash);
+                CheckLink(current, parent);
+                current = parent;
+            }
+
+            return current;
         }
 
         private bool IsAncestor(RpcChainBlock pov, RpcChainBlock target)
@@ -446,15 +785,18 @@ namespace NKaspa.RPC
             // is_chain_block is measured against the sink at the time of getBlock.
             // A false flag on a block this walk reached means the sink moved, or the node disagrees with itself.
             var again = ReadDag();
-            if (_sink != null && again.Sink != _sink)
+            if (_snapshotSink != null && again.Sink != _snapshotSink)
             {
-                var previous = _sink;
+                var previous = _snapshotSink;
                 _blocks.Clear();
                 _sink = null;
-                throw Fail(
-                    ConsensusSeqCommitFailure.Reorg,
-                    "getBlockDagInfo.sink changed from " + previous + " to " + again.Sink + " while checking " + block.Hash + ".",
-                    again.Sink);
+                _snapshotSink = null;
+                _anchor = null;
+                _guards.Clear();
+                throw Reorg(
+                    "isChainBlock is false for " + block.Hash + " and getBlockDagInfo.sink changed from " + previous + " to " + again.Sink + ".",
+                    again.Sink,
+                    retry: true);
             }
 
             throw Fail(
@@ -560,12 +902,20 @@ namespace NKaspa.RPC
             _requests++;
         }
 
-        private static ConsensusSeqCommitException NotOnChain(RpcChainBlock sink, RpcChainBlock block)
+        private ConsensusSeqCommitException NotOnChain(RpcChainBlock sink, RpcChainBlock block)
         {
+            // The sink did not move. Retrying cannot put this block on the chain.
+            _retryReorg = false;
             return Fail(
                 ConsensusSeqCommitFailure.Reorg,
                 block.Hash + " is not on the selected parent chain of sink " + sink.Hash + ".",
                 block.Hash);
+        }
+
+        private ConsensusSeqCommitException Reorg(string message, uint256? block, bool retry)
+        {
+            _retryReorg = retry;
+            return Fail(ConsensusSeqCommitFailure.Reorg, message, block);
         }
 
         private static ConsensusSeqCommitException Fail(ConsensusSeqCommitFailure failure, string message, uint256? block = null, Exception? inner = null)

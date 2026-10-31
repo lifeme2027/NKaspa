@@ -26,8 +26,9 @@ namespace NKaspa
     /// <para>
     /// <see cref="NKaspa.RPC.WrpcSeqCommitAccessor"/> is an optional read-only helper. Its point of view is the DAG sink,
     /// not the selected parent of a block under validation, so it is not a consensus implementation.
-    /// <see cref="NKaspa.RPC.ConsensusSeqCommitAccessor"/> walks that selected parent chain over the same read-only calls
-    /// and throws when the node data is incomplete, inconsistent, or reorged. A light client can only approach consensus.
+    /// <see cref="NKaspa.RPC.ConsensusSeqCommitAccessor"/> walks that selected parent chain over the same read-only calls.
+    /// It freezes a sink snapshot. Forward growth is not a reorg. It throws when the node data is incomplete,
+    /// inconsistent, or still reorged after retries. A light client can only approach consensus.
     /// </para>
     /// </remarks>
     public interface ISeqCommitAccessor

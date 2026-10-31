@@ -158,7 +158,44 @@ namespace NKaspa.Tests
         }
 
         [Fact]
-        public void Consensus_accessor_throws_on_reorg_and_reads_the_new_chain_on_the_next_call()
+        public void Consensus_accessor_accepts_forward_growth_during_the_walk()
+        {
+            var genesis = new uint256(1);
+            var edge = new uint256(2);
+            var sink = new uint256(3);
+            var next = new uint256(5);
+            var next2 = new uint256(6);
+            var edgeRoot = new uint256(21);
+            var genesisRoot = new uint256(10);
+            var blocks = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                [genesis.ToString()] = Block(genesis, 100, genesisRoot, null, chain: true),
+                [edge.ToString()] = Block(edge, 250, edgeRoot, genesis, chain: true),
+                [sink.ToString()] = Block(sink, 300, new uint256(30), edge, chain: true),
+                [next.ToString()] = Block(next, 360, new uint256(40), sink, chain: true),
+                [next2.ToString()] = Block(next2, 420, new uint256(50), next, chain: true),
+            };
+            var reads = 0;
+            var methods = new List<string>();
+            var accessor = Accessor(methods, blocks, () =>
+            {
+                var tip = reads < 3 ? sink : next2;
+                reads++;
+                return tip;
+            }, finalityDepth: 100);
+
+            // 250 + 100 > 300, so the snapshot sink still admits edge.
+            // The grown tip at 420 would reject it. The answer stays on the snapshot.
+            Assert.Equal(edgeRoot, accessor.SeqCommitmentWithinDepth(edge));
+            Assert.Null(accessor.SeqCommitmentWithinDepth(genesis));
+            Assert.DoesNotContain("submitTransaction", methods);
+            Assert.All(methods, method => Assert.True(method == "getBlock" || method == "getBlockDagInfo"));
+            Assert.True(accessor.RequestCount <= accessor.MaxRequests);
+            Assert.Equal(ConsensusSeqCommitAccessor.DefaultReorgRetries, accessor.MaxReorgRetries);
+        }
+
+        [Fact]
+        public void Consensus_accessor_treats_a_later_call_on_a_grown_chain_as_the_same_chain()
         {
             var genesis = new uint256(1);
             var parent = new uint256(2);
@@ -174,9 +211,81 @@ namespace NKaspa.Tests
 
             Assert.Equal(oldRoot, accessor.SeqCommitmentWithinDepth(sink));
             current = next;
-            var reorg = Assert.Throws<ConsensusSeqCommitException>(() => accessor.SeqCommitmentWithinDepth(sink));
-            Assert.Equal(ConsensusSeqCommitFailure.Reorg, reorg.Failure);
+            Assert.Equal(oldRoot, accessor.SeqCommitmentWithinDepth(sink));
             Assert.Equal(nextRoot, accessor.SeqCommitmentWithinDepth(next));
+        }
+
+        [Fact]
+        public void Consensus_accessor_retries_a_real_reorg_then_answers_on_the_new_chain()
+        {
+            var genesis = new uint256(1);
+            var sink = new uint256(3);
+            var rivalParent = new uint256(6);
+            var rival = new uint256(5);
+            var genesisRoot = new uint256(10);
+            var rivalRoot = new uint256(50);
+            var blocks = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                [genesis.ToString()] = Block(genesis, 100, genesisRoot, null, chain: true),
+                [sink.ToString()] = Block(sink, 300, new uint256(30), genesis, chain: true),
+                [rivalParent.ToString()] = Block(rivalParent, 220, new uint256(22), genesis, chain: true),
+                [rival.ToString()] = Block(rival, 400, rivalRoot, rivalParent, chain: true),
+            };
+            var dagReads = 0;
+            var methods = new List<string>();
+            var accessor = Accessor(methods, blocks, method =>
+            {
+                if (method != "getBlockDagInfo")
+                {
+                    return dagReads <= 1 ? sink : rival;
+                }
+
+                dagReads++;
+                return dagReads == 1 ? sink : rival;
+            });
+
+            Assert.Equal(rivalRoot, accessor.SeqCommitmentWithinDepth(rival));
+            Assert.True(accessor.IsChainAncestor(rivalParent));
+            Assert.Equal(genesisRoot, accessor.SeqCommitmentWithinDepth(genesis));
+            Assert.DoesNotContain("submitTransaction", methods);
+            Assert.True(methods.FindAll(method => method == "getBlockDagInfo").Count >= 3);
+        }
+
+        [Fact]
+        public void Consensus_accessor_throws_when_reorg_retries_are_exhausted()
+        {
+            var genesis = new uint256(1);
+            var tips = new[] { new uint256(2), new uint256(3), new uint256(4), new uint256(5) };
+            var blocks = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                [genesis.ToString()] = Block(genesis, 100, new uint256(10), null, chain: true),
+            };
+            for (var i = 0; i < tips.Length; i++)
+            {
+                blocks[tips[i].ToString()] = Block(tips[i], 1000UL + (ulong)i, new uint256(30UL + (ulong)i), genesis, chain: true);
+            }
+
+            var dagReads = 0;
+            var methods = new List<string>();
+            var accessor = Accessor(methods, blocks, method =>
+            {
+                var index = Math.Min(dagReads, tips.Length - 1);
+                if (method == "getBlockDagInfo")
+                {
+                    var tip = tips[index];
+                    dagReads++;
+                    return tip;
+                }
+
+                return tips[Math.Min(dagReads, tips.Length - 1)];
+            });
+            accessor.MaxReorgRetries = 1;
+
+            var reorg = Assert.Throws<ConsensusSeqCommitException>(() => accessor.SeqCommitmentWithinDepth(genesis));
+            Assert.Equal(ConsensusSeqCommitFailure.Reorg, reorg.Failure);
+            Assert.True(methods.FindAll(method => method == "getBlockDagInfo").Count >= 4);
+            Assert.True(accessor.RequestCount >= 8);
+            Assert.DoesNotContain("submitTransaction", methods);
         }
 
         [Fact]
@@ -193,17 +302,24 @@ namespace NKaspa.Tests
                 [next.ToString()] = Block(next, 400, nextRoot, parent, chain: true),
             };
             var reads = 0;
-            var accessor = Accessor(new List<string>(), blocks, () =>
+            var healed = Accessor(new List<string>(), blocks, () =>
             {
                 var tip = reads == 0 ? oldSink : next;
                 reads++;
                 return tip;
             });
+            healed.MaxReorgRetries = 0;
+            Assert.Equal(nextRoot, healed.SeqCommitmentWithinDepth(next));
 
-            var reorg = Assert.Throws<ConsensusSeqCommitException>(() => accessor.SeqCommitmentWithinDepth(next));
-            Assert.Equal(ConsensusSeqCommitFailure.Reorg, reorg.Failure);
-            Assert.Equal(next, reorg.Block);
-            Assert.Equal(nextRoot, accessor.SeqCommitmentWithinDepth(next));
+            var stuck = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                [parent.ToString()] = Block(parent, 200, new uint256(20), null, chain: true),
+                [oldSink.ToString()] = Block(oldSink, 300, new uint256(30), parent, chain: false),
+            };
+            var same = Accessor(new List<string>(), stuck, oldSink);
+            same.MaxReorgRetries = 0;
+            var inconsistent = Assert.Throws<ConsensusSeqCommitException>(() => same.SeqCommitmentWithinDepth(oldSink));
+            Assert.Equal(ConsensusSeqCommitFailure.InconsistentData, inconsistent.Failure);
         }
 
         [Fact]
@@ -223,10 +339,36 @@ namespace NKaspa.Tests
                 reads++;
                 return tip;
             });
+            accessor.MaxReorgRetries = 0;
 
             var reorg = Assert.Throws<ConsensusSeqCommitException>(() => accessor.IsChainAncestor(parent));
             Assert.Equal(ConsensusSeqCommitFailure.Reorg, reorg.Failure);
             Assert.Equal(next, reorg.Block);
+        }
+
+        [Fact]
+        public void Consensus_accessor_stable_depth_steps_the_viewpoint_back()
+        {
+            var genesis = new uint256(1);
+            var mid = new uint256(2);
+            var near = new uint256(3);
+            var sink = new uint256(4);
+            var genesisRoot = new uint256(10);
+            var midRoot = new uint256(20);
+            var blocks = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                [genesis.ToString()] = Block(genesis, 100, genesisRoot, null, chain: true),
+                [mid.ToString()] = Block(mid, 200, midRoot, genesis, chain: true),
+                [near.ToString()] = Block(near, 300, new uint256(30), mid, chain: true),
+                [sink.ToString()] = Block(sink, 400, new uint256(40), near, chain: true),
+            };
+            var accessor = Accessor(new List<string>(), blocks, sink, finalityDepth: 150);
+            accessor.StableDepth = 2;
+
+            Assert.Equal(midRoot, accessor.SeqCommitmentWithinDepth(mid));
+            Assert.Equal(genesisRoot, accessor.SeqCommitmentWithinDepth(genesis));
+            Assert.False(accessor.IsChainAncestor(near));
+            Assert.False(accessor.IsChainAncestor(sink));
         }
 
         [Fact]
@@ -258,6 +400,11 @@ namespace NKaspa.Tests
             Assert.Equal(ConsensusSeqCommitFailure.RequestLimit, limit.Failure);
             Assert.Equal(2, limited.RequestCount);
             Assert.Throws<ArgumentOutOfRangeException>(() => new ConsensusSeqCommitAccessor(new KaspaWrpcJsonClient(new ScriptedChannel()), maxRequests: 0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => limited.StableDepth = -1);
+            Assert.Throws<ArgumentOutOfRangeException>(() => limited.MaxReorgRetries = -1);
+            var defaults = new ConsensusSeqCommitAccessor(new KaspaWrpcJsonClient(new ScriptedChannel()));
+            Assert.Equal(ConsensusSeqCommitAccessor.DefaultStableDepth, defaults.StableDepth);
+            Assert.Equal(20, defaults.StableDepth);
 
             var methods = new List<string>();
             var cached = Accessor(methods, blocks, sink, maxRequests: 16);
@@ -267,6 +414,55 @@ namespace NKaspa.Tests
             Assert.Equal(root, cached.SeqCommitmentWithinDepth(sink));
             Assert.Equal(afterFirst, methods.FindAll(method => method == "getBlock").Count);
             Assert.True(cached.RequestCount > requests);
+        }
+
+        [Fact]
+        public void Consensus_accessor_accepts_long_forward_growth_without_chasing_every_block()
+        {
+            var genesis = new uint256(1);
+            var sink = new uint256(2);
+            var root = new uint256(20);
+            var blocks = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                [genesis.ToString()] = Block(genesis, 100, new uint256(10), null, chain: true),
+                [sink.ToString()] = Block(sink, 200, root, genesis, chain: true),
+            };
+            var cursor = sink;
+            var tip = sink;
+            for (var i = 0; i < 80; i++)
+            {
+                tip = new uint256(100UL + (ulong)i);
+                blocks[tip.ToString()] = Block(tip, 300UL + (ulong)i, new uint256(40), cursor, chain: true);
+                cursor = tip;
+            }
+
+            var reads = 0;
+            var grown = Accessor(new List<string>(), blocks, () =>
+            {
+                var current = reads < 2 ? sink : tip;
+                reads++;
+                return current;
+            }, maxRequests: 64);
+            Assert.Equal(root, grown.SeqCommitmentWithinDepth(sink));
+            Assert.True(grown.RequestCount < 64);
+            Assert.True(grown.RequestCount <= 48);
+
+            reads = 0;
+            var moved = Accessor(new List<string>(), blocks, () =>
+            {
+                if (reads == 4)
+                {
+                    blocks[sink.ToString()] = Block(sink, 200, root, genesis, chain: false);
+                }
+
+                var current = reads < 2 ? sink : tip;
+                reads++;
+                return current;
+            }, maxRequests: 64);
+            moved.MaxReorgRetries = 0;
+            var reorg = Assert.Throws<ConsensusSeqCommitException>(() => moved.SeqCommitmentWithinDepth(sink));
+            Assert.Equal(ConsensusSeqCommitFailure.Reorg, reorg.Failure);
+            Assert.Equal(sink, reorg.Block);
         }
 
         [Fact]
@@ -319,6 +515,17 @@ namespace NKaspa.Tests
             int maxRequests = 32,
             bool missingIsError = false)
         {
+            return Accessor(methods, blocks, _ => sink(), finalityDepth, maxRequests, missingIsError);
+        }
+
+        private static ConsensusSeqCommitAccessor Accessor(
+            List<string> methods,
+            Dictionary<string, string> blocks,
+            Func<string, uint256> sinkFor,
+            ulong finalityDepth = ConsensusSeqCommitAccessor.DefaultFinalityDepth,
+            int maxRequests = 32,
+            bool missingIsError = false)
+        {
             var channel = new ScriptedChannel();
             channel.Handler = request =>
             {
@@ -326,7 +533,7 @@ namespace NKaspa.Tests
                 var id = doc.RootElement.GetProperty("id").GetInt64();
                 var method = doc.RootElement.GetProperty("method").GetString() ?? string.Empty;
                 methods.Add(method);
-                var tip = sink();
+                var tip = sinkFor(method);
                 if (method == "getBlockDagInfo")
                 {
                     return "{\"id\":" + id.ToString(CultureInfo.InvariantCulture) + ",\"method\":\"getBlockDagInfo\",\"params\":{\"network\":\"mainnet\",\"blockCount\":1,\"headerCount\":1,\"tipHashes\":[\"" + tip + "\"],\"difficulty\":1,\"pastMedianTime\":1,\"virtualParentHashes\":[\"" + tip + "\"],\"pruningPointHash\":\"" + tip + "\",\"virtualDaaScore\":1,\"sink\":\"" + tip + "\"}}";
@@ -351,7 +558,9 @@ namespace NKaspa.Tests
 
                 return "{\"id\":" + id.ToString(CultureInfo.InvariantCulture) + ",\"method\":\"getBlock\",\"params\":{\"block\":" + block + "}}";
             };
-            return new ConsensusSeqCommitAccessor(new KaspaWrpcJsonClient(channel), finalityDepth, maxRequests);
+            var accessor = new ConsensusSeqCommitAccessor(new KaspaWrpcJsonClient(channel), finalityDepth, maxRequests);
+            accessor.StableDepth = 0;
+            return accessor;
         }
 
         private static string Block(
