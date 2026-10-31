@@ -78,6 +78,27 @@ namespace NKaspa.Samples.Json
             using (var master = mnemonic.DeriveExtKey())
             {
                 writer.WriteLine("kpub: " + NKaspaJsonSerializer.Serialize(master.Neuter(), Network.Mainnet));
+                try
+                {
+                    NKaspaJsonSerializer.Serialize(master, Network.Mainnet);
+                    writer.WriteLine("extkey-json: leaked");
+                    return 1;
+                }
+                catch (InvalidOperationException)
+                {
+                    writer.WriteLine("extkey-json: refused");
+                }
+            }
+
+            try
+            {
+                NKaspaJsonSerializer.Serialize(mnemonic, Network.Mainnet);
+                writer.WriteLine("mnemonic-json: leaked");
+                return 1;
+            }
+            catch (InvalidOperationException)
+            {
+                writer.WriteLine("mnemonic-json: refused");
             }
 
             writer.WriteLine("feerate: " + NKaspaJsonSerializer.Serialize(FeeRate.MinimumRelay, Network.Mainnet));

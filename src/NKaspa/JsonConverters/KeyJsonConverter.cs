@@ -12,6 +12,12 @@ namespace NKaspa.JsonConverters
     {
         private readonly bool _allowPrivateKeys;
 
+        /// <summary>Creates a converter that refuses to read or write a private key.</summary>
+        public KeyJsonConverter()
+            : this(false)
+        {
+        }
+
         /// <summary>Creates a converter. The default registration passes false.</summary>
         public KeyJsonConverter(bool allowPrivateKeys)
         {
@@ -75,6 +81,12 @@ namespace NKaspa.JsonConverters
         private readonly Network _network;
         private readonly bool _allowPrivateKeys;
 
+        /// <summary>Creates a converter that refuses to read or write an extended private key.</summary>
+        public ExtKeyJsonConverter()
+            : this(Network.Mainnet, false)
+        {
+        }
+
         /// <summary>Creates a converter. The default registration passes false.</summary>
         /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
         public ExtKeyJsonConverter(Network network, bool allowPrivateKeys)
@@ -125,7 +137,7 @@ namespace NKaspa.JsonConverters
                 throw new ArgumentNullException(nameof(value));
             }
 
-            writer.WriteStringValue(value.ToString(_network));
+            writer.WriteStringValue(value.ExportXprv(_network));
         }
 
         private void Refuse()

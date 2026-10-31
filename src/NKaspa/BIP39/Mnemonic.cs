@@ -1,33 +1,55 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json.Serialization;
 using NKaspa.Crypto;
+using NKaspa.JsonConverters;
 
 namespace NKaspa
 {
     /// <summary>
     /// BIP39 mnemonic. Kaspa counterpart of NBitcoin.Mnemonic.
-    /// Parsing strips zero-width characters, splits on Unicode whitespace (including U+3000),
+    /// Parsing strips zero-width characters, splits on Unicode whitespace (including U+3000 and NBSP),
     /// NFKD-normalizes each word, and lower-cases it before the wordlist lookup.
+    /// A variant is accepted only when that lookup hits the wordlist. The stored sentence is the canonical
+    /// wordlist entry, so the variant derives the same seed as the canonical phrase. It does not open a second wallet.
+    /// Unknown words throw <see cref="FormatException"/>. Zero-width characters are not separators.
     /// The seed is PBKDF2-HMAC-SHA512 of the NFKD canonical sentence, 2048 iterations, 64 bytes.
     /// The salt is the NFKD string <c>mnemonic</c> plus the optional passphrase.
     /// The passphrase is not lower-cased, and zero-width characters in it are kept.
     /// </summary>
     /// <remarks>
-    /// <see cref="Words"/> holds wordlist strings. Those objects are shared and cannot be wiped:
+    /// <see cref="Words"/> is a read-only view of wordlist strings. Those strings are shared and cannot be wiped:
     /// <see cref="string"/> has no erase API. The word order in <c>_indexes</c> is the secret.
     /// NBitcoin stores the sentence in a <see cref="string"/> as well.
+    /// <see cref="ToString()"/> returns <c>NKaspa.Mnemonic</c> and does not contain the words.
+    /// Use <see cref="ToPhrase()"/> or <see cref="GetWords()"/> for the secret text.
+    /// <see cref="ParseValidated"/> and <see cref="Parse"/> throw when the checksum is wrong.
+    /// The string constructor still returns an object with <see cref="IsValidChecksum"/> false, matching NBitcoin,
+    /// unless <c>requireValidChecksum</c> is true.
+    /// <see cref="DeriveSeed"/> and <see cref="DeriveExtKey"/> throw on a bad checksum unless
+    /// <c>allowInvalidChecksum</c> is true.
+    /// System.Text.Json refuses this type unless the caller opts in through <c>NKaspaJsonSerializer</c>
+    /// with <c>allowPrivateKeys: true</c>.
     /// </remarks>
+    [JsonConverter(typeof(MnemonicJsonConverter))]
     public sealed class Mnemonic
     {
         private static readonly int[] WordCounts = { 12, 15, 18, 21, 24 };
         private static readonly UTF8Encoding Utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
         private readonly int[] _indexes;
+        private readonly string[] _words;
 
-        /// <summary>Parses a mnemonic. The default wordlist is English.</summary>
+        /// <summary>
+        /// Parses a mnemonic. The default wordlist is English.
+        /// A bad checksum is kept when <paramref name="requireValidChecksum"/> is false.
+        /// <see cref="IsValidChecksum"/> reports it. <see cref="DeriveSeed"/> still refuses it.
+        /// </summary>
         /// <exception cref="System.ArgumentNullException"><paramref name="mnemonic"/> is null.</exception>
-        /// <exception cref="System.FormatException">Word count should be 12, 15, 18, 21, or 24. Unknown BIP39 word.</exception>
-        public Mnemonic(string mnemonic, Wordlist? wordlist = null)
+        /// <exception cref="System.FormatException">
+        /// BIP39 checksum does not match. Word count should be 12, 15, 18, 21, or 24. Unknown BIP39 word.
+        /// </exception>
+        public Mnemonic(string mnemonic, Wordlist? wordlist = null, bool requireValidChecksum = false)
         {
             if (mnemonic == null)
             {
@@ -42,8 +64,39 @@ namespace NKaspa
             }
 
             _indexes = parsed.Indexes;
-            Words = parsed.Words;
+            _words = parsed.Words;
+            Words = Array.AsReadOnly(_words);
             IsValidChecksum = ChecksumMatches(_indexes);
+            if (requireValidChecksum && !IsValidChecksum)
+            {
+                throw new FormatException("BIP39 checksum does not match.");
+            }
+        }
+
+        /// <summary>
+        /// Parses a mnemonic and throws when the BIP39 checksum does not match.
+        /// Same as <see cref="ParseValidated"/>.
+        /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="mnemonic"/> is null.</exception>
+        /// <exception cref="System.FormatException">
+        /// BIP39 checksum does not match. Word count should be 12, 15, 18, 21, or 24. Unknown BIP39 word.
+        /// </exception>
+        public static Mnemonic Parse(string mnemonic, Wordlist? wordlist = null)
+        {
+            return ParseValidated(mnemonic, wordlist);
+        }
+
+        /// <summary>
+        /// Parses a mnemonic and throws <see cref="FormatException"/> with the message
+        /// <c>BIP39 checksum does not match.</c> when <see cref="IsValidChecksum"/> is false.
+        /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="mnemonic"/> is null.</exception>
+        /// <exception cref="System.FormatException">
+        /// BIP39 checksum does not match. Word count should be 12, 15, 18, 21, or 24. Unknown BIP39 word.
+        /// </exception>
+        public static Mnemonic ParseValidated(string mnemonic, Wordlist? wordlist = null)
+        {
+            return new Mnemonic(mnemonic, wordlist, requireValidChecksum: true);
         }
 
         /// <summary>Builds a mnemonic from entropy. The length must be 16, 20, 24, 28, or 32 bytes.</summary>
@@ -65,7 +118,8 @@ namespace NKaspa
             var checksumBits = ChecksumBits(entropy.Length);
             WordList = wordlist;
             _indexes = IndexesFromEntropy(entropy, checksumBits);
-            Words = WordsOf(_indexes, wordlist);
+            _words = WordsOf(_indexes, wordlist);
+            Words = Array.AsReadOnly(_words);
             IsValidChecksum = true;
         }
 
@@ -81,8 +135,11 @@ namespace NKaspa
         /// <summary>Wordlist used to parse or build this mnemonic.</summary>
         public Wordlist WordList { get; }
 
-        /// <summary>Words in sentence order.</summary>
-        public string[] Words { get; }
+        /// <summary>
+        /// Words in sentence order. The list is read-only. Replacing an element throws <see cref="NotSupportedException"/>.
+        /// The strings themselves are the shared wordlist entries.
+        /// </summary>
+        public IReadOnlyList<string> Words { get; }
 
         /// <summary>True when the embedded SHA-256 checksum matches the entropy.</summary>
         public bool IsValidChecksum { get; }
@@ -91,22 +148,36 @@ namespace NKaspa
         /// 64-byte BIP39 seed.
         /// An empty passphrase is used when <paramref name="passphrase"/> is null.
         /// The password is the NFKD UTF-8 of the canonical sentence. The salt is the NFKD UTF-8 of <c>mnemonic</c> plus the passphrase.
-        /// The passphrase keeps its case and any zero-width characters. The checksum is not consulted.
+        /// The passphrase keeps its case and any zero-width characters.
+        /// A mnemonic with <see cref="IsValidChecksum"/> false throws unless <paramref name="allowInvalidChecksum"/> is true.
+        /// That opt-in derives from the parsed words anyway. Do not use it for a wallet the user expects to restore elsewhere.
         /// </summary>
-        public byte[] DeriveSeed(string? passphrase = null)
+        /// <exception cref="System.InvalidOperationException">BIP39 checksum does not match. Pass allowInvalidChecksum: true to derive a seed anyway.</exception>
+        public byte[] DeriveSeed(string? passphrase = null, bool allowInvalidChecksum = false)
         {
-            var password = Normalize(ToString());
+            if (!IsValidChecksum && !allowInvalidChecksum)
+            {
+                throw new InvalidOperationException("BIP39 checksum does not match. Pass allowInvalidChecksum: true to derive a seed anyway.");
+            }
+
+            var password = Normalize(ToPhrase());
             var salt = Normalize("mnemonic" + (passphrase ?? string.Empty));
             using var derive = new Rfc2898DeriveBytes(password, salt, 2048, HashAlgorithmName.SHA512);
             return derive.GetBytes(64);
         }
 
-        /// <summary>Master extended key from <see cref="DeriveSeed"/>.</summary>
+        /// <summary>
+        /// Master extended key from <see cref="DeriveSeed"/>.
+        /// A bad checksum throws unless <paramref name="allowInvalidChecksum"/> is true.
+        /// </summary>
         /// <exception cref="System.ArgumentException">BIP32 seed must be between 16 and 64 bytes. Private key is zero or not in the secp256k1 range. Private key must be 32 bytes.</exception>
-        /// <exception cref="System.InvalidOperationException">BIP32 master key is invalid.</exception>
-        public ExtKey DeriveExtKey(string? passphrase = null)
+        /// <exception cref="System.InvalidOperationException">
+        /// BIP39 checksum does not match. Pass allowInvalidChecksum: true to derive a seed anyway. BIP32 master
+        /// key is invalid.
+        /// </exception>
+        public ExtKey DeriveExtKey(string? passphrase = null, bool allowInvalidChecksum = false)
         {
-            var seed = DeriveSeed(passphrase);
+            var seed = DeriveSeed(passphrase, allowInvalidChecksum);
             try
             {
                 return ExtKey.CreateFromSeed(seed);
@@ -117,10 +188,27 @@ namespace NKaspa
             }
         }
 
-        /// <summary>Space-separated mnemonic sentence.</summary>
+        /// <summary>Space-separated canonical sentence. This is the secret. <see cref="ToString()"/> does not return it.</summary>
+        public string ToPhrase()
+        {
+            return string.Join(" ", _words);
+        }
+
+        /// <summary>A copy of the canonical words. Changing the returned array does not change this mnemonic.</summary>
+        public string[] GetWords()
+        {
+            var copy = new string[_words.Length];
+            Array.Copy(_words, copy, _words.Length);
+            return copy;
+        }
+
+        /// <summary>
+        /// Type name only (<c>NKaspa.Mnemonic</c>). Safe to log.
+        /// Use <see cref="ToPhrase()"/> or <see cref="GetWords()"/> for the secret sentence.
+        /// </summary>
         public override string ToString()
         {
-            return string.Join(" ", Words);
+            return "NKaspa.Mnemonic";
         }
 
         private static byte[] DrawEntropy(WordCount wordCount)

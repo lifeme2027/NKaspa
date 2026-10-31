@@ -29,6 +29,8 @@ namespace NKaspa.Tests
             Assert.Contains("path[2]: m/44'/111111'/0'/0/2", text, StringComparison.Ordinal);
             Assert.Contains("kpub: kpub", text, StringComparison.Ordinal);
             Assert.Contains("ktub: ktub", text, StringComparison.Ordinal);
+            Assert.Contains("mnemonic: " + Abandon, text, StringComparison.Ordinal);
+            Assert.DoesNotContain("mnemonic: NKaspa.Mnemonic", text, StringComparison.Ordinal);
             Assert.Contains("\nok", text, StringComparison.Ordinal);
 
             var mnemonic = new Mnemonic(Abandon, Wordlist.English);
@@ -187,8 +189,11 @@ namespace NKaspa.Tests
             Assert.Contains("pskt: true", text, StringComparison.Ordinal);
             Assert.Contains("kpub: \"kpub", text, StringComparison.Ordinal);
             Assert.Contains("private-key: refused", text, StringComparison.Ordinal);
+            Assert.Contains("extkey-json: refused", text, StringComparison.Ordinal);
+            Assert.Contains("mnemonic-json: refused", text, StringComparison.Ordinal);
             Assert.Contains("warning: true", text, StringComparison.Ordinal);
             Assert.Contains("\nok", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("abandon abandon", text, StringComparison.Ordinal);
             Assert.DoesNotContain("kprv", text, StringComparison.Ordinal);
             Assert.DoesNotContain("0000000000000000000000000000000000000000000000000000000000000003", text, StringComparison.Ordinal);
         }

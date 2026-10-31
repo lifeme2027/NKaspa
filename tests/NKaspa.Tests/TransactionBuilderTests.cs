@@ -209,6 +209,133 @@ namespace NKaspa.Tests
             Assert.True(builder.Verify(tx));
         }
 
+        [Theory]
+        [InlineData(2_500_000UL)]
+        [InlineData(5_000_000UL)]
+        [InlineData(10_000_000UL)]
+        public void Small_post_toccata_leftover_is_folded_into_the_fee(ulong leftover)
+        {
+            using var payer = Key.Parse(SecretA);
+            using var payee = Key.Parse(SecretB);
+            const ulong input = 100_000_000UL;
+            var coin = new Coin(new OutPoint(new uint256(20), 0), new UtxoEntry(input, payer.PubKey.GetScriptPubKey(), 1, false));
+            var builder = new TransactionBuilder()
+                .AddKeys(payer)
+                .AddCoins(coin)
+                .Send(payee.GetAddress(Network.Mainnet), new Money(input - leftover))
+                .SetChange(payer.GetAddress(Network.Mainnet))
+                .SendEstimatedFees(FeeRate.MinimumRelay);
+
+            var tx = builder.BuildTransaction(sign: true);
+            Assert.True(builder.ChangeFolded);
+            Assert.Equal(leftover, builder.FoldedChange.Sompi);
+            Assert.Single(tx.Outputs);
+            Assert.Equal(input - leftover, tx.Outputs[0].Value.Sompi);
+            Assert.Equal(leftover, input - tx.Outputs[0].Value.Sompi);
+            Assert.True(builder.Verify(tx));
+        }
+
+        [Theory]
+        [InlineData(30_000_000UL)]
+        [InlineData(50_000_000UL)]
+        public void Larger_post_toccata_leftover_keeps_the_change_output(ulong leftover)
+        {
+            using var payer = Key.Parse(SecretA);
+            using var payee = Key.Parse(SecretB);
+            const ulong input = 100_000_000UL;
+            var coin = new Coin(new OutPoint(new uint256(21), 0), new UtxoEntry(input, payer.PubKey.GetScriptPubKey(), 1, false));
+            var builder = new TransactionBuilder()
+                .AddKeys(payer)
+                .AddCoins(coin)
+                .Send(payee.GetAddress(Network.Mainnet), new Money(input - leftover))
+                .SetChange(payer.GetAddress(Network.Mainnet))
+                .SendEstimatedFees(FeeRate.MinimumRelay);
+
+            var tx = builder.BuildTransaction(sign: true);
+            Assert.False(builder.ChangeFolded);
+            Assert.Equal(0UL, builder.FoldedChange.Sompi);
+            Assert.Equal(2, tx.Outputs.Count);
+            Assert.Equal(input - leftover, tx.Outputs[0].Value.Sompi);
+            var fee = input - tx.Outputs[0].Value.Sompi - tx.Outputs[1].Value.Sompi;
+            Assert.True(fee < leftover);
+            Assert.True(tx.Outputs[1].Value.Sompi > 0);
+            Assert.True(builder.Verify(tx));
+        }
+
+        [Fact]
+        public void Fold_cap_refuses_a_small_leftover_when_the_caller_tightens_it()
+        {
+            using var payer = Key.Parse(SecretA);
+            using var payee = Key.Parse(SecretB);
+            const ulong input = 100_000_000UL;
+            const ulong leftover = 2_500_000UL;
+            var coin = new Coin(new OutPoint(new uint256(22), 0), new UtxoEntry(input, payer.PubKey.GetScriptPubKey(), 1, false));
+            var builder = new TransactionBuilder
+            {
+                MaxFoldedFeeFactor = 1,
+            };
+            builder.AddKeys(payer)
+                .AddCoins(coin)
+                .Send(payee.GetAddress(Network.Mainnet), new Money(input - leftover))
+                .SetChange(payer.GetAddress(Network.Mainnet))
+                .SendEstimatedFees(FeeRate.MinimumRelay);
+
+            var error = Assert.Throws<InvalidOperationException>(() => builder.BuildTransaction(true));
+            Assert.Contains("mass", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Split the send or add inputs", error.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("Not enough funds", error.Message, StringComparison.Ordinal);
+            Assert.False(builder.ChangeFolded);
+            Assert.Equal(0UL, builder.FoldedChange.Sompi);
+        }
+
+        [Fact]
+        public void Post_toccata_fifty_kas_payment_keeps_change_at_rate_150()
+        {
+            using var payer = Key.Parse(SecretA);
+            using var payee = Key.Parse(SecretB);
+            const ulong input = 5_000_000_000UL;
+            const ulong send = 10_000_000UL;
+            var coin = new Coin(new OutPoint(new uint256(23), 0), new UtxoEntry(input, payer.PubKey.GetScriptPubKey(), 1, false));
+            var builder = new TransactionBuilder()
+                .AddKeys(payer)
+                .AddCoins(coin)
+                .Send(payee.GetAddress(Network.Mainnet), new Money(send))
+                .SetChange(payer.GetAddress(Network.Mainnet))
+                .SendEstimatedFees(new FeeRate(150));
+
+            var tx = builder.BuildTransaction(sign: true);
+            Assert.False(builder.ChangeFolded);
+            Assert.Equal(2, tx.Outputs.Count);
+            Assert.Equal(send, tx.Outputs[0].Value.Sompi);
+            var fee = input - tx.Outputs[0].Value.Sompi - tx.Outputs[1].Value.Sompi;
+            Assert.InRange(fee, 1UL, 20_000_000UL);
+            Assert.True(tx.Outputs[1].Value.Sompi > 4_000_000_000UL);
+            Assert.True(builder.Verify(tx));
+        }
+
+        [Fact]
+        public void Pre_toccata_fifty_kas_payment_at_rate_150_refuses_to_burn_the_change()
+        {
+            using var payer = Key.Parse(SecretA);
+            using var payee = Key.Parse(SecretB);
+            const ulong input = 5_000_000_000UL;
+            const ulong send = 10_000_000UL;
+            var coin = new Coin(new OutPoint(new uint256(24), 0), new UtxoEntry(input, payer.PubKey.GetScriptPubKey(), 1, false));
+            var builder = new TransactionBuilder(Network.Mainnet, toccataActive: false)
+                .AddKeys(payer)
+                .AddCoins(coin)
+                .Send(payee.GetAddress(Network.Mainnet), new Money(send))
+                .SetChange(payer.GetAddress(Network.Mainnet))
+                .SendEstimatedFees(new FeeRate(150));
+
+            var error = Assert.Throws<InvalidOperationException>(() => builder.BuildTransaction(true));
+            Assert.Contains("mass", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Split the send or add inputs", error.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("Not enough funds", error.Message, StringComparison.Ordinal);
+            Assert.False(builder.ChangeFolded);
+            Assert.Equal(0UL, builder.FoldedChange.Sompi);
+        }
+
         [Fact]
         public void Duplicate_outpoints_are_spent_once()
         {

@@ -1,7 +1,9 @@
 using System.Security.Cryptography;
+using System.Text.Json.Serialization;
 using NBitcoin.Secp256k1;
 using NKaspa.Crypto;
 using NKaspa.DataEncoders;
+using NKaspa.JsonConverters;
 
 namespace NKaspa
 {
@@ -13,7 +15,10 @@ namespace NKaspa
     /// compressed SEC key. <see cref="GetAddress"/> returns the Schnorr address, which is
     /// the default Kaspa public-key address. Schnorr signing uses BIP-340. ECDSA signing
     /// uses RFC 6979 and the low-S form.
+    /// System.Text.Json refuses this type unless the caller opts in through
+    /// <see cref="NKaspaJsonSerializer"/> with <c>allowPrivateKeys: true</c>.
     /// </remarks>
+    [JsonConverter(typeof(KeyJsonConverter))]
     public sealed class Key : IDisposable, IEquatable<Key>
     {
         /// <summary>Length of the secret.</summary>

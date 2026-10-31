@@ -14,7 +14,7 @@ namespace NKaspa.JsonConverters
     /// Pass the network that addresses and extended keys must belong to.
     /// </para>
     /// <para>
-    /// <see cref="Key"/> and <see cref="ExtKey"/> are refused unless the caller passes true for the private-key argument of
+    /// <see cref="Key"/>, <see cref="ExtKey"/>, and <see cref="Mnemonic"/> are refused unless the caller passes true for the private-key argument of
     /// <see cref="Serialize{T}(T, Network, bool, bool)"/> or
     /// <see cref="JsonSerializerOptionsExtensions.AddNKaspaConverters(JsonSerializerOptions, Network, bool)"/>.
     /// That argument writes secret bytes. <see cref="PrivateKeyWarning"/> is the warning those methods document.
@@ -190,7 +190,7 @@ namespace NKaspa.JsonConverters
 
         /// <summary>
         /// Adds the Kaspa converters.
-        /// <paramref name="allowPrivateKeys"/> writes <see cref="Key"/> and <see cref="ExtKey"/> secrets.
+        /// <paramref name="allowPrivateKeys"/> writes <see cref="Key"/>, <see cref="ExtKey"/>, and <see cref="Mnemonic"/> secrets.
         /// <see cref="NKaspaJsonSerializer.PrivateKeyWarning"/> applies when it is true.
         /// </summary>
         /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null. <paramref name="options"/> is null.</exception>
@@ -231,6 +231,7 @@ namespace NKaspa.JsonConverters
             options.Converters.Add(new PSKTJsonConverter());
             options.Converters.Add(new KeyJsonConverter(allowPrivateKeys));
             options.Converters.Add(new ExtKeyJsonConverter(network, allowPrivateKeys));
+            options.Converters.Add(new MnemonicJsonConverter(allowPrivateKeys));
             return options;
         }
     }

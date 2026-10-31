@@ -166,6 +166,9 @@ namespace NKaspa.Tests
             Assert.Equal(kprv, parsed.ToBase58());
             Assert.Equal(kprv, master.GetWif(Network.Mainnet));
             Assert.Equal(ktrv, master.GetWif(Network.Testnet));
+            Assert.Equal(master.ToBase58(), master.ExportXprv());
+            Assert.Equal(kprv, master.ExportXprv(Network.Mainnet));
+            Assert.Equal(ktrv, master.ExportXprv(Network.Testnet));
             Assert.Equal("NKaspa.ExtKey", master.ToString());
             Assert.DoesNotContain(kprv, master.ToString(), StringComparison.Ordinal);
             Assert.DoesNotContain("kprv", master.ToString(), StringComparison.Ordinal);

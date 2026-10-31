@@ -24,6 +24,8 @@ namespace NKaspa.RPC
     /// <para>
     /// When the socket drops, waiting requests fail with <see cref="InvalidOperationException"/> and are not retried.
     /// <see cref="KaspaWebSocketOptions.AutoReconnect"/> can open a new socket with exponential backoff for later calls.
+    /// <see cref="Reconnected"/> fires after that new socket is open so the caller can subscribe again.
+    /// A message larger than <see cref="KaspaWebSocketOptions.MaxMessageBytes"/> fails the read. The default limit is 16 MiB.
     /// </para>
     /// <para>
     /// rusty-kaspa <c>KaspaRpcHandler::handshake</c> is still a TODO and does not send a greeting.
@@ -68,7 +70,7 @@ namespace NKaspa.RPC
         /// <exception cref="System.ArgumentOutOfRangeException">
         /// Timeout must be positive, or Timeout.InfiniteTimeSpan. Reconnect backoff factor must be at least 1.
         /// Max reconnect attempts must be zero or positive. Reconnect delay must be zero or positive. Reconnect
-        /// max delay must be at least the initial delay.
+        /// max delay must be at least the initial delay. Max message size must be positive.
         /// </exception>
         public KaspaWebSocketChannel(Uri uri, KaspaWebSocketOptions? options)
         {
@@ -94,6 +96,22 @@ namespace NKaspa.RPC
 
         /// <summary>Raised for a notification frame. The callback runs on the reader.</summary>
         public event Action<string>? NotificationReceived;
+
+        /// <summary>
+        /// Raised when <see cref="State"/> changes. The callback runs on the caller or the reader.
+        /// Do not block it on this channel. An exception from the callback is ignored so waiting requests still fail.
+        /// </summary>
+        public event Action<KaspaWebSocketState>? StateChanged;
+
+        /// <summary>
+        /// Raised after a dropped socket is open again.
+        /// Requests that were already waiting are not sent again. Resubscribe from this callback.
+        /// The first successful <see cref="ConnectAsync"/> does not raise it.
+        /// </summary>
+        public event Action? Reconnected;
+
+        /// <summary>The latest connection state. The initial value is <see cref="KaspaWebSocketState.Closed"/>.</summary>
+        public KaspaWebSocketState State { get; private set; } = KaspaWebSocketState.Closed;
 
         /// <summary>Notification frames received so far, in arrival order.</summary>
         public IReadOnlyList<string> Notifications
@@ -140,7 +158,20 @@ namespace NKaspa.RPC
                 }
 
                 await JoinReaderAsync().ConfigureAwait(false);
-                await OpenCoreAsync(cancellationToken).ConfigureAwait(false);
+                SetState(KaspaWebSocketState.Connecting);
+                try
+                {
+                    await OpenCoreAsync(cancellationToken).ConfigureAwait(false);
+                }
+                catch
+                {
+                    if (_disposed == 0)
+                    {
+                        SetState(KaspaWebSocketState.Closed);
+                    }
+
+                    throw;
+                }
             }
             finally
             {
@@ -243,6 +274,7 @@ namespace NKaspa.RPC
                 return default;
             }
 
+            SetState(KaspaWebSocketState.Closed);
             try
             {
                 _lifetime.Cancel();
@@ -321,6 +353,7 @@ namespace NKaspa.RPC
                 return;
             }
 
+            var opened = false;
             try
             {
                 if (_disposed != 0 || IsOpen)
@@ -329,6 +362,7 @@ namespace NKaspa.RPC
                 }
 
                 await JoinReaderAsync().ConfigureAwait(false);
+                SetState(KaspaWebSocketState.Reconnecting);
                 var delay = _options.ReconnectInitialDelay;
                 for (var attempt = 0; attempt < _options.MaxReconnectAttempts; attempt++)
                 {
@@ -354,6 +388,7 @@ namespace NKaspa.RPC
                     try
                     {
                         await OpenCoreAsync(_lifetime.Token).ConfigureAwait(false);
+                        opened = true;
                         return;
                     }
                     catch (OperationCanceledException) when (_lifetime.IsCancellationRequested || _disposed != 0)
@@ -369,11 +404,16 @@ namespace NKaspa.RPC
             finally
             {
                 Release(_connectGate);
+                if (!opened && _disposed == 0 && !IsOpen)
+                {
+                    SetState(KaspaWebSocketState.Closed);
+                }
             }
         }
 
         private async Task OpenCoreAsync(CancellationToken cancellationToken)
         {
+            var reconnecting = _hasConnected;
             var socket = new ClientWebSocket();
             try
             {
@@ -406,6 +446,12 @@ namespace NKaspa.RPC
                     _hasConnected = true;
                 }
 
+                SetState(KaspaWebSocketState.Open);
+                if (reconnecting)
+                {
+                    RaiseReconnected();
+                }
+
                 _reader = Task.Run(() => ReadLoop(socket, readerLifetime.Token));
             }
             catch
@@ -418,6 +464,7 @@ namespace NKaspa.RPC
         private async Task ReadLoop(ClientWebSocket socket, CancellationToken cancellationToken)
         {
             var buffer = new byte[8192];
+            Exception? fatal = null;
             try
             {
                 while (!cancellationToken.IsCancellationRequested && socket.State == WebSocketState.Open)
@@ -433,7 +480,19 @@ namespace NKaspa.RPC
                             return;
                         }
 
-                        message.Write(buffer, 0, result.Count);
+                        if ((long)message.Length + result.Count > _options.MaxMessageBytes)
+                        {
+                            fatal = new InvalidOperationException(
+                                "WebSocket message exceeds the maximum of "
+                                + _options.MaxMessageBytes.ToString(CultureInfo.InvariantCulture)
+                                + " bytes.");
+                            return;
+                        }
+
+                        if (result.Count > 0)
+                        {
+                            message.Write(buffer, 0, result.Count);
+                        }
                     }
                     while (!result.EndOfMessage);
 
@@ -464,13 +523,28 @@ namespace NKaspa.RPC
                 AbortSocket(socket);
                 if (current)
                 {
+                    Exception failure;
                     if (_disposed != 0 || _lifetime.IsCancellationRequested)
                     {
-                        FailPending(new ObjectDisposedException(nameof(KaspaWebSocketChannel)));
+                        failure = new ObjectDisposedException(nameof(KaspaWebSocketChannel));
+                    }
+                    else if (fatal != null)
+                    {
+                        failure = fatal;
                     }
                     else
                     {
-                        FailPending(new InvalidOperationException("WebSocket disconnected."));
+                        failure = new InvalidOperationException("WebSocket disconnected.");
+                    }
+
+                    FailPending(failure);
+                    if (_disposed != 0 || _lifetime.IsCancellationRequested || fatal != null || !_options.AutoReconnect || !_hasConnected)
+                    {
+                        SetState(KaspaWebSocketState.Closed);
+                    }
+                    else
+                    {
+                        SetState(KaspaWebSocketState.Reconnecting);
                         ScheduleReconnect();
                     }
                 }
@@ -698,6 +772,56 @@ namespace NKaspa.RPC
             if (double.IsNaN(options.ReconnectBackoffFactor) || double.IsInfinity(options.ReconnectBackoffFactor) || options.ReconnectBackoffFactor < 1d)
             {
                 throw new ArgumentOutOfRangeException(nameof(options.ReconnectBackoffFactor), "Reconnect backoff factor must be at least 1.");
+            }
+
+            if (options.MaxMessageBytes <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(options.MaxMessageBytes), "Max message size must be positive.");
+            }
+        }
+
+        private void SetState(KaspaWebSocketState state)
+        {
+            Action<KaspaWebSocketState>? handler;
+            lock (_gate)
+            {
+                if (State == state)
+                {
+                    return;
+                }
+
+                State = state;
+                handler = StateChanged;
+            }
+
+            if (handler == null)
+            {
+                return;
+            }
+
+            try
+            {
+                handler(state);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        private void RaiseReconnected()
+        {
+            var handler = Reconnected;
+            if (handler == null)
+            {
+                return;
+            }
+
+            try
+            {
+                handler();
+            }
+            catch (Exception)
+            {
             }
         }
 

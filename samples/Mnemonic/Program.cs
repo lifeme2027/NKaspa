@@ -41,15 +41,15 @@ namespace NKaspa.Samples.Mnemonic
                 return 1;
             }
 
-            // A bad checksum still parses, the same way NBitcoin does. Do not derive from it.
-            // 校验和错误时对象仍能构造，和 NBitcoin 一样。这里不往下派生。
+            // A bad checksum still parses, the same way NBitcoin does. DeriveSeed would throw.
+            // 校验和错误时宽松构造仍能返回对象，和 NBitcoin 一样。DeriveSeed 会拒绝它。这里不往下派生。
             if (!mnemonic.IsValidChecksum)
             {
                 writer.WriteLine("checksum: invalid");
                 return 1;
             }
 
-            writer.WriteLine("mnemonic: " + mnemonic);
+            writer.WriteLine("mnemonic: " + mnemonic.ToPhrase());
             using var master = mnemonic.DeriveExtKey();
             var account = master.Neuter();
             writer.WriteLine("kpub: " + account.ToString(Network.Mainnet));

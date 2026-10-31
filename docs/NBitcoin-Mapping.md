@@ -68,7 +68,7 @@ NBitcoin 目录 `Secp256k1/` 含 `ECPrivKey`、`ECPubKey`、`ECXOnlyPubKey`、`S
 
 ## BIP32
 
-`ExtKey`、`ExtPubKey`、`KeyPath`、`HDFingerprint`。没有单独的 `RootedKeyPath`、`IHDKey`、`BitcoinExtKey`。按网络输出扩展私钥用 `GetWif(Network)`、`ToString(Network)` 或 `ToBase58`。无参 `ExtKey.ToString()` 只返回类型名 `NKaspa.ExtKey`，与 NBitcoin 一样不把 `kprv` 写进日志。`GetWif` 返回的字符串与 `ToString(Network)` 相同；NBitcoin 的 `GetWif` 返回 `BitcoinExtKey`。
+`ExtKey`、`ExtPubKey`、`KeyPath`、`HDFingerprint`。没有单独的 `RootedKeyPath`、`IHDKey`、`BitcoinExtKey`。按网络输出扩展私钥用 `ExportXprv()`、`ExportXprv(Network)`、`GetWif(Network)`、`ToString(Network)` 或 `ToBase58`。无参 `ExtKey.ToString()` 只返回类型名 `NKaspa.ExtKey`，与 NBitcoin 一样不把 `kprv` 写进日志。`ExportXprv()` 与 `ToBase58()` 相同。`ExportXprv(Network)`、`GetWif` 与 `ToString(Network)` 是同一串文本。NBitcoin 的 `GetWif` 返回 `BitcoinExtKey`。
 
 | 状态 | 原因 |
 | --- | --- |
@@ -93,7 +93,7 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 
 | 状态 | 原因 |
 | --- | --- |
-| 已实现 | 英文词表 2048 词，内嵌资源。种子是 PBKDF2-HMAC-SHA512，2048 次，64 字节。口令盐是 `mnemonic` 加上 NFKD 口令。校验和错误仍可构造，`IsValidChecksum` 为 false，与 NBitcoin 相同。 |
+| 已实现 | 英文词表 2048 词，内嵌资源。种子是 PBKDF2-HMAC-SHA512，2048 次，64 字节。口令盐是 `mnemonic` 加上 NFKD 口令。宽松构造仍允许错误校验和，`IsValidChecksum` 为 false。`Parse`、`ParseValidated` 和 `requireValidChecksum: true` 抛 `FormatException`（`BIP39 checksum does not match.`）。错误校验和不能 `DeriveSeed` / `DeriveExtKey`，除非 `allowInvalidChecksum: true`。`Words` 是 `IReadOnlyList<string>`。无参 `ToString` 返回 `NKaspa.Mnemonic`，句子用 `ToPhrase()`。 |
 
 英文词表从 NBitcoin 复制，许可声明在 `src/NKaspa/BIP39/WORDLIST-LICENSE.txt`（MIT，Copyright (c) 2023 Metaco SA）。词表文件本身只有单词。
 
@@ -199,7 +199,7 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 | `ExtPubKey` | 该网络的 `kpub` 或 `ktub`。 |
 | `FeeRate` | sompi/gram 的整数。 |
 | `PSKT` | `PSKT.ToJson()` 的紧凑对象。 |
-| `Key` / `ExtKey` | 默认拒绝，异常文本带 WARNING。`allowPrivateKeys: true` 才写出十六进制私钥或 `kprv` / `ktrv`。 |
+| `Key` / `ExtKey` / `Mnemonic` | 默认拒绝，包括类型上的 `JsonConverter`，所以 `JsonSerializer.Serialize` 不带 options 也会拒绝。异常文本带 WARNING，不含秘密。`allowPrivateKeys: true` 才写出十六进制私钥、`kprv` / `ktrv`，或 `ToPhrase()` 的句子。 |
 
 紧凑、不缩进的交易 JSON 与 `KaspaRpcJson.WriteTransaction` 是同一串。2026-10-30 主网三笔已接受交易（`5fd8f860…`、`2febe6ca…`、`4d1c6a5e…`）按 wRPC 形状读入后，交易号与链上一致。浏览器的 `mass` 是中继 mass，没有写进 `storageMass`。
 
@@ -220,7 +220,7 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 - BIP39：Trezor `vectors.json` 的英文行（BIP39 写明这些种子的口令是 `TREZOR`），副本是 NBitcoin 的 `bip39_vectors.json`。另一组是 NBitcoin 的 `bip39_vectors.en.json`，口令含表意空格，用来核对 NFKD。
 - BIP32：BIP-0032 的五组官方向量（含非法密钥）。Kaspa 前缀做了往返。没有找到外部钉死的「助记词 → kaspa 地址」字符串，测试只检查派生地址能通过 `KaspaAddress.IsValid`，以及账户公钥派生和私钥派生得到同一地址。
 - Mass：rusty-kaspa `test_storage_mass` 经 kaswallet `MassCalculatorTests` 移植。另有三组 api.kaspa.org `/transactions/mass` 的金额样本（83333、10003、2017），不是上游单元测试。mass 尺寸含 32 字节 payload 哈希、不含 sigop 字节，也不含 covenant 存在字节。空白交易是 94，不是 `ToBytes()` 的 62。版本 1 每个输入再加 2 字节 compute budget；有 covenant 时输出再加 34 字节。
-- 交易构建器：本地 Schnorr 与 ECDSA P2PK 端到端。默认 `MinimumChange` 是 0.02 KAS。找零低于这个数，或找零会让 mass 超限时，并进手续费。默认费用 mass 上限是块的 compute 限额 500000。`toccataActive: false` 或 `MassPolicy.PreToccata` 把单笔上限恢复到 100000，并把中继费率改为 1 sompi/gram，此时 `MinimumChange` 是 0.1 KAS。显式手续费低于 `MinimumRelayFeeRate` 会拒绝，除非 `AllowBelowMinimumRelayFee`。默认最低中继费 = 100 sompi × max(compute mass, 归一化 transient mass)，不含 storage。标准单输入是 2036 gram，203600 sompi，约 0.002 KAS。`SendEstimatedFees` 按费率乘 fee mass（三项里最大的那个）。`SendMinimumRelayFee` 只付中继下限。`EstimateFee` 与 `EstimateMinimumRelayFee` 是对应的静态估算。选币按 outpoint 去重，不按脚本合并。一枚够付时只用最小的那一枚。`MustSpend` 与 `SpendAllCoins` 强制全部指定输入进入交易，每笔输入单独签名。`SetVersion(1)` 用版本 1 sighash，默认每输入 compute budget 10（1000 compute gram，相当于版本 0 的一次签名）。版本 1 的 wRPC JSON 同时写 `sigOpCount` 和 `computeBudget`。
+- 交易构建器：本地 Schnorr 与 ECDSA P2PK 端到端。默认 `MinimumChange` 是 0.02 KAS。低于这个数的找零并进手续费。更大的找零只有在输出建不出来，并且金额不超过 `max(MinimumChange, MaxFoldedChange)`（`MaxFoldedChange` 默认 0.1 KAS），同时不超过无找零交易所需手续费的 `MaxFoldedFeeFactor` 倍（默认 100）时，才并进手续费。超过上限抛 `InvalidOperationException`，说明找零会超过 mass 限额，建议拆分付款或增加输入。成功并入后 `ChangeFolded` 为 true，`FoldedChange` 是并入的 sompi。失败的构建不置位。默认费用 mass 上限是块的 compute 限额 500000。`toccataActive: false` 或 `MassPolicy.PreToccata` 把单笔上限恢复到 100000，并把中继费率改为 1 sompi/gram，此时 `MinimumChange` 是 0.1 KAS。显式手续费低于 `MinimumRelayFeeRate` 会拒绝，除非 `AllowBelowMinimumRelayFee`。默认最低中继费 = 100 sompi × max(compute mass, 归一化 transient mass)，不含 storage。标准单输入是 2036 gram，203600 sompi，约 0.002 KAS。`SendEstimatedFees` 按费率乘 fee mass（三项里最大的那个）。`SendMinimumRelayFee` 只付中继下限。`EstimateFee` 与 `EstimateMinimumRelayFee` 是对应的静态估算。选币按 outpoint 去重，不按脚本合并。一枚够付时只用最小的那一枚。`MustSpend` 与 `SpendAllCoins` 强制全部指定输入进入交易，每笔输入单独签名。`SetVersion(1)` 用版本 1 sighash，默认每输入 compute budget 10（1000 compute gram，相当于版本 0 的一次签名）。版本 1 的 wRPC JSON 同时写 `sigOpCount` 和 `computeBudget`。
 - RPC：内存 JSON 样例，加上本地回环 WebSocket。大整数用整数记号，不用 `double`（样本 `9007199254740993`）。`getBlockDagInfo` 的 `network` 接受字符串或 `{networkType, suffix}`。`samples/NodeQuery` 对公共主网端点做过一次只读查询，见上文。
 
 ## Toccata 兼容性
@@ -262,9 +262,9 @@ kaswallet 的 C# `NetworkKind` 给 devnet、simnet 另写过版本字节（devne
 
 只读审查提了七条。1、3、4、5 改了代码。2、6、7 只做评估。
 
-`ExtKey` 的无参 `ToString` 原先调用 `ToBase58()`，日志里会出现 `kprv`。NBitcoin 的 `ExtKey` 不重写无参 `ToString`，输出只有类型名。0.1.10 起无参 `ToString` 返回 `NKaspa.ExtKey`，不读取密钥材料。导出用 `GetWif(Network)`、`ToString(Network)` 或 `ToBase58()`。`GetWif` 与 `ToString(Network)` 是同一串文本。`ExtPubKey.ToString()` 仍是扩展公钥。JSON 转换器仍用 `ToString(Network)`。示例不打印无参 `ToString`。
+`ExtKey` 的无参 `ToString` 原先调用 `ToBase58()`，日志里会出现 `kprv`。NBitcoin 的 `ExtKey` 不重写无参 `ToString`，输出只有类型名。0.1.10 起无参 `ToString` 返回 `NKaspa.ExtKey`，不读取密钥材料。导出用 `ExportXprv()`、`ExportXprv(Network)`、`GetWif(Network)`、`ToString(Network)` 或 `ToBase58()`。`ExportXprv()` 与 `ToBase58()` 相同。`ExportXprv(Network)` 与 `ToString(Network)`、`GetWif` 是同一串文本。`ExtPubKey.ToString()` 仍是扩展公钥。允许私钥的 JSON 转换器写出 `ExportXprv(Network)`。示例不打印无参 `ToString`。
 
-BIP39 构造时去掉零宽字符（U+200B、U+200C、U+200D、U+FEFF、U+2060、U+180E、U+200E、U+200F），整句做 NFKD，按 Unicode 空白切分（含全角空格 U+3000 和连续空格），再 NFKD 并转小写，然后对照英文词表。存下的是词表里的规范词，所以 `ToString()` 是官方句子。零宽字符不是分隔符；只把空格换成 U+200B 会失败。`DeriveSeed` 对规范句子和口令做 NFKD 后再做 PBKDF2。口令保持大小写，不去零宽。
+BIP39 构造时去掉零宽字符（U+200B、U+200C、U+200D、U+FEFF、U+2060、U+180E、U+200E、U+200F），整句做 NFKD，按 Unicode 空白切分（含全角空格 U+3000、NBSP U+00A0 和连续空格），再 NFKD 并转小写，然后对照英文词表。存下的是词表里的规范词。同一组规范词得到同一个种子，变体不会变成另一个钱包。零宽字符不是分隔符；只把空格换成 U+200B 会失败。`ToPhrase()` 是官方句子。无参 `ToString()` 只返回 `NKaspa.Mnemonic`。`DeriveSeed` 对 `ToPhrase()` 和口令做 NFKD 后再做 PBKDF2。口令保持大小写，不去零宽。
 
 `KaspaWebSocketOptions`：连接超时默认 15 秒，请求超时默认 30 秒。`Timeout.InfiniteTimeSpan` 关闭对应超时。超时和调用方的 `CancellationToken` 链在一起。调用方取消仍是 `OperationCanceledException`，到点是 `TimeoutException`。一次 `ExchangeAsync` 只有一个超时窗口，覆盖发送和等待。`AutoReconnect` 默认 false。曾经连上之后断开，进行中的请求以 `InvalidOperationException`（文本含 `WebSocket disconnected.`）失败，不自动重发。重连使用新的 `ClientWebSocket`，延迟从 `ReconnectInitialDelay`（默认 200 毫秒）起按 `ReconnectBackoffFactor`（默认 2）增长，上限 `ReconnectMaxDelay`（默认 10 秒），次数 `MaxReconnectAttempts`（默认 5）。`IKaspaJsonChannel` 的签名不变。
 
@@ -272,9 +272,27 @@ Mass：当前 rusty-kaspa master 的 mainnet、testnet（suffix 10）、simnet�
 
 评估，没有改对应行为：
 
-- 助记词存在 `string[]`。规范词是静态词表里的引用，秘密是内部索引。`.NET` 字符串不能擦除。把索引清零也清不掉已经复制出去的句子。NBitcoin 同样保存句子字符串。没有提供假装能擦除字符串的接口。
-- 低于 0.02 KAS 的找零并进手续费，这是 KIP-9：`C / storage limit`，一枚 plurality 为 1 的输出，其 storage mass 等于 500000 的块存储限额。rusty-kaspa 钱包的 `MassCalculator::is_dust` 是另一条更小的启发式，大约 44400 sompi，注释写明内存池不按这个阈值拒绝。生成器在判定为 dust 或 mass 放不下时吸收找零。本库的地板按 KIP-9，更严；mass 放不下时也会并进手续费。这不是缺陷。
+- 助记词内部仍保存词表字符串。规范词是静态词表里的引用，秘密是词序。`.NET` 字符串不能擦除。公开的 `Words` 已改成只读视图，外部不能改元素。`GetWords()` 返回副本。NBitcoin 同样保存句子字符串。没有提供假装能擦除字符串的接口。
+- 低于 0.02 KAS 的找零并进手续费，这是 KIP-9：`C / storage limit`，一枚 plurality 为 1 的输出，其 storage mass 等于 500000 的块存储限额。rusty-kaspa 钱包的 `MassCalculator::is_dust` 是另一条更小的启发式，大约 44400 sompi，注释写明内存池不按这个阈值拒绝。本库的地板按 KIP-9，更严。更大的找零不再无条件并进手续费，见下一节。
 - 客户端已有 `getServerInfo`、`getBlockDagInfo`、`getUtxosByAddresses`、`getBalanceByAddress`、`submitTransaction`、`getFeeEstimate`、`getBlock`。通道已经保存原始通知 JSON。Kaspa 节点没有可查询的历史交易索引，区块会剪枝。类型化订阅可以放在现有套接字上：`notifyUtxosChanged`、`notifyBlockAdded`、`notifyVirtualChainChanged` 以及对应的停止方法，再加上事件。带重组处理的持久历史是更高一层。类型化订阅大约一到两天。历史存储大约一到两周。这一版不实现。
+
+## 0.1.10 后续修复
+
+Linux 审查（对照 `f41c86a`，测试者 测试1）和钱包组 R1/R10 的后续改动。没有改版本号，仍是 0.1.10-alpha。
+
+校验和：12 个 `abandon` 的校验和是错的。宽松构造 `new Mnemonic(sentence)` 仍不抛，`IsValidChecksum` 为 false，方便检查用户输入。`Mnemonic.Parse` 与 `Mnemonic.ParseValidated` 抛 `FormatException`，消息正好是 `BIP39 checksum does not match.`。`requireValidChecksum: true` 同样抛。`DeriveSeed` 和 `DeriveExtKey` 在校验和错误时抛 `InvalidOperationException`，消息含 `allowInvalidChecksum: true`。显式传入 `allowInvalidChecksum: true` 仍会从这些词派生，这不是可恢复的钱包。种子的口令是 `ToPhrase()` 的 NFKD，不是已经脱敏的 `ToString()`。
+
+变体：大写、U+3000、零宽字符、BOM、NBSP、全角字母在能对上词表时，存的是规范词，种子与规范句子相同，不会静默变成另一个钱包。零宽字符单独当分隔符、未知词、非法词数仍抛 `FormatException`。口令不做这些清理：口令里的零宽字符会改变种子。这是 BIP39 对口令的要求。
+
+脱敏：`Mnemonic.ToString()` 返回 `NKaspa.Mnemonic`。句子用 `ToPhrase()`，词的副本用 `GetWords()`。`ExtKey.ToString()` 返回 `NKaspa.ExtKey`。扩展私钥用 `ExportXprv()` 或 `ExportXprv(Network)`。`Words` 是 `IReadOnlyList<string>`（`ReadOnlyCollection`），改元素抛 `NotSupportedException`。`Key`、`ExtKey`、`Mnemonic` 都带拒绝型 `JsonConverter`。不传 `allowPrivateKeys: true` 时，`JsonSerializer.Serialize` 和 `NKaspaJsonSerializer` 都抛 `InvalidOperationException`，文本带 WARNING，不含词或 `kprv`。`NKaspaJsonSerializer` 会把包在 `JsonException` 里的转换器异常解出来。在当前的 .NET 8 上，直接调用 `JsonSerializer.Serialize` 写出这三种类型时，拒绝本身就是 `InvalidOperationException`，消息里没有词或 `kprv`。
+
+找零：Toccata 之后，1 KAS 输入、按 `FeeRate.MinimumRelay` 付款，剩余 250 万、500 万、1000 万 sompi 时，找零输出的 storage mass 所需手续费大于剩余金额，构建器丢掉找零并把它并进手续费。`ChangeFolded` 为 true，`FoldedChange` 等于剩余。剩余 3000 万和 5000 万 sompi 时找零输出留得下，不并入。并入还有上限：金额不超过 `max(MinimumChange, MaxFoldedChange)`，并且不超过无找零交易所需手续费的 `MaxFoldedFeeFactor` 倍。默认 `MaxFoldedChange` 是 0.1 KAS（1000 万 sompi），`MaxFoldedFeeFactor` 是 100。低于 `MinimumChange` 的 dust 仍按原规则并入，不受这个倍数限制。超过上限抛 `InvalidOperationException`：`Change would exceed the mass limit. Folding it into the fee would burn more than MaxFoldedChange allows. Split the send or add inputs so the change output fits.` 失败时 `ChangeFolded` 保持 false。
+
+50 KAS 的一笔 UTXO 付出 0.1 KAS、费率 150 sompi/gram：默认构建器是 Toccata 之后，storage mass 大约 10 万，低于 50 万的块限额，所需手续费大约 0.15 KAS，找零大约 49.75 KAS，会保留找零，不会烧掉 49.9 KAS。同一组数字在 `toccataActive: false`（单笔 mass 上限 100000）下，带找零的交易超过上限，找零远大于 0.1 KAS，因此抛上面的异常，不把 49.9 KAS 并进手续费。
+
+WebSocket：`KaspaWebSocketOptions.MaxMessageBytes` 默认 `DefaultMaxMessageBytes`（16 MiB）。一个消息的所有分片加在一起，等于上限可以，多一个字节就失败。等待中的 `ExchangeAsync` 收到 `InvalidOperationException`，消息写明上限字节数，不含载荷。这种失败不自动重连。`RequestTimeout` 默认 30 秒，`ConnectTimeout` 默认 15 秒，`AutoReconnect` 默认 false，这些在上一轮已经有了。这一轮补上 `State`（Closed、Connecting、Open、Reconnecting）、`StateChanged` 和 `Reconnected`。第一次成功的 `ConnectAsync` 不触发 `Reconnected`。回调抛出的异常被忽略，避免挡住 `FailPending`。
+
+testnet-10 的 Toccata：2026-10-31 对 `https://api-tn10.kaspa.org/info/blockdag` 做了只读 GET，没有提交交易，也没有打开 WebSocket。响应里 `networkName` 是 `kaspa-testnet-10`，`virtualDaaScore` 是 `611024731`，`blockCount` 和 `headerCount` 都是 `1503250`（这是剪枝窗口里的计数，不是链高），`pastMedianTime` 是 `1793437188174`，`sink` 是 `dd0dac7ba6b9ee3e727a9c133ea08c16da49c5e46149685bc5320d3884906cb9`。本库的 tn10-toc2 激活分是 `Network.TestnetToccataActivationDaaScore` = 467579632。公开资料里的 tn10-toc3 ZK 加固分是 476232000。611024731 高于这两个分数，所以 Toccata 在 testnet-10 上已经激活。`Network.Testnet.IsToccataActive(611024731)` 为 true。rusty-kaspa master 的 PR 1089 去掉了 `Params::toccata_activation`，mainnet、testnet、simnet、devnet 的块限额都是 compute 500000、storage 500000、transient 1000000。主网激活分仍是 474165565。Simnet 和 Devnet 的激活分是 0。
 
 ## 0.1.2 联调修复
 

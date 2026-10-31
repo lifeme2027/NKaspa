@@ -10,7 +10,10 @@ namespace NKaspa
     /// Inputs are Schnorr or ECDSA pay-to-pubkey. Each selected coin is its own input and gets its own signature script.
     /// <see cref="DefaultCoinSelector"/> spends one coin when that coin covers the payment, the fee, and the minimum change.
     /// <see cref="MustSpend(Coin[])"/> and <see cref="SpendAllCoins"/> force every named coin into the transaction.
-    /// Change below <see cref="MinimumChange"/>, or change that would push mass over the limit, is added to the fee.
+    /// Change below <see cref="MinimumChange"/> is added to the fee.
+    /// A larger change output that cannot be built (mass over the limit, or a storage-mass fee the surplus cannot pay)
+    /// is folded into the fee only when the amount is at most <see cref="MaxFoldedChange"/> and within <see cref="MaxFoldedFeeFactor"/> of the fee that transaction needs.
+    /// A larger unbuildable change throws. It is not burned as a fee.
     /// The fee mass must stay within <see cref="MaximumMass"/> and within <see cref="MassLimits"/>.
     /// Version 0 is the default. <see cref="SetVersion"/>(1) builds a Toccata payment and signs it with the version-1 sighash.
     /// <see cref="BuildPSKT"/> wraps the same unsigned payment. <see cref="Sign(NKaspa.PSKT.PSKT)"/> adds partial signatures for the builder keys.
@@ -38,9 +41,37 @@ namespace NKaspa
         /// Change below this amount is added to the fee instead of creating an output.
         /// The default is <c>C / storage limit</c>: 0.02 KAS when the storage limit is 500000.
         /// <see cref="MassPolicy.PreToccata"/> uses <c>C / 100000</c>, which is 0.1 KAS.
-        /// A change at or above this amount is still folded in when keeping it would exceed <see cref="MaximumMass"/> or <see cref="MassLimits"/>.
+        /// A larger change is folded only when the output cannot be built and the amount passes <see cref="MaxFoldedChange"/> and <see cref="MaxFoldedFeeFactor"/>.
         /// </summary>
         public Money MinimumChange { get; set; }
+
+        /// <summary>
+        /// Largest change that may be folded into the fee when the change output cannot be built.
+        /// The default is 0.1 KAS (10,000,000 sompi). The allowed amount is <c>max(MinimumChange, MaxFoldedChange)</c>.
+        /// Change below <see cref="MinimumChange"/> still folds. That path is the dust rule and does not use this cap.
+        /// </summary>
+        public Money MaxFoldedChange { get; set; } = new Money(10_000_000);
+
+        /// <summary>
+        /// A change output that cannot be built is folded only when its value is at most this many times
+        /// the fee of the same transaction without that output. The default is 100.
+        /// Values below 1 reject every positive fold on this path.
+        /// </summary>
+        public int MaxFoldedFeeFactor { get; set; } = 100;
+
+        /// <summary>
+        /// True when the last successful <see cref="BuildTransaction"/> or <see cref="BuildPSKT"/>
+        /// added a positive change to the fee instead of creating an output.
+        /// A failed build leaves this false.
+        /// </summary>
+        public bool ChangeFolded { get; private set; }
+
+        /// <summary>
+        /// Sompi moved from a change output into the fee by the last successful build.
+        /// Zero when <see cref="ChangeFolded"/> is false. The whole amount is part of the fee,
+        /// including the fee that transaction needed.
+        /// </summary>
+        public Money FoldedChange { get; private set; }
 
         /// <summary>
         /// Maximum allowed fee mass.
@@ -430,7 +461,9 @@ namespace NKaspa
         /// Script.PayToScriptHashSignature. Stored private key is no longer valid. Transaction input is missing
         /// an outpoint. BLAKE2b hasher is already finished. Transaction output is missing a script. SHA256 did
         /// not produce a digest. Fee is below the minimum relay rate of 100 sompi per gram. Transaction mass
-        /// exceeds the standard maximum. Change is due and no change script was set. Not enough funds. A
+        /// exceeds the standard maximum. Change would exceed the mass limit. Folding it into the fee would
+        /// burn more than MaxFoldedChange allows. Split the send or add inputs so the change output fits.
+        /// Change is due and no change script was set. Not enough funds. A
         /// must-spend outpoint was not added with AddCoins. Set SendFees, SendEstimatedFees, or
         /// SendMinimumRelayFee. Set only one of SendFees, SendEstimatedFees, or SendMinimumRelayFee.
         /// </exception>
@@ -438,6 +471,8 @@ namespace NKaspa
         /// <exception cref="System.OverflowException">Input amount mean does not fit in 64 bits. Normalized mass does not fit in 64 bits.</exception>
         public Transaction BuildTransaction(bool sign)
         {
+            ChangeFolded = false;
+            FoldedChange = Money.Zero;
             if (_sends.Count == 0)
             {
                 throw new InvalidOperationException("No outputs to send.");
@@ -448,11 +483,13 @@ namespace NKaspa
             List<Coin> selected;
             ulong fee;
             Transaction transaction;
+            var folded = false;
+            ulong foldedAmount = 0;
             if (mode == FeeChoice.Explicit)
             {
                 fee = _explicitFee!.Value.Sompi;
                 selected = Select(checked(sendSum + fee));
-                transaction = Materialize(selected, sendSum, ref fee);
+                transaction = Materialize(selected, sendSum, ref fee, out folded, out foldedAmount);
             }
             else
             {
@@ -463,7 +500,7 @@ namespace NKaspa
                 for (var attempt = 0; attempt < 32; attempt++)
                 {
                     selected = Select(checked(sendSum + fee));
-                    transaction = Materialize(selected, sendSum, ref fee);
+                    transaction = Materialize(selected, sendSum, ref fee, out folded, out foldedAmount);
                     var required = RequiredFee(transaction, selected, mode);
                     if (fee >= required)
                     {
@@ -496,6 +533,8 @@ namespace NKaspa
                 }
             }
 
+            ChangeFolded = folded;
+            FoldedChange = new Money(foldedAmount);
             return transaction;
         }
 
@@ -842,25 +881,181 @@ namespace NKaspa
             return forced;
         }
 
-        private Transaction Materialize(List<Coin> selected, ulong sendSum, ref ulong fee)
+        private Transaction Materialize(List<Coin> selected, ulong sendSum, ref ulong fee, out bool folded, out ulong foldedAmount)
         {
-            var transaction = MaterializeOnce(selected, sendSum, ref fee);
-            if (TryGetChange(transaction, out var change) && ExceedsLimits(transaction, selected))
+            var transaction = MaterializeOnce(selected, sendSum, ref fee, out var dust);
+            folded = dust > 0;
+            foldedAmount = dust;
+            if (!TryGetChange(transaction, out var change))
             {
-                fee = checked(fee + change);
-                transaction = MaterializeOnce(selected, sendSum, ref fee);
+                return transaction;
             }
 
+            if (!ChangeOutputUnbuildable(transaction, selected, sendSum))
+            {
+                return transaction;
+            }
+
+            if (!TryFoldChange(selected, sendSum, change, ref fee, out transaction))
+            {
+                throw new InvalidOperationException(
+                    "Change would exceed the mass limit. Folding it into the fee would burn more than MaxFoldedChange allows. Split the send or add inputs so the change output fits.");
+            }
+
+            folded = true;
+            foldedAmount = checked(foldedAmount + change);
             return transaction;
         }
 
-        private Transaction MaterializeOnce(List<Coin> selected, ulong sendSum, ref ulong fee)
+        private bool ChangeOutputUnbuildable(Transaction transaction, List<Coin> selected, ulong sendSum)
+        {
+            if (ExceedsLimits(transaction, selected))
+            {
+                return true;
+            }
+
+            if (_explicitFee.HasValue)
+            {
+                return false;
+            }
+
+            TransactionMass mass;
+            try
+            {
+                mass = MassCalculator.Calculate(transaction, Entries(selected), MassLimits);
+            }
+            catch (ArgumentException)
+            {
+                return true;
+            }
+            catch (OverflowException)
+            {
+                return true;
+            }
+
+            ulong required;
+            try
+            {
+                if (_estimatedRate.HasValue)
+                {
+                    required = checked(mass.FeeMass * _estimatedRate.Value.SompiPerGram);
+                }
+                else
+                {
+                    required = checked(MassCalculator.RelayMass(mass) * MinimumRelayFeeRate);
+                }
+            }
+            catch (OverflowException)
+            {
+                return true;
+            }
+
+            return required > InputSum(selected) - sendSum;
+        }
+
+        private bool TryFoldChange(List<Coin> selected, ulong sendSum, ulong change, ref ulong fee, out Transaction transaction)
+        {
+            transaction = new Transaction();
+            var cap = MinimumChange.Sompi > MaxFoldedChange.Sompi ? MinimumChange.Sompi : MaxFoldedChange.Sompi;
+            if (change > cap)
+            {
+                return false;
+            }
+
+            var candidate = checked(fee + change);
+            var trialFee = candidate;
+            Transaction trial;
+            try
+            {
+                trial = MaterializeOnce(selected, sendSum, ref trialFee, out _);
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
+
+            if (ExceedsLimits(trial, selected))
+            {
+                return false;
+            }
+
+            ulong needed;
+            try
+            {
+                needed = NeededFee(trial, selected);
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
+            catch (OverflowException)
+            {
+                return false;
+            }
+
+            if (candidate < needed || !WithinFoldFactor(change, needed))
+            {
+                return false;
+            }
+
+            fee = candidate;
+            transaction = trial;
+            return true;
+        }
+
+        private ulong NeededFee(Transaction transaction, List<Coin> selected)
+        {
+            var mass = MassCalculator.Calculate(transaction, Entries(selected), MassLimits);
+            EnsureWithin(mass);
+            if (_estimatedRate.HasValue)
+            {
+                return checked(mass.FeeMass * _estimatedRate.Value.SompiPerGram);
+            }
+
+            if (AllowBelowMinimumRelayFee && _explicitFee.HasValue)
+            {
+                return 0;
+            }
+
+            return checked(MassCalculator.RelayMass(mass) * MinimumRelayFeeRate);
+        }
+
+        private bool WithinFoldFactor(ulong folded, ulong needed)
+        {
+            if (MaxFoldedFeeFactor < 1)
+            {
+                return folded == 0;
+            }
+
+            if (needed == 0)
+            {
+                return true;
+            }
+
+            var factor = (ulong)MaxFoldedFeeFactor;
+            if (needed > ulong.MaxValue / factor)
+            {
+                return true;
+            }
+
+            return folded <= needed * factor;
+        }
+
+        private static ulong InputSum(List<Coin> selected)
         {
             ulong inputSum = 0;
             for (var i = 0; i < selected.Count; i++)
             {
                 inputSum = checked(inputSum + selected[i].Amount.Sompi);
             }
+
+            return inputSum;
+        }
+
+        private Transaction MaterializeOnce(List<Coin> selected, ulong sendSum, ref ulong fee, out ulong dustFolded)
+        {
+            dustFolded = 0;
+            var inputSum = InputSum(selected);
 
             if (inputSum < sendSum || inputSum - sendSum < fee)
             {
@@ -870,6 +1065,7 @@ namespace NKaspa
             var change = inputSum - sendSum - fee;
             if (change > 0 && change < MinimumChange.Sompi)
             {
+                dustFolded = change;
                 fee += change;
                 change = 0;
             }

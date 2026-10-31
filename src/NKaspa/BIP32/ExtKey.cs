@@ -1,6 +1,8 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json.Serialization;
 using NKaspa.DataEncoders;
+using NKaspa.JsonConverters;
 
 namespace NKaspa
 {
@@ -10,9 +12,11 @@ namespace NKaspa
     /// Child keys use the parent chain code. Hardened children hash the private key.
     /// <see cref="ToString()"/> returns <c>NKaspa.ExtKey</c> and does not contain the key.
     /// NBitcoin's <c>ExtKey</c> does not override <c>ToString()</c>, so a log prints the type name there as well.
-    /// <see cref="GetWif(Network)"/>, <see cref="ToString(Network)"/>, and <see cref="ToBase58()"/> return the extended private key.
+    /// <see cref="ExportXprv()"/>, <see cref="ExportXprv(Network)"/>, <see cref="GetWif(Network)"/>, <see cref="ToString(Network)"/>, and <see cref="ToBase58()"/> return the extended private key.
     /// Those strings are secret. Do not write them to logs.
+    /// System.Text.Json refuses this type unless the caller opts in through <c>NKaspaJsonSerializer</c> with <c>allowPrivateKeys: true</c>.
     /// </summary>
+    [JsonConverter(typeof(ExtKeyJsonConverter))]
     public sealed class ExtKey : IDisposable, IEquatable<ExtKey>
     {
         private const int PayloadLength = 78;
@@ -360,8 +364,31 @@ namespace NKaspa
         }
 
         /// <summary>
+        /// Base58Check extended private key using the version stored on this key.
+        /// A key created from a seed uses Kaspa mainnet <c>kprv</c>. This is a secret. Do not log it.
+        /// <see cref="ToString()"/> does not return this value.
+        /// </summary>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed. The ExtKey has been disposed.</exception>
+        public string ExportXprv()
+        {
+            return ToBase58();
+        }
+
+        /// <summary>
         /// Base58Check extended private key for <paramref name="network"/> (<c>kprv</c> or <c>ktrv</c>).
-        /// NBitcoin's <c>GetWif</c> returns a <c>BitcoinExtKey</c>. This method returns the same text as <see cref="ToString(Network)"/>.
+        /// This is the same text as <see cref="ToString(Network)"/> and <see cref="GetWif(Network)"/>.
+        /// The result is a secret. Do not log it.
+        /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed. The ExtKey has been disposed.</exception>
+        public string ExportXprv(Network network)
+        {
+            return ToString(network);
+        }
+
+        /// <summary>
+        /// Base58Check extended private key for <paramref name="network"/> (<c>kprv</c> or <c>ktrv</c>).
+        /// NBitcoin's <c>GetWif</c> returns a <c>BitcoinExtKey</c>. This method returns the same text as <see cref="ExportXprv(Network)"/>.
         /// The result is a secret. Do not log it.
         /// </summary>
         /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>

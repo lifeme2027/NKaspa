@@ -13,6 +13,9 @@ namespace NKaspa.RPC
         /// <summary>Default <see cref="RequestTimeout"/>, 30 seconds.</summary>
         public static readonly TimeSpan DefaultRequestTimeout = TimeSpan.FromSeconds(30);
 
+        /// <summary>Default <see cref="MaxMessageBytes"/>, 16 MiB.</summary>
+        public const int DefaultMaxMessageBytes = 16 * 1024 * 1024;
+
         /// <summary>
         /// How long <see cref="KaspaWebSocketChannel.ConnectAsync"/> may wait for the WebSocket handshake.
         /// The default is 15 seconds. <see cref="Timeout.InfiniteTimeSpan"/> waits until the caller's token cancels.
@@ -42,5 +45,28 @@ namespace NKaspa.RPC
 
         /// <summary>Multiplier applied after each failed reconnect. The default is 2. Values below 1 are rejected.</summary>
         public double ReconnectBackoffFactor { get; set; } = 2;
+
+        /// <summary>
+        /// Largest accepted WebSocket message, in bytes, across every fragment of that message.
+        /// The default is <see cref="DefaultMaxMessageBytes"/> (16 MiB). A larger frame fails the read
+        /// and the request that was waiting. The socket is not left accumulating an unbounded buffer.
+        /// </summary>
+        public int MaxMessageBytes { get; set; } = DefaultMaxMessageBytes;
+    }
+
+    /// <summary>Connection state of <see cref="KaspaWebSocketChannel"/>.</summary>
+    public enum KaspaWebSocketState
+    {
+        /// <summary>No socket is open. This is also the state before the first connect and after dispose.</summary>
+        Closed = 0,
+
+        /// <summary>The first handshake is in progress.</summary>
+        Connecting = 1,
+
+        /// <summary>The current socket is open.</summary>
+        Open = 2,
+
+        /// <summary>The socket dropped and another handshake is scheduled or in progress.</summary>
+        Reconnecting = 3,
     }
 }

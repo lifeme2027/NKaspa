@@ -55,6 +55,7 @@ namespace NKaspa.Tests
             using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             var error = await Assert.ThrowsAsync<TimeoutException>(() => channel.ConnectAsync(cancel.Token));
             Assert.Contains("timed out", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(KaspaWebSocketState.Closed, channel.State);
             tcp.Stop();
             try
             {
@@ -185,8 +186,12 @@ namespace NKaspa.Tests
             try
             {
                 await using var channel = new KaspaWebSocketChannel(new Uri("ws://127.0.0.1:" + port.ToString() + "/"), options);
+                var reconnects = 0;
+                channel.Reconnected += () => Interlocked.Increment(ref reconnects);
                 channel.ReconnectDelayAsync = (_, _) => Task.CompletedTask;
                 await channel.ConnectAsync();
+                Assert.Equal(KaspaWebSocketState.Open, channel.State);
+                Assert.Equal(0, Volatile.Read(ref reconnects));
                 var first = await channel.ExchangeAsync(Request(1));
                 Assert.Contains("\"id\":1", first, StringComparison.Ordinal);
                 var deadline = DateTime.UtcNow.AddSeconds(2);
@@ -202,6 +207,8 @@ namespace NKaspa.Tests
                 Assert.Equal(TimeSpan.FromMilliseconds(100), delays[0]);
                 Assert.Equal(TimeSpan.FromMilliseconds(200), delays[1]);
                 Assert.Equal(TimeSpan.FromMilliseconds(400), delays[2]);
+                Assert.Equal(1, Volatile.Read(ref reconnects));
+                Assert.Equal(KaspaWebSocketState.Open, channel.State);
             }
             finally
             {
@@ -217,9 +224,116 @@ namespace NKaspa.Tests
             // TimeSpan.FromMilliseconds(-1) is Timeout.InfiniteTimeSpan and means "no timeout".
             Assert.Throws<ArgumentOutOfRangeException>(() => new KaspaWebSocketChannel(uri, new KaspaWebSocketOptions { ConnectTimeout = TimeSpan.FromMilliseconds(-2) }));
             Assert.Throws<ArgumentOutOfRangeException>(() => new KaspaWebSocketChannel(uri, new KaspaWebSocketOptions { ReconnectBackoffFactor = 0.5 }));
+            var zero = Assert.Throws<ArgumentOutOfRangeException>(() => new KaspaWebSocketChannel(uri, new KaspaWebSocketOptions { MaxMessageBytes = 0 }));
+            Assert.Contains("Max message size must be positive.", zero.Message, StringComparison.Ordinal);
+            Assert.Throws<ArgumentOutOfRangeException>(() => new KaspaWebSocketChannel(uri, new KaspaWebSocketOptions { MaxMessageBytes = -1 }));
             var channel = new KaspaWebSocketChannel(uri, new KaspaWebSocketOptions { ConnectTimeout = Timeout.InfiniteTimeSpan, RequestTimeout = Timeout.InfiniteTimeSpan });
             Assert.Equal(Timeout.InfiniteTimeSpan, channel.Options.ConnectTimeout);
             Assert.False(channel.Options.AutoReconnect);
+            Assert.Equal(KaspaWebSocketOptions.DefaultMaxMessageBytes, channel.Options.MaxMessageBytes);
+            Assert.Equal(16 * 1024 * 1024, KaspaWebSocketOptions.DefaultMaxMessageBytes);
+            Assert.Equal(KaspaWebSocketState.Closed, channel.State);
+        }
+
+        [Fact]
+        public async Task Message_at_the_byte_limit_is_accepted()
+        {
+            var payload = Encoding.UTF8.GetBytes(ResponseFor(Request(1)));
+            await AssertPayloadAsync(payload, payload.Length, fragment: false, expectSuccess: true);
+            await AssertPayloadAsync(payload, payload.Length, fragment: true, expectSuccess: true);
+        }
+
+        [Fact]
+        public async Task Message_one_byte_over_the_limit_fails_the_pending_request()
+        {
+            var marker = "PAYLOADMARKER";
+            var body = ResponseFor(Request(4)) + marker;
+            var payload = Encoding.UTF8.GetBytes(body);
+            await AssertPayloadAsync(payload, payload.Length - 1, fragment: false, expectSuccess: false);
+            await AssertPayloadAsync(payload, payload.Length - 1, fragment: true, expectSuccess: false);
+
+            var wide = new byte[8193];
+            Encoding.UTF8.GetBytes("{\"id\":9,").CopyTo(wide, 0);
+            for (var i = 8; i < wide.Length - 1; i++)
+            {
+                wide[i] = (byte)'x';
+            }
+
+            wide[wide.Length - 1] = (byte)'}';
+            await AssertPayloadAsync(wide, 8192, fragment: false, expectSuccess: false);
+        }
+
+        private static async Task AssertPayloadAsync(byte[] payload, int maxMessageBytes, bool fragment, bool expectSuccess)
+        {
+            var port = FreePort();
+            using var listener = new HttpListener();
+            listener.Prefixes.Add("http://127.0.0.1:" + port.ToString() + "/");
+            listener.Start();
+            var server = Task.Run(() => ServePayloadAsync(listener, payload, fragment));
+            var options = new KaspaWebSocketOptions
+            {
+                ConnectTimeout = TimeSpan.FromSeconds(2),
+                RequestTimeout = TimeSpan.FromSeconds(3),
+                AutoReconnect = false,
+                MaxMessageBytes = maxMessageBytes,
+            };
+
+            try
+            {
+                await using var channel = new KaspaWebSocketChannel(new Uri("ws://127.0.0.1:" + port.ToString() + "/"), options);
+                var reconnects = 0;
+                channel.Reconnected += () => Interlocked.Increment(ref reconnects);
+                await channel.ConnectAsync();
+                Assert.Equal(KaspaWebSocketState.Open, channel.State);
+                Assert.Equal(0, Volatile.Read(ref reconnects));
+                if (expectSuccess)
+                {
+                    var text = await channel.ExchangeAsync(Request(1));
+                    Assert.Equal(Encoding.UTF8.GetString(payload), text);
+                    Assert.Equal(KaspaWebSocketState.Open, channel.State);
+                }
+                else
+                {
+                    var error = await Assert.ThrowsAsync<InvalidOperationException>(() => channel.ExchangeAsync(Request(1)));
+                    Assert.Contains(maxMessageBytes.ToString(System.Globalization.CultureInfo.InvariantCulture), error.Message, StringComparison.Ordinal);
+                    Assert.Contains("maximum", error.Message, StringComparison.OrdinalIgnoreCase);
+                    Assert.DoesNotContain("PAYLOADMARKER", error.Message, StringComparison.Ordinal);
+                    Assert.DoesNotContain("xxxxxxxx", error.Message, StringComparison.Ordinal);
+                    Assert.Equal(KaspaWebSocketState.Closed, channel.State);
+                }
+            }
+            finally
+            {
+                listener.Stop();
+                await server.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+        }
+
+        private static async Task ServePayloadAsync(HttpListener listener, byte[] payload, bool fragment)
+        {
+            var context = await listener.GetContextAsync();
+            var socket = (await context.AcceptWebSocketAsync(subProtocol: null)).WebSocket;
+            try
+            {
+                await ReceiveAsync(socket);
+                if (!fragment || payload.Length < 2)
+                {
+                    await socket.SendAsync(new ArraySegment<byte>(payload), WebSocketMessageType.Text, true, CancellationToken.None);
+                }
+                else
+                {
+                    var mid = payload.Length / 2;
+                    await socket.SendAsync(new ArraySegment<byte>(payload, 0, mid), WebSocketMessageType.Text, false, CancellationToken.None);
+                    await socket.SendAsync(new ArraySegment<byte>(payload, mid, payload.Length - mid), WebSocketMessageType.Text, true, CancellationToken.None);
+                }
+
+                await Task.Delay(200);
+            }
+            finally
+            {
+                socket.Abort();
+                socket.Dispose();
+            }
         }
 
         private static async Task ServeAsync(HttpListener listener)

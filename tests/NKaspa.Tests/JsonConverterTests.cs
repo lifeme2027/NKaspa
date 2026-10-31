@@ -184,6 +184,26 @@ namespace NKaspa.Tests
             Assert.Throws<InvalidOperationException>(() => NKaspaJsonSerializer.Deserialize<ExtKey>(extendedJson, Network.Mainnet));
             Assert.Throws<FormatException>(() => NKaspaJsonSerializer.Deserialize<ExtKey>(extendedJson, Network.Testnet, allowPrivateKeys: true));
 
+            var refusedMnemonic = Assert.Throws<InvalidOperationException>(() => NKaspaJsonSerializer.Serialize(mnemonic, Network.Mainnet));
+            Assert.Contains("WARNING", refusedMnemonic.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain(Abandon, refusedMnemonic.Message, StringComparison.Ordinal);
+            var phraseJson = NKaspaJsonSerializer.Serialize(mnemonic, Network.Mainnet, writeIndented: false, allowPrivateKeys: true);
+            Assert.Equal("\"" + Abandon + "\"", phraseJson);
+            Assert.Equal(Abandon, NKaspaJsonSerializer.Deserialize<Mnemonic>(phraseJson, Network.Mainnet, allowPrivateKeys: true).ToPhrase());
+            Assert.Throws<InvalidOperationException>(() => NKaspaJsonSerializer.Deserialize<Mnemonic>(phraseJson, Network.Mainnet));
+
+            var bareMnemonic = Assert.Throws<InvalidOperationException>(() => JsonSerializer.Serialize(mnemonic));
+            Assert.Contains("Refusing to convert Mnemonic", bareMnemonic.Message, StringComparison.Ordinal);
+            Assert.Contains("WARNING", bareMnemonic.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain(Abandon, bareMnemonic.ToString(), StringComparison.Ordinal);
+            var bareExtended = Assert.Throws<InvalidOperationException>(() => JsonSerializer.Serialize(master));
+            Assert.Contains("Refusing to convert ExtKey", bareExtended.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("kprv", bareExtended.ToString(), StringComparison.Ordinal);
+            Assert.DoesNotContain(master.ExportXprv(), bareExtended.ToString(), StringComparison.Ordinal);
+            var bareKey = Assert.Throws<InvalidOperationException>(() => JsonSerializer.Serialize(key));
+            Assert.Contains("Refusing to convert Key", bareKey.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain(Secret, bareKey.ToString(), StringComparison.Ordinal);
+
             var mismatched = KaspaRpcJson.WriteTransaction(new Transaction()).Replace("\"storageMass\":0", "\"storageMass\":1", StringComparison.Ordinal);
             Assert.Throws<FormatException>(() => NKaspaJsonSerializer.Deserialize<Transaction>(mismatched, Network.Mainnet));
             Assert.Throws<ArgumentNullException>(() => NKaspaJsonSerializer.Deserialize<Money>(null!, Network.Mainnet));
