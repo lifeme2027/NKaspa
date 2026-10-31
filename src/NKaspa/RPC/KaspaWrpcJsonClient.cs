@@ -12,7 +12,10 @@ namespace NKaspa.RPC
     public sealed class KaspaWrpcJsonClient : IKaspaRpcClient
     {
         private readonly IKaspaJsonChannel _channel;
+        private readonly object _gate = new object();
+        private readonly List<Action<string>> _listeners = new List<Action<string>>();
         private long _nextId;
+        private bool _hooked;
 
         /// <summary>Creates a client over <paramref name="channel"/>.</summary>
         /// <exception cref="System.ArgumentNullException"><paramref name="channel"/> is null.</exception>
@@ -281,6 +284,302 @@ namespace NKaspa.RPC
                 ReadOptionalScore(verbose, "blueScore"),
                 ReadOptionalHash(header, "hash"),
                 ReadOptionalHash(verbose, "hash"));
+        }
+
+        /// <inheritdoc />
+        public async Task<IReadOnlyList<RpcAddressBalance>> GetBalancesByAddressesAsync(IReadOnlyList<string> addresses, CancellationToken cancellationToken = default)
+        {
+            if (addresses == null)
+            {
+                throw new ArgumentNullException(nameof(addresses));
+            }
+
+            var body = await InvokeAsync("getBalancesByAddresses", writer =>
+            {
+                writer.WritePropertyName("addresses");
+                writer.WriteStartArray();
+                for (var i = 0; i < addresses.Count; i++)
+                {
+                    writer.WriteStringValue(addresses[i]);
+                }
+
+                writer.WriteEndArray();
+            }, cancellationToken).ConfigureAwait(false);
+
+            var rows = new List<RpcAddressBalance>();
+            if (!body.TryGetProperty("entries", out var array) || array.ValueKind != JsonValueKind.Array)
+            {
+                return rows;
+            }
+
+            foreach (var item in array.EnumerateArray())
+            {
+                Money? balance = null;
+                if (item.TryGetProperty("balance", out var balanceElement) && balanceElement.ValueKind != JsonValueKind.Null)
+                {
+                    balance = new Money(KaspaRpcJson.ReadU64(balanceElement));
+                }
+
+                rows.Add(new RpcAddressBalance(StringOf(item, "address"), balance));
+            }
+
+            return rows;
+        }
+
+        /// <inheritdoc />
+        public Task<KaspaSubscription> NotifyUtxosChangedAsync(IReadOnlyList<string> addresses, Action<RpcUtxosChanged> onChanged, CancellationToken cancellationToken = default)
+        {
+            if (addresses == null)
+            {
+                throw new ArgumentNullException(nameof(addresses));
+            }
+
+            if (onChanged == null)
+            {
+                throw new ArgumentNullException(nameof(onChanged));
+            }
+
+            return SubscribeAsync(writer =>
+            {
+                writer.WritePropertyName("UtxosChanged");
+                writer.WriteStartObject();
+                writer.WritePropertyName("addresses");
+                writer.WriteStartArray();
+                for (var i = 0; i < addresses.Count; i++)
+                {
+                    writer.WriteStringValue(addresses[i]);
+                }
+
+                writer.WriteEndArray();
+                writer.WriteEndObject();
+            }, json =>
+            {
+                if (TryNotificationBody(json, "utxosChangedNotification", "UtxosChanged", out var body))
+                {
+                    onChanged(ReadUtxosChanged(body));
+                }
+            }, cancellationToken);
+        }
+
+        /// <inheritdoc />
+        public Task<KaspaSubscription> NotifyVirtualDaaScoreChangedAsync(Action<RpcVirtualDaaScoreChanged> onChanged, CancellationToken cancellationToken = default)
+        {
+            if (onChanged == null)
+            {
+                throw new ArgumentNullException(nameof(onChanged));
+            }
+
+            return SubscribeAsync(writer =>
+            {
+                writer.WritePropertyName("VirtualDaaScoreChanged");
+                writer.WriteStartObject();
+                writer.WriteEndObject();
+            }, json =>
+            {
+                if (TryNotificationBody(json, "virtualDaaScoreChangedNotification", "VirtualDaaScoreChanged", out var body)
+                    && body.TryGetProperty("virtualDaaScore", out var score))
+                {
+                    onChanged(new RpcVirtualDaaScoreChanged(KaspaRpcJson.ReadU64(score)));
+                }
+            }, cancellationToken);
+        }
+
+        /// <inheritdoc />
+        public Task<KaspaSubscription> NotifyBlockAddedAsync(Action<RpcBlockAdded> onAdded, CancellationToken cancellationToken = default)
+        {
+            if (onAdded == null)
+            {
+                throw new ArgumentNullException(nameof(onAdded));
+            }
+
+            return SubscribeAsync(writer =>
+            {
+                writer.WritePropertyName("BlockAdded");
+                writer.WriteStartObject();
+                writer.WriteEndObject();
+            }, json =>
+            {
+                if (!TryNotificationBody(json, "blockAddedNotification", "BlockAdded", out var body))
+                {
+                    return;
+                }
+
+                var block = body.TryGetProperty("block", out var wrapped) ? wrapped : body;
+                onAdded(ReadBlockAdded(block));
+            }, cancellationToken);
+        }
+
+        private async Task<KaspaSubscription> SubscribeAsync(Action<Utf8JsonWriter> writeScope, Action<string> handler, CancellationToken cancellationToken)
+        {
+            // rusty-kaspa router.rs registers Subscribe and Unsubscribe, not NotifyBlockAdded / NotifyUtxosChanged / NotifyVirtualDaaScoreChanged.
+            // JSON params are serde of Scope: an externally tagged object, which this writer already opens as "params".
+            var socket = _channel as KaspaWebSocketChannel;
+            if (socket == null)
+            {
+                throw new InvalidOperationException("Subscriptions require KaspaWebSocketChannel.");
+            }
+
+            EnsureHook(socket);
+            lock (_gate)
+            {
+                _listeners.Add(handler);
+            }
+
+            try
+            {
+                await InvokeAsync("subscribe", writeScope, cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                lock (_gate)
+                {
+                    _listeners.Remove(handler);
+                }
+
+                throw;
+            }
+
+            return new KaspaSubscription(token =>
+            {
+                lock (_gate)
+                {
+                    _listeners.Remove(handler);
+                }
+
+                return InvokeAsync("unsubscribe", writeScope, token);
+            });
+        }
+
+        private void EnsureHook(KaspaWebSocketChannel socket)
+        {
+            lock (_gate)
+            {
+                if (_hooked)
+                {
+                    return;
+                }
+
+                socket.NotificationReceived += OnNotification;
+                _hooked = true;
+            }
+        }
+
+        private void OnNotification(string json)
+        {
+            Action<string>[] listeners;
+            lock (_gate)
+            {
+                listeners = _listeners.ToArray();
+            }
+
+            for (var i = 0; i < listeners.Length; i++)
+            {
+                try
+                {
+                    listeners[i](json);
+                }
+                catch (Exception)
+                {
+                }
+            }
+        }
+
+        private static bool TryNotificationBody(string json, string method, string tag, out JsonElement body)
+        {
+            body = default;
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (!root.TryGetProperty("method", out var methodElement) || methodElement.GetString() != method)
+            {
+                return false;
+            }
+
+            if (!root.TryGetProperty("params", out var parameters) || parameters.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            if (parameters.TryGetProperty(tag, out var tagged) && tagged.ValueKind == JsonValueKind.Object)
+            {
+                body = tagged.Clone();
+                return true;
+            }
+
+            body = parameters.Clone();
+            return true;
+        }
+
+        private static RpcUtxosChanged ReadUtxosChanged(JsonElement body)
+        {
+            return new RpcUtxosChanged(ReadUtxoArray(body, "added"), ReadUtxoArray(body, "removed"));
+        }
+
+        private static List<RpcUtxo> ReadUtxoArray(JsonElement body, string name)
+        {
+            var entries = new List<RpcUtxo>();
+            if (!body.TryGetProperty(name, out var array) || array.ValueKind != JsonValueKind.Array)
+            {
+                return entries;
+            }
+
+            foreach (var item in array.EnumerateArray())
+            {
+                var address = item.TryGetProperty("address", out var addressElement) && addressElement.ValueKind == JsonValueKind.String
+                    ? addressElement.GetString() ?? string.Empty
+                    : string.Empty;
+                var outpoint = KaspaRpcJson.ReadOutPoint(Require(item, "outpoint"));
+                var entry = KaspaRpcJson.ReadUtxoEntry(Require(item, "utxoEntry"));
+                entries.Add(new RpcUtxo(address, outpoint, entry));
+            }
+
+            return entries;
+        }
+
+        private static RpcBlockAdded ReadBlockAdded(JsonElement block)
+        {
+            var header = block.TryGetProperty("header", out var headerElement) ? headerElement : block;
+            var verbose = block.TryGetProperty("verboseData", out var verboseElement) ? verboseElement : default;
+            var hash = ReadOptionalHash(header, "hash") ?? throw new FormatException("Missing JSON string hash.");
+            var pruning = ReadOptionalHash(header, "pruningPoint") ?? throw new FormatException("Missing JSON string pruningPoint.");
+            ReadDirectParent(header, out _, out var directParent);
+            var transactions = new List<Transaction>();
+            if (block.TryGetProperty("transactions", out var transactionElement) && transactionElement.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in transactionElement.EnumerateArray())
+                {
+                    transactions.Add(KaspaRpcJson.ReadTransaction(item));
+                }
+            }
+
+            var chain = false;
+            if (verbose.ValueKind == JsonValueKind.Object && verbose.TryGetProperty("isChainBlock", out var chainElement))
+            {
+                if (chainElement.ValueKind == JsonValueKind.True)
+                {
+                    chain = true;
+                }
+                else if (chainElement.ValueKind == JsonValueKind.False)
+                {
+                    chain = false;
+                }
+                else
+                {
+                    throw new FormatException("Expected a boolean for isChainBlock.");
+                }
+            }
+
+            return new RpcBlockAdded(
+                hash,
+                header.TryGetProperty("version", out var versionElement) ? (ushort)KaspaRpcJson.ReadU64(versionElement) : (ushort)0,
+                header.TryGetProperty("daaScore", out var daaElement) ? KaspaRpcJson.ReadU64(daaElement) : 0UL,
+                ReadScore(header, verbose),
+                header.TryGetProperty("timestamp", out var timeElement) ? KaspaRpcJson.ReadU64(timeElement) : 0UL,
+                pruning,
+                ReadOptionalHash(header, "acceptedIdMerkleRoot"),
+                directParent,
+                chain,
+                ReadOptionalHash(verbose, "selectedParentHash"),
+                transactions);
         }
 
         private static ulong? ReadOptionalScore(JsonElement obj, string name)

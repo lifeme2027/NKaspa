@@ -3,11 +3,11 @@
     <TargetFrameworks>net8.0;netstandard2.1</TargetFrameworks>
     <RootNamespace>NKaspa</RootNamespace>
     <AssemblyName>NKaspa</AssemblyName>
-    <Version>0.1.10-alpha</Version>
+    <Version>0.1.11-alpha</Version>
     <PackageId>NKaspa</PackageId>
     <Authors>lifeme2027</Authors>
     <Title>NKaspa</Title>
-    <Description>A .NET library for Kaspa. The public API follows NBitcoin where a Kaspa counterpart exists. This alpha covers addresses, keys, scripts, transactions, BIP39, BIP32, PSKT, fees, and a minimal wRPC client.</Description>
+    <Description>A .NET library for Kaspa. The public API follows NBitcoin where a Kaspa counterpart exists. This alpha covers addresses, keys, scripts, transactions, BIP39, BIP32, PSKT, fees, and wRPC JSON and Borsh clients.</Description>
     <PackageTags>kaspa;blockchain;crypto;nbitcoin</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

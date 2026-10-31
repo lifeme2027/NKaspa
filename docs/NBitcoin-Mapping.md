@@ -4,7 +4,7 @@
 
 状态只用三种：
 
-- **已实现**：这一版（0.1.10-alpha）里有对应类型，范围以代码为准。
+- **已实现**：这一版（0.1.11-alpha）里有对应类型，范围以代码为准。
 - **计划中**：后面阶段要做，或只做 Kaspa 自己的等价物，不照搬比特币协议。
 - **无需实现**：Kaspa 没有这套机制，或它不该出现在这个库里。
 
@@ -108,7 +108,7 @@ Case-insensitivity and zero-width removal (a leading BOM and marks inside a word
 | 状态 | 原因 |
 | --- | --- |
 | 无需原样实现 | 这些是比特币 P2P 消息。Kaspa 节点协议不同，没有 witness、compact block 那一套比特币载荷。 |
-| 计划中（另写） | 若以后做节点客户端，按 Kaspa P2P 写。这一版的客户端是 wRPC JSON，不是完整 P2P 节点。 |
+| 计划中（另写） | 若以后做节点客户端，按 Kaspa P2P 写。这一版的客户端是 wRPC JSON 与 Borsh，不是完整 P2P 节点。 |
 
 交易里的长度是 u64 小端，写在 `Transaction` 的序列化里，不从比特币 `Protocol` 目录拷贝 `VarInt`。
 
@@ -127,9 +127,9 @@ Case-insensitivity and zero-width removal (a leading BOM and marks inside a word
 
 | 状态 | 原因 |
 | --- | --- |
-| 已实现（最小子集） | `IKaspaRpcClient`、`KaspaWrpcJsonClient`、`KaspaWebSocketChannel`。方法是 `getServerInfo`、`getBlockDagInfo`、`getUtxosByAddresses`、`getBalanceByAddress`、`submitTransaction`、`getFeeEstimate`。信封是 workflow-rpc：`id`、`method`、`params`。成功体在 `params`，读的时候也接受 `result`。错误是 `error.code` / `error.message`。不是 JSON-RPC 2.0。 |
+| 已实现（最小子集） | `IKaspaRpcClient` 同时由 `KaspaWrpcJsonClient` 和 `KaspaWrpcBorshClient` 实现。`KaspaRpcClient.Create(url, encoding = Auto)` 返回 `KaspaRpcConnection`，本身不连接。Auto 按 rusty-kaspa `4edcbbcc` `consensus/core/src/network.rs` 选端口：Borsh 是 17110、17210、17510、17610，JSON 是 18110、18210、18510、18610。Simnet 是 17510 与 18510，不是 17310 或 18310。未知端口抛异常。显式传入 `KaspaRpcEncoding.Borsh` 或 `Json` 可以覆盖端口。方法是 `getServerInfo`、`getBlockDagInfo`、`getUtxosByAddresses`、`getBalanceByAddress`、`getBalancesByAddresses`、`submitTransaction`、`getFeeEstimate`、`getBlock`，以及 `NotifyUtxosChanged`、`NotifyVirtualDaaScoreChanged`、`NotifyBlockAdded`。JSON 信封是 workflow-rpc：`id`、`method`、`params`。成功体在 `params`，读的时候也接受 `result`。错误是 `error.code` / `error.message`。不是 JSON-RPC 2.0。Borsh 是同一套 workflow-rpc 二进制帧：可选 u64 id、一个字节的 `RpcApiOps`，再加上带版本头的 serializer。订阅在线上是 `Subscribe`（op 3）和 `Unsubscribe`（op 4），载荷是 `Scope`。节点没有注册旧的 `Notify*` 操作码。 |
 | 单元测试不连节点 | 单元测试用内存里的 JSON 通道和本地回环 WebSocket。`samples/NodeQuery` 在 2026-10-30 对 `wss://eva.kaspa.green/kaspa/mainnet/wrpc/json` 做过一次只读查询：`getServerInfo` 返回 rusty-kaspa 2.1.0、mainnet、已同步、有 UTXO 索引；`getBlockDagInfo`、`getBalanceByAddress`、`getUtxosByAddresses` 都有响应。没有调用 `submitTransaction`。 |
-| 费用估计的内层字段 | `priorityBucket`、`normalBuckets`、`lowBuckets`，以及 `feerate` / `estimatedSeconds`，对齐 kaswallet `WalletRestClient` 和公开的 Kaspa WASM `IFeeEstimate`。rusty-kaspa 里对应的 `feerate.rs` 路径没有取到（404），内层结构没有从那份 Rust 源码确认。 |
+| 费用估计的内层字段 | `priorityBucket`、`normalBuckets`、`lowBuckets`，以及每桶的 `feerate` / `estimatedSeconds`（两个小端 f64）。已按 rusty-kaspa `4edcbbcc` `rpc/core/src/model/feerate_estimate.rs` 确认。`priorityBucket` 必填。响应是 serializer 版本 u16，再套一层 `serialize!(RpcFeeEstimate)`。JSON 形状仍与 kaswallet `WalletRestClient` 和 Kaspa WASM `IFeeEstimate` 一致。早先 `feerate.rs` 的 404 是路径不对，不是字段未定。 |
 | PSBT 相关的 RPC 参数 | 无需实现。见 BIP174。PSKT 在库内交换，不通过这些 RPC 参数提交或广播。 |
 
 ## Payment
@@ -209,7 +209,7 @@ Case-insensitivity and zero-width removal (a leading BOM and marks inside a word
 
 ## 当前进度
 
-0.1.10-alpha 的 API 变更见下文「0.1.10 审查修复」。
+0.1.11-alpha 增加 Borsh wRPC，见下文「0.1.11 Borsh wRPC」。0.1.10-alpha 的 API 变更见下文「0.1.10 审查修复」。
 
 0.1.9-alpha。这一版让 `ConsensusSeqCommitAccessor` 在回推开始时固定 sink 及其蓝分。主网大约每秒 10 块，回推期间 `getBlockDagInfo` 会看到新的 sink。新 sink 的 selected parent 链如果仍包含该快照，视为链向前增长，按快照返回结果，不抛 `Reorg`。只有快照视点或回推路径上的区块离开选定链（`isChainBlock` 变为 false，或新链不经过它）才算重组。`StableDepth` 默认 20，大约是 10 块每秒下的 2 秒，可以把视点沿 selected parent 退到尖端之后。设为 0 则视点就是锁定的 sink。真正的重组默认自动重试 3 次，请求计数不归零，耗尽才抛 `Reorg`。默认请求上限是 256，含回推期间新长出来的块；到顶就停，不扫整个 finality 窗口。新 sink 比快照超前超过 32 个 selected parent，或预算不够把新链走完时，重读快照区块，用最新的 `isChainBlock` 判断它是否还在选定链上。`WrpcSeqCommitAccessor` 的视点仍是 DAG sink。0.1.8-alpha 加上了可选的 `ConsensusSeqCommitAccessor`：用只读的 `getBlock` 与 `getBlockDagInfo` 沿 selected parent 链回推，确定共识使用的区块和 seq commitment，并核对 selected parent、蓝分和 `isChainBlock`。数据不全、不一致或重组时抛异常，不静默当成剪枝或过深。轻客户端只能尽量接近共识，完全等同需要运行节点。0.1.7-alpha 补上 `OP_ZKPRECOMPILE` 已定稿的结构检查、内省与 covenant 构造助手、示例脚本，以及只读的 `WrpcSeqCommitAccessor`。0.1.6 起执行脚本。0.1.5 的通用 JSON 转换器还在。0.1.4 的行为还在：`samples/` 里的控制台示例。第一阶段的编码器、BLAKE2b、`uint256`、网络和三种地址仍在。第二阶段的密钥、签名、脚本、版本 0 交易和 sighash 仍在。第三阶段补上 BIP39、BIP32、mass / 费率、交易构建器和最小 wRPC JSON 客户端。0.1.1 补上 Toccata 版本 1 交易号、找零与 mass 策略，以及 wRPC 帧分发。0.1.2 让构建器强制花掉指定输入、在一枚币够付时不拉小币，并直接产出版本 1 付款。0.1.3 加上 PSKT：部分签名、合并、单签与 P2SH 多签终结、提取，以及 `TransactionBuilder.BuildPSKT`。
 
@@ -225,7 +225,7 @@ Case-insensitivity and zero-width removal (a leading BOM and marks inside a word
 - BIP32：BIP-0032 的五组官方向量（含非法密钥）。Kaspa 前缀做了往返。没有找到外部钉死的「助记词 → kaspa 地址」字符串，测试只检查派生地址能通过 `KaspaAddress.IsValid`，以及账户公钥派生和私钥派生得到同一地址。
 - Mass：rusty-kaspa `test_storage_mass` 经 kaswallet `MassCalculatorTests` 移植。另有三组 api.kaspa.org `/transactions/mass` 的金额样本（83333、10003、2017），不是上游单元测试。mass 尺寸含 32 字节 payload 哈希、不含 sigop 字节，也不含 covenant 存在字节。空白交易是 94，不是 `ToBytes()` 的 62。版本 1 每个输入再加 2 字节 compute budget；有 covenant 时输出再加 34 字节。
 - 交易构建器：本地 Schnorr 与 ECDSA P2PK 端到端。默认 `MinimumChange` 是 0.02 KAS。低于这个数的找零并进手续费。更大的找零只有在输出建不出来，并且金额不超过 `max(MinimumChange, MaxFoldedChange)`（`MaxFoldedChange` 默认 0.1 KAS），同时不超过无找零交易所需手续费的 `MaxFoldedFeeFactor` 倍（默认 100）时，才并进手续费。超过上限抛 `InvalidOperationException`，说明找零会超过 mass 限额，建议拆分付款或增加输入。成功并入后 `ChangeFoldedIntoFee` 是从找零输出拿掉、加进手续费的 sompi，不是总手续费。没有并入或构建失败时是 0。`TransactionMass` 只报告 mass，不重复这个数。默认费用 mass 上限是块的 compute 限额 500000。`toccataActive: false` 或 `MassPolicy.PreToccata` 把单笔上限恢复到 100000，中继费率是 1 sompi/gram，此时 `MinimumChange` 是 0.1 KAS。`MaxFoldedChange` 和 `MaxFoldedFeeFactor` 是公开属性，调用方可以放宽。它们是钱包安全上限，不是共识规则。放宽之后，更多 sompi 会进手续费。显式手续费低于 `MinimumRelayFeeRate` 会拒绝，除非 `AllowBelowMinimumRelayFee`。默认最低中继费 = 100 sompi × max(compute mass, 归一化 transient mass)，不含 storage。标准单输入是 2036 gram，203600 sompi，约 0.002 KAS。`SendEstimatedFees` 按费率乘 fee mass（三项里最大的那个）。`SendMinimumRelayFee` 只付中继下限。`EstimateFee` 与 `EstimateMinimumRelayFee` 是对应的静态估算。选币按 outpoint 去重，不按脚本合并。一枚够付时只用最小的那一枚。`MustSpend` 与 `SpendAllCoins` 强制全部指定输入进入交易，每笔输入单独签名。`SetVersion(1)` 用版本 1 sighash，默认每输入 compute budget 10（1000 compute gram，相当于版本 0 的一次签名）。版本 1 的 wRPC JSON 同时写 `sigOpCount` 和 `computeBudget`。
-- RPC：内存 JSON 样例，加上本地回环 WebSocket。大整数用整数记号，不用 `double`（样本 `9007199254740993`）。`getBlockDagInfo` 的 `network` 接受字符串或 `{networkType, suffix}`。`samples/NodeQuery` 对公共主网端点做过一次只读查询，见上文。
+- RPC：内存 JSON 样例，加上本地回环 WebSocket。大整数用整数记号，不用 `double`（样本 `9007199254740993`）。`getBlockDagInfo` 的 `network` 接受字符串或 `{networkType, suffix}`。`samples/NodeQuery` 对公共主网端点做过一次只读查询，见上文。0.1.11 另有手工计算的 Borsh 帧、假的二进制 WebSocket 往返，以及订阅通知测试。这些测试不连真实节点。
 
 ## Toccata 兼容性
 
@@ -279,6 +279,18 @@ Mass：当前 rusty-kaspa master 的 mainnet、testnet（suffix 10）、simnet�
 - 助记词内部仍保存词表字符串。规范词是静态词表里的引用，秘密是词序。`.NET` 字符串不能擦除。公开的 `Words` 已改成只读视图，外部不能改元素。`GetWords()` 返回副本。NBitcoin 同样保存句子字符串。没有提供假装能擦除字符串的接口。
 - 低于 0.02 KAS 的找零并进手续费，这是 KIP-9：`C / storage limit`，一枚 plurality 为 1 的输出，其 storage mass 等于 500000 的块存储限额。rusty-kaspa 钱包的 `MassCalculator::is_dust` 是另一条更小的启发式，大约 44400 sompi，注释写明内存池不按这个阈值拒绝。本库的地板按 KIP-9，更严。更大的找零不再无条件并进手续费，见下一节。
 - 客户端已有 `getServerInfo`、`getBlockDagInfo`、`getUtxosByAddresses`、`getBalanceByAddress`、`submitTransaction`、`getFeeEstimate`、`getBlock`。通道已经保存原始通知 JSON。Kaspa 节点没有可查询的历史交易索引，区块会剪枝。类型化订阅可以放在现有套接字上：`notifyUtxosChanged`、`notifyBlockAdded`、`notifyVirtualChainChanged` 以及对应的停止方法，再加上事件。带重组处理的持久历史是更高一层。类型化订阅大约一到两天。历史存储大约一到两周。这一版不实现。
+
+## 0.1.11 Borsh wRPC
+
+`KaspaWrpcBorshClient` 与原来的 `KaspaWrpcJsonClient` 都实现 `IKaspaRpcClient`。`KaspaRpcClient.Create` 按端口选择编码，也可以显式指定。Borsh 套接字的超时、重连、16 MiB 上限、`State`、`StateChanged`、`Reconnected` 与 JSON 套接字相同。第一次 `ConnectAsync` 不触发 `Reconnected`。
+
+线上格式对照 rusty-kaspa `4edcbbccb449f84832afb1ca157904b35f37d006` 和 workflow-rs `7e2958098bbe0647adcfcc0dfc174e438a60699e`（workflow-rpc / workflow-serializer 0.19.0）。请求是 `BorshReqHeader`（可选 u64 id、一个字节的 `RpcApiOps`）拼上带 u32 长度的 serializer 正文。成功响应的载荷是 Borsh `Result` 再加那个 serializer 字节串。borsh 1.8.1 里 `Ok` 是 `1u8`，`Err` 是 `0u8`。协议层 kind 仍是 Success。通知的载荷是 `Serializable<Notification>`，不是 `Result`。没有握手帧。
+
+`NetworkType` 的 Borsh 顺序是 Mainnet、Testnet、Devnet、Simnet。地址前缀的顺序是 Mainnet、Testnet、Simnet、Devnet。两套编号不一样。
+
+订阅的公开方法名是 `NotifyUtxosChangedAsync`、`NotifyVirtualDaaScoreChangedAsync`、`NotifyBlockAddedAsync`。线上操作码是 `Subscribe` = 3 和 `Unsubscribe` = 4，载荷是 `Serializable<Scope>`。节点路由没有注册 `NotifyUtxosChanged`（12）那一组。空地址列表表示全部地址。JSON 的 `subscribe` 参数是 serde 外部标签，例如 `{"UtxosChanged":{"addresses":[...]}}`。`KaspaSubscription` 释放时只停自己的 scope。
+
+`SubmitTransaction` 只在假服务器测试里发送。这一节没有对真实网络提交交易。
 
 ## 0.1.10 后续修复
 

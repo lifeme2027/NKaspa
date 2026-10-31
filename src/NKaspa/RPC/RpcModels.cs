@@ -120,6 +120,89 @@ namespace NKaspa.RPC
         /// <exception cref="System.InvalidOperationException">WebSocket is not connected. Call ConnectAsync first.</exception>
         /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC response has no params. RPC response id does not match the request. RPC error.</exception>
         Task<RpcChainBlock?> GetBlockAsync(uint256 hash, bool includeTransactions = false, CancellationToken cancellationToken = default);
+
+        /// <summary>getBalancesByAddresses. A missing balance is null.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="addresses"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">wRPC request is missing a numeric id.</exception>
+        /// <exception cref="System.FormatException">Expected an unsigned 64-bit integer. JSON number does not fit in an unsigned 64-bit integer. Missing JSON property {name}. Borsh message is truncated.</exception>
+        /// <exception cref="System.InvalidOperationException">WebSocket is not connected. Call ConnectAsync first.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC response has no params. RPC response id does not match the request. RPC error.</exception>
+        Task<IReadOnlyList<RpcAddressBalance>> GetBalancesByAddressesAsync(IReadOnlyList<string> addresses, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Starts UTXO-change notifications for <paramref name="addresses"/>.
+        /// An empty list asks for every address. Dispose the result, or call <see cref="KaspaSubscription.UnsubscribeAsync"/>, to stop.
+        /// Borsh uses workflow-rpc <c>Subscribe</c> with <c>Scope::UtxosChanged</c>. The current node does not register <c>NotifyUtxosChanged</c>.
+        /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="addresses"/> is null. <paramref name="onChanged"/> is null.</exception>
+        /// <exception cref="System.InvalidOperationException">WebSocket is not connected. Call ConnectAsync first. Subscriptions require KaspaWebSocketChannel.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC error.</exception>
+        Task<KaspaSubscription> NotifyUtxosChangedAsync(IReadOnlyList<string> addresses, Action<RpcUtxosChanged> onChanged, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Starts virtual DAA score notifications.
+        /// Dispose the result, or call <see cref="KaspaSubscription.UnsubscribeAsync"/>, to stop.
+        /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="onChanged"/> is null.</exception>
+        /// <exception cref="System.InvalidOperationException">WebSocket is not connected. Call ConnectAsync first. Subscriptions require KaspaWebSocketChannel.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC error.</exception>
+        Task<KaspaSubscription> NotifyVirtualDaaScoreChangedAsync(Action<RpcVirtualDaaScoreChanged> onChanged, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Starts block-added notifications.
+        /// Dispose the result, or call <see cref="KaspaSubscription.UnsubscribeAsync"/>, to stop.
+        /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="onAdded"/> is null.</exception>
+        /// <exception cref="System.InvalidOperationException">WebSocket is not connected. Call ConnectAsync first. Subscriptions require KaspaWebSocketChannel.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC error.</exception>
+        Task<KaspaSubscription> NotifyBlockAddedAsync(Action<RpcBlockAdded> onAdded, CancellationToken cancellationToken = default);
+    }
+
+    /// <summary>
+    /// Binary wRPC transport. <see cref="KaspaWrpcBorshClient"/> speaks this.
+    /// A frame is a workflow-rpc Borsh header plus a payload. Tests can supply an in-memory implementation.
+    /// </summary>
+    public interface IKaspaBorshChannel
+    {
+        /// <summary>Sends one request frame and returns the response frame, including its header.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="request"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">wRPC request is missing a numeric id.</exception>
+        /// <exception cref="System.InvalidOperationException">WebSocket is not connected. Call ConnectAsync first.</exception>
+        Task<byte[]> ExchangeAsync(byte[] request, CancellationToken cancellationToken = default);
+
+        /// <summary>Raised for a notification frame. The callback runs on the reader. The bytes include the server header.</summary>
+        event Action<byte[]>? NotificationReceived;
+    }
+
+    /// <summary>Stops one wRPC subscription. Disposing it sends the matching unsubscribe.</summary>
+    public sealed class KaspaSubscription : IAsyncDisposable
+    {
+        private readonly Func<CancellationToken, Task> _unsubscribe;
+        private int _done;
+
+        /// <summary>Creates a subscription whose stop action is <paramref name="unsubscribe"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="unsubscribe"/> is null.</exception>
+        public KaspaSubscription(Func<CancellationToken, Task> unsubscribe)
+        {
+            _unsubscribe = unsubscribe ?? throw new ArgumentNullException(nameof(unsubscribe));
+        }
+
+        /// <summary>Sends unsubscribe. A second call does nothing.</summary>
+        public async Task UnsubscribeAsync(CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Exchange(ref _done, 1) != 0)
+            {
+                return;
+            }
+
+            await _unsubscribe(cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>Sends unsubscribe.</summary>
+        public ValueTask DisposeAsync()
+        {
+            return new ValueTask(UnsubscribeAsync());
+        }
     }
 
     /// <summary>
@@ -354,5 +437,118 @@ namespace NKaspa.RPC
 
         /// <summary>lowBuckets.</summary>
         public IReadOnlyList<RpcFeeBucket> LowBuckets { get; }
+    }
+
+    /// <summary>One row from getBalancesByAddresses. <see cref="Balance"/> is null when the node has no value for that address.</summary>
+    public sealed class RpcAddressBalance
+    {
+        /// <summary>Creates a row.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="address"/> is null.</exception>
+        public RpcAddressBalance(string address, Money? balance)
+        {
+            Address = address ?? throw new ArgumentNullException(nameof(address));
+            Balance = balance;
+        }
+
+        /// <summary>Address string the node returned.</summary>
+        public string Address { get; }
+
+        /// <summary>Balance in sompi, or null when the entry omitted it.</summary>
+        public Money? Balance { get; }
+    }
+
+    /// <summary>utxosChanged notification. Address is empty when the Borsh entry omitted it.</summary>
+    public sealed class RpcUtxosChanged
+    {
+        /// <summary>Creates the notification. A null list is empty.</summary>
+        public RpcUtxosChanged(IReadOnlyList<RpcUtxo>? added, IReadOnlyList<RpcUtxo>? removed)
+        {
+            Added = added ?? new List<RpcUtxo>();
+            Removed = removed ?? new List<RpcUtxo>();
+        }
+
+        /// <summary>UTXOs added to the index.</summary>
+        public IReadOnlyList<RpcUtxo> Added { get; }
+
+        /// <summary>UTXOs removed from the index.</summary>
+        public IReadOnlyList<RpcUtxo> Removed { get; }
+    }
+
+    /// <summary>virtualDaaScoreChanged notification.</summary>
+    public sealed class RpcVirtualDaaScoreChanged
+    {
+        /// <summary>Creates the notification.</summary>
+        public RpcVirtualDaaScoreChanged(ulong virtualDaaScore)
+        {
+            VirtualDaaScore = virtualDaaScore;
+        }
+
+        /// <summary>virtualDaaScore.</summary>
+        public ulong VirtualDaaScore { get; }
+    }
+
+    /// <summary>blockAdded notification. Transactions are empty when the node sent none.</summary>
+    public sealed class RpcBlockAdded
+    {
+        /// <summary>Creates the notification.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="hash"/> is null. <paramref name="pruningPoint"/> is null. <paramref name="transactions"/> is null.</exception>
+        public RpcBlockAdded(
+            uint256 hash,
+            ushort version,
+            ulong daaScore,
+            ulong blueScore,
+            ulong timestamp,
+            uint256 pruningPoint,
+            uint256? acceptedIdMerkleRoot,
+            uint256? directParent,
+            bool isChainBlock,
+            uint256? selectedParentHash,
+            IReadOnlyList<Transaction> transactions)
+        {
+            Hash = hash ?? throw new ArgumentNullException(nameof(hash));
+            Version = version;
+            DaaScore = daaScore;
+            BlueScore = blueScore;
+            Timestamp = timestamp;
+            PruningPoint = pruningPoint ?? throw new ArgumentNullException(nameof(pruningPoint));
+            AcceptedIdMerkleRoot = acceptedIdMerkleRoot;
+            DirectParent = directParent;
+            IsChainBlock = isChainBlock;
+            SelectedParentHash = selectedParentHash;
+            Transactions = transactions ?? throw new ArgumentNullException(nameof(transactions));
+        }
+
+        /// <summary>header.hash.</summary>
+        public uint256 Hash { get; }
+
+        /// <summary>header.version.</summary>
+        public ushort Version { get; }
+
+        /// <summary>header.daaScore.</summary>
+        public ulong DaaScore { get; }
+
+        /// <summary>header.blueScore.</summary>
+        public ulong BlueScore { get; }
+
+        /// <summary>header.timestamp, milliseconds.</summary>
+        public ulong Timestamp { get; }
+
+        /// <summary>header.pruningPoint.</summary>
+        public uint256 PruningPoint { get; }
+
+        /// <summary>header.acceptedIdMerkleRoot.</summary>
+        public uint256? AcceptedIdMerkleRoot { get; }
+
+        /// <summary>First parent in parentsByLevel[0]. Null when that list is empty.</summary>
+        public uint256? DirectParent { get; }
+
+        /// <summary>verboseData.isChainBlock. False when verbose data is absent.</summary>
+        public bool IsChainBlock { get; }
+
+        /// <summary>verboseData.selectedParentHash. Null when verbose data is absent.</summary>
+        public uint256? SelectedParentHash { get; }
+
+        /// <summary>Block transactions. Empty when the node included none.</summary>
+        public IReadOnlyList<Transaction> Transactions { get; }
     }
 }

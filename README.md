@@ -4,7 +4,7 @@
 
 ## English
 
-NKaspa is a .NET library for [Kaspa](https://kaspa.org/). Version **0.1.10-alpha**.
+NKaspa is a .NET library for [Kaspa](https://kaspa.org/). Version **0.1.11-alpha**.
 
 The public types follow [NBitcoin](https://github.com/MetacoSA/NBitcoin) where a Kaspa counterpart exists. `KaspaAddress` corresponds to `BitcoinAddress`. `uint256` corresponds to `NBitcoin.uint256`. `Encoders` corresponds to `NBitcoin.DataEncoders.Encoders`. The behavior is Kaspa's, not Bitcoin's: addresses use cashaddr-style bech32 (`kaspa`, `kaspatest`, `kaspasim`, `kaspadev`, 8-character checksum), and consensus hashes are unkeyed BLAKE2b-256.
 
@@ -12,7 +12,7 @@ NBitcoin is MIT licensed. Copyright (c) .NET Foundation and Contributors / Nicol
 
 ### Status
 
-Alpha. This release contains encoders (hex, Kaspa bech32, Base58Check), BLAKE2b-256, BLAKE3-256, `uint256`, the four networks, and addresses (Schnorr public key, ECDSA public key, script hash). It also contains keys, BIP-340 Schnorr and compact ECDSA signatures, script parsing and the standard pay-to-pubkey / pay-to-script-hash templates, version-0 and Toccata version-1 transactions and sighash, BIP39 mnemonics, BIP32 extended keys, a transaction builder, Kaspa mass and fee rates, a minimal wRPC JSON client, PSKT (partially signed Kaspa transactions), and System.Text.Json converters in `NKaspa.JsonConverters`. PSKT follows rusty-kaspa `wallet/pskt`: the roles Creator, Constructor, Updater, Signer, Combiner, Finalizer, and Extractor; Schnorr and ECDSA partial signatures; combine; finalize for single-sig P2PK and multisig P2SH; and extract. `TransactionBuilder.BuildPSKT` covers version 0 and version 1. The hex form is the prefix `PSKT` plus lowercase hex of the compact JSON. A bundle uses `PSKB`. The builder can force every named coin into the transaction, prefer one coin when that coin covers the payment, and emit a version-1 payment. The script engine executes version-0 scripts, including pay-to-script-hash redeem scripts. `Script.VerifyScript`, `Transaction.Verify`, and `TransactionBuilder.Verify` check every input against its sigop count or version-1 compute budget. `OP_ZKPRECOMPILE` enforces the finalized tag, cost, and layout checks. The BN254 pairing and the RISC0 STARK stay unimplemented and do not push true. `OP_CHAINBLOCKSEQCOMMIT` needs a caller-supplied block accessor. `WrpcSeqCommitAccessor` answers from read-only `getBlock` and `getBlockDagInfo`, using the DAG sink as its point of view. `ConsensusSeqCommitAccessor` walks the selected-parent chain from those same read-only calls. It freezes a chain sink and its blue score, steps the viewpoint back 20 selected parents by default, checks the KIP-21 window against that snapshot, and treats a later sink as ordinary growth when the new selected-parent chain still contains the snapshot. A tip more than 32 selected parents ahead is not chased block by block: the snapshot blocks are read again and kept when isChainBlock stays true. It throws if the node data is incomplete, inconsistent, or still reorged after a few retries. A light client can only approach consensus. Matching it exactly requires a running node: the walk stops at a request limit and cannot see pruned reachability. Nothing in this library broadcasts a transaction on its own. The console samples under `samples/` print transactions or query a node. `samples/Spend` submits a transaction only when `--broadcast` is set and the environment variable `NKASPA_MNEMONIC` is set. The wRPC client is covered by canned JSON and a loopback WebSocket. `samples/NodeQuery` is the read-only call to a public node. The map of NBitcoin areas is in [docs/NBitcoin-Mapping.md](docs/NBitcoin-Mapping.md).
+Alpha. This release contains encoders (hex, Kaspa bech32, Base58Check), BLAKE2b-256, BLAKE3-256, `uint256`, the four networks, and addresses (Schnorr public key, ECDSA public key, script hash). It also contains keys, BIP-340 Schnorr and compact ECDSA signatures, script parsing and the standard pay-to-pubkey / pay-to-script-hash templates, version-0 and Toccata version-1 transactions and sighash, BIP39 mnemonics, BIP32 extended keys, a transaction builder, Kaspa mass and fee rates, wRPC JSON and Borsh clients, PSKT (partially signed Kaspa transactions), and System.Text.Json converters in `NKaspa.JsonConverters`. PSKT follows rusty-kaspa `wallet/pskt`: the roles Creator, Constructor, Updater, Signer, Combiner, Finalizer, and Extractor; Schnorr and ECDSA partial signatures; combine; finalize for single-sig P2PK and multisig P2SH; and extract. `TransactionBuilder.BuildPSKT` covers version 0 and version 1. The hex form is the prefix `PSKT` plus lowercase hex of the compact JSON. A bundle uses `PSKB`. The builder can force every named coin into the transaction, prefer one coin when that coin covers the payment, and emit a version-1 payment. The script engine executes version-0 scripts, including pay-to-script-hash redeem scripts. `Script.VerifyScript`, `Transaction.Verify`, and `TransactionBuilder.Verify` check every input against its sigop count or version-1 compute budget. `OP_ZKPRECOMPILE` enforces the finalized tag, cost, and layout checks. The BN254 pairing and the RISC0 STARK stay unimplemented and do not push true. `OP_CHAINBLOCKSEQCOMMIT` needs a caller-supplied block accessor. `WrpcSeqCommitAccessor` answers from read-only `getBlock` and `getBlockDagInfo`, using the DAG sink as its point of view. `ConsensusSeqCommitAccessor` walks the selected-parent chain from those same read-only calls. It freezes a chain sink and its blue score, steps the viewpoint back 20 selected parents by default, checks the KIP-21 window against that snapshot, and treats a later sink as ordinary growth when the new selected-parent chain still contains the snapshot. A tip more than 32 selected parents ahead is not chased block by block: the snapshot blocks are read again and kept when isChainBlock stays true. It throws if the node data is incomplete, inconsistent, or still reorged after a few retries. A light client can only approach consensus. Matching it exactly requires a running node: the walk stops at a request limit and cannot see pruned reachability. Nothing in this library broadcasts a transaction on its own. The console samples under `samples/` print transactions or query a node. `samples/Spend` submits a transaction only when `--broadcast` is set and the environment variable `NKASPA_MNEMONIC` is set. The JSON wRPC client is covered by canned JSON and a loopback WebSocket. The Borsh client is covered by hand-computed frames, a fake binary WebSocket, and a subscription notification. `samples/NodeQuery` is the read-only call to a public node. The map of NBitcoin areas is in [docs/NBitcoin-Mapping.md](docs/NBitcoin-Mapping.md).
 
 ### Usage
 
@@ -49,6 +49,25 @@ var tx = new TransactionBuilder()
 
 IKaspaRpcClient rpc = new KaspaWrpcJsonClient(channel);
 var info = await rpc.GetServerInfoAsync();
+```
+
+```csharp
+// Auto picks Borsh for 17110, 17210, 17510, and 17610, and JSON for 18110, 18210, 18510, and 18610.
+// Simnet is 17510 / 18510. Pass KaspaRpcEncoding.Borsh or KaspaRpcEncoding.Json to override the port.
+// Create does not connect. The same timeouts, reconnect, 16 MiB cap, State, and Reconnected apply to both encodings.
+await using var node = KaspaRpcClient.Create("ws://127.0.0.1:17110");
+await node.ConnectAsync();
+RpcServerInfo server = await node.GetServerInfoAsync();
+RpcBlockDagInfo dag = await node.GetBlockDagInfoAsync();
+RpcFeeEstimate fees = await node.GetFeeEstimateAsync();
+Money balance = await node.GetBalanceByAddressAsync(address.ToString());
+IReadOnlyList<RpcUtxo> utxos = await node.GetUtxosByAddressesAsync(new[] { address.ToString() });
+IReadOnlyList<RpcAddressBalance> balances = await node.GetBalancesByAddressesAsync(new[] { address.ToString() });
+await using KaspaSubscription watch = await node.NotifyUtxosChangedAsync(
+    new[] { address.ToString() },
+    change => { });
+// NotifyVirtualDaaScoreChangedAsync and NotifyBlockAddedAsync use the same subscription type.
+// SubmitTransactionAsync is on IKaspaRpcClient. This snippet does not call it.
 ```
 
 `coin` is an `OutPoint` plus the `UtxoEntry` it spends. `payee` is a `KaspaAddress`. `channel` is an `IKaspaJsonChannel`. `KaspaWebSocketChannel` can open a socket. Pass `KaspaWebSocketOptions` for the 15 second connect timeout, the 30 second request timeout, optional reconnect, and `MaxMessageBytes` (default 16 MiB). A larger frame fails the read and does not grow an unbounded buffer. `State` reports Closed, Connecting, Open, or Reconnecting. `Reconnected` fires after a later socket opens, not after the first connect. A drop fails requests that are still waiting. The tests do not dial a public node. `KeyPath.KaspaReceive(0)` is `m/44'/111111'/0'/0/0`. Extended keys on mainnet use the `kprv` / `kpub` prefix. Testnet, simnet, and devnet use `ktrv` / `ktub`. `ExtKey.ToString()` returns `NKaspa.ExtKey`. Export the private extended key with `ExportXprv()`, `ExportXprv(network)`, `GetWif(network)`, `ToString(network)`, or `ToBase58()`. `Mnemonic.ToString()` returns `NKaspa.Mnemonic`. The sentence is `ToPhrase()`. `Words` is an `IReadOnlyList<string>`. `Parse` and `ParseValidated` throw `FormatException` (`BIP39 checksum does not match.`) when the checksum is wrong. The lenient constructor still returns an object with `IsValidChecksum` false. `DeriveSeed` and `DeriveExtKey` throw on that object unless `allowInvalidChecksum` is true. Case-insensitivity and removal of zero-width characters (including a leading BOM and marks inside a word) are NKaspa extensions to BIP39, together with NFKD. `ToPhrase()` stores the canonical lowercase wordlist words, so the derived seed matches other wallets given that canonical phrase. A phrase with uppercase or full-width characters typed verbatim into another wallet may fail. Default `JsonSerializer.Serialize` refuses `Key`, `ExtKey`, and `Mnemonic`. Opt in with `NKaspaJsonSerializer` and `allowPrivateKeys: true`. `FeeRate` is sompi per gram of mass.
@@ -146,7 +165,7 @@ dotnet run --project samples/Json
 powershell -File samples/smoke.ps1
 ```
 
-`Mnemonic` draws a 12-word English mnemonic, or uses the words you pass, and derives `m/44'/111111'/0'/0/0` through `2` on mainnet (`kaspa`, `kpub`) and testnet (`kaspatest`, `ktub`). `Address` parses Schnorr, ECDSA, and script-hash addresses and prints `ScriptPubKey`. `NodeQuery` opens the wRPC JSON WebSocket, then calls `getServerInfo`, `getBlockDagInfo`, `getBalanceByAddress`, and `getUtxosByAddresses`. The default URL is `wss://eva.kaspa.green/kaspa/mainnet/wrpc/json`. `Json` prints compact JSON for the public types, including a version-1 transaction with `computeBudget` and `covenant`, and refuses to print a private key.
+`Mnemonic` draws a 12-word English mnemonic, or uses the words you pass, and derives `m/44'/111111'/0'/0/0` through `2` on mainnet (`kaspa`, `kpub`) and testnet (`kaspatest`, `ktub`). `Address` parses Schnorr, ECDSA, and script-hash addresses and prints `ScriptPubKey`. `NodeQuery` opens the wRPC JSON WebSocket, then calls `getServerInfo`, `getBlockDagInfo`, `getBalanceByAddress`, and `getUtxosByAddresses`. The default URL is `wss://eva.kaspa.green/kaspa/mainnet/wrpc/json`. It stays on JSON. The Borsh client is the `KaspaRpcClient.Create` snippet above. `smoke.ps1` does not open a socket. `Json` prints compact JSON for the public types, including a version-1 transaction with `computeBudget` and `covenant`, and refuses to print a private key.
 
 `Spend` builds three signed payments from public test keys and fake coins: version 0, version 0 with `MustSpend` on two inputs, and version 1. Each pays `SendMinimumRelayFee`. It prints the transaction hex and the wRPC JSON. It does not open a socket.
 
@@ -183,7 +202,7 @@ NKaspa does not include the NBitcoin source tree. Elliptic-curve operations use 
 
 ## 中文
 
-NKaspa 是 Kaspa 的 .NET 基础函数库，版本 **0.1.10-alpha**。
+NKaspa 是 Kaspa 的 .NET 基础函数库，版本 **0.1.11-alpha**。
 
 公开类型尽量与 [NBitcoin](https://github.com/MetacoSA/NBitcoin) 一一对应，但语义按 Kaspa。地址是 cashaddr 风格的 bech32（前缀 `kaspa` / `kaspatest` / `kaspasim` / `kaspadev`，8 字符校验和）。共识哈希是不带密钥的 BLAKE2b-256，不是比特币的双 SHA256。
 
@@ -191,7 +210,7 @@ NBitcoin 采用 MIT 许可。Copyright (c) .NET Foundation and Contributors / Ni
 
 ### 状态
 
-Alpha。这一版包含编码器（十六进制、Kaspa bech32、Base58Check）、BLAKE2b-256、BLAKE3-256、`uint256`、四个网络，以及地址（Schnorr 公钥、ECDSA 公钥、脚本哈希）。同时包含密钥、BIP-340 Schnorr 与紧凑 ECDSA 签名、脚本解析和标准 P2PK / P2SH 模板、版本 0 与 Toccata 版本 1 交易和 sighash、BIP39 助记词、BIP32 扩展密钥、交易构建器、Kaspa mass 与费率、最小的 wRPC JSON 客户端、PSKT（部分签名的 Kaspa 交易），以及 `NKaspa.JsonConverters` 里的 System.Text.Json 转换器。PSKT 对齐 rusty-kaspa 的 `wallet/pskt`：角色 Creator、Constructor、Updater、Signer、Combiner、Finalizer、Extractor；Schnorr 与 ECDSA 部分签名；合并；单签 P2PK 与多签 P2SH 的终结；提取交易。`TransactionBuilder.BuildPSKT` 覆盖版本 0 和版本 1。十六进制是前缀 `PSKT` 加上紧凑 JSON 的小写十六进制。Bundle 用 `PSKB`。构建器可以强制花掉指定的币，在一枚币够付时只用一枚，并直接产出版本 1 付款。脚本引擎执行版本 0 脚本，包括 P2SH 赎回脚本。`Script.VerifyScript`、`Transaction.Verify` 和 `TransactionBuilder.Verify` 按 sigop 数量或版本 1 的 compute budget 检查每一个输入。`OP_ZKPRECOMPILE` 执行已定稿的标签、费用和结构检查。BN254 配对和 RISC0 STARK 仍返回未实现，不压入 true。`OP_CHAINBLOCKSEQCOMMIT` 需要调用方提供区块访问器。`WrpcSeqCommitAccessor` 可以用只读的 `getBlock` 和 `getBlockDagInfo` 回答，视点是 DAG sink，不是共识的 selected parent。`ConsensusSeqCommitAccessor` 用同样的只读接口沿 selected parent 链回推。调用开始时锁定仍在选定链上的 sink，默认再沿 selected parent 退 20 步作为快照，KIP-21 窗口按这个快照计算。之后的新 sink 只要 selected parent 链仍包含该快照，就视为链向前增长并返回快照结果。新尖端比快照超前超过 32 个 selected parent 时，不再逐块追赶，而是重读快照区块，只要 isChainBlock 仍为 true 就按增长返回。节点数据不全、不一致，或重组重试耗尽时抛出异常，不静默返回。轻客户端只能尽量接近共识。完全等同需要运行节点：回推有请求上限，也看不到节点里已经剪掉的可达性数据。本库自己不广播交易。`samples/` 里的控制台示例只打印交易，或只读查询节点。`samples/Spend` 只有在传入 `--broadcast` 且环境变量 `NKASPA_MNEMONIC` 已设置时才提交交易。wRPC 用预制 JSON 和本地回环 WebSocket 做过测试。`samples/NodeQuery` 是对公共节点的只读调用。对照表见 [docs/NBitcoin-Mapping.md](docs/NBitcoin-Mapping.md)。
+Alpha。这一版包含编码器（十六进制、Kaspa bech32、Base58Check）、BLAKE2b-256、BLAKE3-256、`uint256`、四个网络，以及地址（Schnorr 公钥、ECDSA 公钥、脚本哈希）。同时包含密钥、BIP-340 Schnorr 与紧凑 ECDSA 签名、脚本解析和标准 P2PK / P2SH 模板、版本 0 与 Toccata 版本 1 交易和 sighash、BIP39 助记词、BIP32 扩展密钥、交易构建器、Kaspa mass 与费率、wRPC JSON 与 Borsh 客户端、PSKT（部分签名的 Kaspa 交易），以及 `NKaspa.JsonConverters` 里的 System.Text.Json 转换器。PSKT 对齐 rusty-kaspa 的 `wallet/pskt`：角色 Creator、Constructor、Updater、Signer、Combiner、Finalizer、Extractor；Schnorr 与 ECDSA 部分签名；合并；单签 P2PK 与多签 P2SH 的终结；提取交易。`TransactionBuilder.BuildPSKT` 覆盖版本 0 和版本 1。十六进制是前缀 `PSKT` 加上紧凑 JSON 的小写十六进制。Bundle 用 `PSKB`。构建器可以强制花掉指定的币，在一枚币够付时只用一枚，并直接产出版本 1 付款。脚本引擎执行版本 0 脚本，包括 P2SH 赎回脚本。`Script.VerifyScript`、`Transaction.Verify` 和 `TransactionBuilder.Verify` 按 sigop 数量或版本 1 的 compute budget 检查每一个输入。`OP_ZKPRECOMPILE` 执行已定稿的标签、费用和结构检查。BN254 配对和 RISC0 STARK 仍返回未实现，不压入 true。`OP_CHAINBLOCKSEQCOMMIT` 需要调用方提供区块访问器。`WrpcSeqCommitAccessor` 可以用只读的 `getBlock` 和 `getBlockDagInfo` 回答，视点是 DAG sink，不是共识的 selected parent。`ConsensusSeqCommitAccessor` 用同样的只读接口沿 selected parent 链回推。调用开始时锁定仍在选定链上的 sink，默认再沿 selected parent 退 20 步作为快照，KIP-21 窗口按这个快照计算。之后的新 sink 只要 selected parent 链仍包含该快照，就视为链向前增长并返回快照结果。新尖端比快照超前超过 32 个 selected parent 时，不再逐块追赶，而是重读快照区块，只要 isChainBlock 仍为 true 就按增长返回。节点数据不全、不一致，或重组重试耗尽时抛出异常，不静默返回。轻客户端只能尽量接近共识。完全等同需要运行节点：回推有请求上限，也看不到节点里已经剪掉的可达性数据。本库自己不广播交易。`samples/` 里的控制台示例只打印交易，或只读查询节点。`samples/Spend` 只有在传入 `--broadcast` 且环境变量 `NKASPA_MNEMONIC` 已设置时才提交交易。JSON wRPC 用预制 JSON 和本地回环 WebSocket 做过测试。Borsh 客户端用手工计算的帧、假的二进制 WebSocket 和一条订阅通知做过测试。`samples/NodeQuery` 是对公共节点的只读调用。对照表见 [docs/NBitcoin-Mapping.md](docs/NBitcoin-Mapping.md)。
 
 ### 用法
 
@@ -227,6 +246,25 @@ var tx = new TransactionBuilder()
 
 IKaspaRpcClient rpc = new KaspaWrpcJsonClient(channel);
 var info = await rpc.GetServerInfoAsync();
+```
+
+```csharp
+// Auto 在 17110、17210、17510、17610 上选 Borsh，在 18110、18210、18510、18610 上选 JSON。
+// Simnet 是 17510 / 18510。传入 KaspaRpcEncoding.Borsh 或 Json 可以覆盖端口。
+// Create 不会连接。两种编码共用同一套超时、重连、16 MiB 上限、State 和 Reconnected。
+await using var node = KaspaRpcClient.Create("ws://127.0.0.1:17110");
+await node.ConnectAsync();
+RpcServerInfo server = await node.GetServerInfoAsync();
+RpcBlockDagInfo dag = await node.GetBlockDagInfoAsync();
+RpcFeeEstimate fees = await node.GetFeeEstimateAsync();
+Money balance = await node.GetBalanceByAddressAsync(address.ToString());
+IReadOnlyList<RpcUtxo> utxos = await node.GetUtxosByAddressesAsync(new[] { address.ToString() });
+IReadOnlyList<RpcAddressBalance> balances = await node.GetBalancesByAddressesAsync(new[] { address.ToString() });
+await using KaspaSubscription watch = await node.NotifyUtxosChangedAsync(
+    new[] { address.ToString() },
+    change => { });
+// NotifyVirtualDaaScoreChangedAsync 和 NotifyBlockAddedAsync 返回同一种订阅。
+// SubmitTransactionAsync 在 IKaspaRpcClient 上。这段示例不调用它。
 ```
 
 `coin` 是 `OutPoint` 加上它花费的 `UtxoEntry`。`payee` 是 `KaspaAddress`。`channel` 是 `IKaspaJsonChannel`。`KaspaWebSocketChannel` 可以打开套接字。`KaspaWebSocketOptions` 设置 15 秒连接超时、30 秒请求超时、可选的自动重连，以及 `MaxMessageBytes`（默认 16 MiB）。更大的帧会让这次读取失败，缓冲区不会无限增长。`State` 是 Closed、Connecting、Open 或 Reconnecting。`Reconnected` 在后来的套接字打开后触发，第一次连接不触发。断开时，还在等待的请求会失败。测试用本地回环服务器，没有连过真实节点。`KeyPath.KaspaReceive(0)` 是 `m/44'/111111'/0'/0/0`。主网扩展密钥前缀是 `kprv` / `kpub`。测试网、模拟网和开发网是 `ktrv` / `ktub`。`ExtKey.ToString()` 返回 `NKaspa.ExtKey`。导出扩展私钥用 `ExportXprv()`、`ExportXprv(network)`、`GetWif(network)`、`ToString(network)` 或 `ToBase58()`。`Mnemonic.ToString()` 返回 `NKaspa.Mnemonic`。句子用 `ToPhrase()`。`Words` 是 `IReadOnlyList<string>`。`Parse` 和 `ParseValidated` 在校验和错误时抛 `FormatException`（`BIP39 checksum does not match.`）。宽松构造仍返回 `IsValidChecksum == false` 的对象。对这种对象调用 `DeriveSeed` 或 `DeriveExtKey` 会抛异常，除非 `allowInvalidChecksum` 为 true。大小写不敏感，以及去掉零宽字符（含词内标记和句首 BOM），是 NKaspa 相对 BIP39 的扩展，另外还有 NFKD。`ToPhrase()` 保存词表里的规范小写词，因此用这句规范词派生的种子与其他钱包相同。把含大写或全角字符的句子原样输入其他钱包，可能会失败。默认的 `JsonSerializer.Serialize` 拒绝 `Key`、`ExtKey` 和 `Mnemonic`。要写出秘密，用 `NKaspaJsonSerializer` 并传 `allowPrivateKeys: true`。`FeeRate` 的单位是 sompi/gram。
@@ -324,7 +362,7 @@ dotnet run --project samples/Json
 powershell -File samples/smoke.ps1
 ```
 
-`Mnemonic` 生成 12 个英文词，或使用传入的助记词，并派生 `m/44'/111111'/0'/0/0` 到 `2`。主网地址前缀是 `kaspa`，扩展公钥是 `kpub`。测试网是 `kaspatest` 和 `ktub`。`Address` 解析 Schnorr、ECDSA 和脚本哈希地址，并打印 `ScriptPubKey`。`NodeQuery` 打开 wRPC JSON WebSocket，然后调用 `getServerInfo`、`getBlockDagInfo`、`getBalanceByAddress`、`getUtxosByAddresses`。默认地址是 `wss://eva.kaspa.green/kaspa/mainnet/wrpc/json`。`Json` 打印公开类型的紧凑 JSON，包括带 `computeBudget` 和 `covenant` 的版本 1 交易，并拒绝打印私钥。
+`Mnemonic` 生成 12 个英文词，或使用传入的助记词，并派生 `m/44'/111111'/0'/0/0` 到 `2`。主网地址前缀是 `kaspa`，扩展公钥是 `kpub`。测试网是 `kaspatest` 和 `ktub`。`Address` 解析 Schnorr、ECDSA 和脚本哈希地址，并打印 `ScriptPubKey`。`NodeQuery` 打开 wRPC JSON WebSocket，然后调用 `getServerInfo`、`getBlockDagInfo`、`getBalanceByAddress`、`getUtxosByAddresses`。默认地址是 `wss://eva.kaspa.green/kaspa/mainnet/wrpc/json`。它仍然只用 JSON。Borsh 客户端是上面的 `KaspaRpcClient.Create` 示例。`smoke.ps1` 不开套接字。`Json` 打印公开类型的紧凑 JSON，包括带 `computeBudget` 和 `covenant` 的版本 1 交易，并拒绝打印私钥。
 
 `Spend` 用公开测试密钥和本地假币签三笔付款：版本 0、版本 0 的双输入 `MustSpend`、版本 1。费用都是 `SendMinimumRelayFee`。它打印交易十六进制和 wRPC JSON，不开套接字。
 
