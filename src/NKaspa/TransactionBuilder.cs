@@ -13,7 +13,10 @@ namespace NKaspa
     /// Change below <see cref="MinimumChange"/> is added to the fee.
     /// A larger change output that cannot be built (mass over the limit, or a storage-mass fee the surplus cannot pay)
     /// is folded into the fee only when the amount is at most <see cref="MaxFoldedChange"/> and within <see cref="MaxFoldedFeeFactor"/> of the fee that transaction needs.
+    /// Those two limits are public. A caller can raise them. They are wallet safety limits, not consensus rules. Raising them can burn more sompi into the fee.
     /// A larger unbuildable change throws. It is not burned as a fee.
+    /// <see cref="ChangeFoldedIntoFee"/> is the sompi removed from change on the last successful build. It is not the total fee.
+    /// <see cref="Policy.TransactionMass"/> does not repeat that amount.
     /// The fee mass must stay within <see cref="MaximumMass"/> and within <see cref="MassLimits"/>.
     /// Version 0 is the default. <see cref="SetVersion"/>(1) builds a Toccata payment and signs it with the version-1 sighash.
     /// <see cref="BuildPSKT"/> wraps the same unsigned payment. <see cref="Sign(NKaspa.PSKT.PSKT)"/> adds partial signatures for the builder keys.
@@ -49,6 +52,8 @@ namespace NKaspa
         /// Largest change that may be folded into the fee when the change output cannot be built.
         /// The default is 0.1 KAS (10,000,000 sompi). The allowed amount is <c>max(MinimumChange, MaxFoldedChange)</c>.
         /// Change below <see cref="MinimumChange"/> still folds. That path is the dust rule and does not use this cap.
+        /// This property is public. A caller can raise it. It is a wallet safety limit, not a consensus rule.
+        /// Raising it can burn more sompi into the fee.
         /// </summary>
         public Money MaxFoldedChange { get; set; } = new Money(10_000_000);
 
@@ -56,22 +61,20 @@ namespace NKaspa
         /// A change output that cannot be built is folded only when its value is at most this many times
         /// the fee of the same transaction without that output. The default is 100.
         /// Values below 1 reject every positive fold on this path.
+        /// This property is public. A caller can raise it. It is a wallet safety limit, not a consensus rule.
+        /// Raising it can burn more sompi into the fee.
         /// </summary>
         public int MaxFoldedFeeFactor { get; set; } = 100;
 
         /// <summary>
-        /// True when the last successful <see cref="BuildTransaction"/> or <see cref="BuildPSKT"/>
-        /// added a positive change to the fee instead of creating an output.
-        /// A failed build leaves this false.
+        /// Sompi removed from a change output and added to the fee by the last successful
+        /// <see cref="BuildTransaction"/> or <see cref="BuildPSKT"/>.
+        /// Zero when that build kept the change, folded nothing, or threw.
+        /// This is the removed change, not the total fee. <see cref="Policy.TransactionMass"/> does not include it.
+        /// An explicit fee F plus folded dust D reports D here and charges F + D.
+        /// A fee estimate that starts at zero and folds the whole surplus S reports S, and the fee is S.
         /// </summary>
-        public bool ChangeFolded { get; private set; }
-
-        /// <summary>
-        /// Sompi moved from a change output into the fee by the last successful build.
-        /// Zero when <see cref="ChangeFolded"/> is false. The whole amount is part of the fee,
-        /// including the fee that transaction needed.
-        /// </summary>
-        public Money FoldedChange { get; private set; }
+        public Money ChangeFoldedIntoFee { get; private set; }
 
         /// <summary>
         /// Maximum allowed fee mass.
@@ -85,7 +88,7 @@ namespace NKaspa
 
         /// <summary>
         /// Sompi charged for one gram when <see cref="SendMinimumRelayFee"/> runs, and the lowest rate <see cref="SendEstimatedFees"/> accepts.
-        /// The default is 100. <see cref="MassPolicy.PreToccata"/> sets 1.
+        /// The default is 100. <see cref="MassPolicy.PreToccata"/> keeps 100.
         /// </summary>
         public ulong MinimumRelayFeeRate { get; set; }
 
@@ -136,8 +139,8 @@ namespace NKaspa
 
         /// <summary>
         /// Creates a builder for <paramref name="network"/> using the current post-cleanup policy when <paramref name="toccataActive"/> is true.
-        /// False selects <see cref="MassPolicy.PreToccata"/>: fee-mass cap 100000 and relay rate 1 sompi per gram.
-        /// Every built-in network publishes the same post-Toccata block limits. The cap and the relay rate are what activation changes.
+        /// False selects <see cref="MassPolicy.PreToccata"/>: fee-mass cap 100000 and the same 100 sompi per gram relay rate.
+        /// Every built-in network publishes the same post-Toccata block limits. Activation changes the cap. The relay rate stays 100.
         /// <see cref="TransactionBuilder(Network, ulong)"/> picks the policy from the node's virtual DAA score.
         /// </summary>
         /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
@@ -148,7 +151,7 @@ namespace NKaspa
 
         /// <summary>
         /// Creates a builder for <paramref name="network"/> at <paramref name="virtualDaaScore"/>.
-        /// Scores below <see cref="Network.ToccataActivationDaaScore"/> use the pre-Toccata cap and relay rate.
+        /// Scores below <see cref="Network.ToccataActivationDaaScore"/> use the pre-Toccata cap. The relay rate stays 100.
         /// Simnet and current devnet use score 0, so every score is post-Toccata.
         /// An old devnet node needs <see cref="MassPolicy.PreToccata"/> explicitly.
         /// </summary>
@@ -380,8 +383,8 @@ namespace NKaspa
         /// <summary>
         /// Estimates the fee from the signed fee mass and <paramref name="feeRate"/>.
         /// Fee mass is the maximum of compute mass, normalized transient mass, and normalized storage mass.
-        /// A rate below <see cref="MinimumRelayFeeRate"/> sompi per gram is rejected. The default floor is 100.
-        /// <see cref="MassPolicy.PreToccata"/> lowers that floor to 1. The relay mass is still narrower than fee mass. See <see cref="SendMinimumRelayFee"/>.
+        /// A rate below <see cref="MinimumRelayFeeRate"/> sompi per gram is rejected. The floor is 100 on both policies.
+        /// The relay mass is still narrower than fee mass. See <see cref="SendMinimumRelayFee"/>.
         /// </summary>
         /// <exception cref="System.ArgumentOutOfRangeException">Fee rate is below the builder minimum relay rate.</exception>
         public TransactionBuilder SendEstimatedFees(FeeRate feeRate)
@@ -471,8 +474,7 @@ namespace NKaspa
         /// <exception cref="System.OverflowException">Input amount mean does not fit in 64 bits. Normalized mass does not fit in 64 bits.</exception>
         public Transaction BuildTransaction(bool sign)
         {
-            ChangeFolded = false;
-            FoldedChange = Money.Zero;
+            ChangeFoldedIntoFee = Money.Zero;
             if (_sends.Count == 0)
             {
                 throw new InvalidOperationException("No outputs to send.");
@@ -483,13 +485,12 @@ namespace NKaspa
             List<Coin> selected;
             ulong fee;
             Transaction transaction;
-            var folded = false;
             ulong foldedAmount = 0;
             if (mode == FeeChoice.Explicit)
             {
                 fee = _explicitFee!.Value.Sompi;
                 selected = Select(checked(sendSum + fee));
-                transaction = Materialize(selected, sendSum, ref fee, out folded, out foldedAmount);
+                transaction = Materialize(selected, sendSum, ref fee, out foldedAmount);
             }
             else
             {
@@ -500,7 +501,7 @@ namespace NKaspa
                 for (var attempt = 0; attempt < 32; attempt++)
                 {
                     selected = Select(checked(sendSum + fee));
-                    transaction = Materialize(selected, sendSum, ref fee, out folded, out foldedAmount);
+                    transaction = Materialize(selected, sendSum, ref fee, out foldedAmount);
                     var required = RequiredFee(transaction, selected, mode);
                     if (fee >= required)
                     {
@@ -533,8 +534,7 @@ namespace NKaspa
                 }
             }
 
-            ChangeFolded = folded;
-            FoldedChange = new Money(foldedAmount);
+            ChangeFoldedIntoFee = new Money(foldedAmount);
             return transaction;
         }
 
@@ -881,10 +881,9 @@ namespace NKaspa
             return forced;
         }
 
-        private Transaction Materialize(List<Coin> selected, ulong sendSum, ref ulong fee, out bool folded, out ulong foldedAmount)
+        private Transaction Materialize(List<Coin> selected, ulong sendSum, ref ulong fee, out ulong foldedAmount)
         {
             var transaction = MaterializeOnce(selected, sendSum, ref fee, out var dust);
-            folded = dust > 0;
             foldedAmount = dust;
             if (!TryGetChange(transaction, out var change))
             {
@@ -902,7 +901,6 @@ namespace NKaspa
                     "Change would exceed the mass limit. Folding it into the fee would burn more than MaxFoldedChange allows. Split the send or add inputs so the change output fits.");
             }
 
-            folded = true;
             foldedAmount = checked(foldedAmount + change);
             return transaction;
         }

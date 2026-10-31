@@ -31,9 +31,12 @@ var fee = FeeRate.MinimumRelay.GetFee(2_036);
 // Change below 0.02 KAS is added to the fee.
 // A larger change is folded only when that output cannot be built, the amount is at most max(MinimumChange, MaxFoldedChange)
 // (MaxFoldedChange defaults to 0.1 KAS), and it is within MaxFoldedFeeFactor of the no-change fee (default 100).
-// A larger unbuildable change throws. Check ChangeFolded after a successful build.
+// MaxFoldedChange and MaxFoldedFeeFactor are public. A caller can raise them. They are a wallet safety limit, not consensus.
+// Raising them can burn more sompi into the fee. A larger unbuildable change throws.
+// After a successful build, ChangeFoldedIntoFee is the sompi removed from change and added to the fee.
+// It is 0 when change is kept or the build throws. It is not the total fee. TransactionMass does not repeat it.
 // The default mass ceiling is the post-Toccata block limit (compute and storage 500000, transient 1000000).
-// Pass `new TransactionBuilder(Network.Mainnet, toccataActive: false)` to keep the old 100000 cap and 1 sompi/gram.
+// Pass `new TransactionBuilder(Network.Mainnet, toccataActive: false)` to keep the old 100000 cap. The relay rate stays 100 sompi/gram.
 // `new TransactionBuilder(network, virtualDaaScore)` selects that policy from the network activation score.
 // Network.IsToccataActive(daaScore) is that comparison.
 var tx = new TransactionBuilder()
@@ -48,7 +51,7 @@ IKaspaRpcClient rpc = new KaspaWrpcJsonClient(channel);
 var info = await rpc.GetServerInfoAsync();
 ```
 
-`coin` is an `OutPoint` plus the `UtxoEntry` it spends. `payee` is a `KaspaAddress`. `channel` is an `IKaspaJsonChannel`. `KaspaWebSocketChannel` can open a socket. Pass `KaspaWebSocketOptions` for the 15 second connect timeout, the 30 second request timeout, optional reconnect, and `MaxMessageBytes` (default 16 MiB). A larger frame fails the read and does not grow an unbounded buffer. `State` reports Closed, Connecting, Open, or Reconnecting. `Reconnected` fires after a later socket opens, not after the first connect. A drop fails requests that are still waiting. The tests do not dial a public node. `KeyPath.KaspaReceive(0)` is `m/44'/111111'/0'/0/0`. Extended keys on mainnet use the `kprv` / `kpub` prefix. Testnet, simnet, and devnet use `ktrv` / `ktub`. `ExtKey.ToString()` returns `NKaspa.ExtKey`. Export the private extended key with `ExportXprv()`, `ExportXprv(network)`, `GetWif(network)`, `ToString(network)`, or `ToBase58()`. `Mnemonic.ToString()` returns `NKaspa.Mnemonic`. The sentence is `ToPhrase()`. `Words` is an `IReadOnlyList<string>`. `Parse` and `ParseValidated` throw `FormatException` (`BIP39 checksum does not match.`) when the checksum is wrong. The lenient constructor still returns an object with `IsValidChecksum` false. `DeriveSeed` and `DeriveExtKey` throw on that object unless `allowInvalidChecksum` is true. Default `JsonSerializer.Serialize` refuses `Key`, `ExtKey`, and `Mnemonic`. Opt in with `NKaspaJsonSerializer` and `allowPrivateKeys: true`. `FeeRate` is sompi per gram of mass.
+`coin` is an `OutPoint` plus the `UtxoEntry` it spends. `payee` is a `KaspaAddress`. `channel` is an `IKaspaJsonChannel`. `KaspaWebSocketChannel` can open a socket. Pass `KaspaWebSocketOptions` for the 15 second connect timeout, the 30 second request timeout, optional reconnect, and `MaxMessageBytes` (default 16 MiB). A larger frame fails the read and does not grow an unbounded buffer. `State` reports Closed, Connecting, Open, or Reconnecting. `Reconnected` fires after a later socket opens, not after the first connect. A drop fails requests that are still waiting. The tests do not dial a public node. `KeyPath.KaspaReceive(0)` is `m/44'/111111'/0'/0/0`. Extended keys on mainnet use the `kprv` / `kpub` prefix. Testnet, simnet, and devnet use `ktrv` / `ktub`. `ExtKey.ToString()` returns `NKaspa.ExtKey`. Export the private extended key with `ExportXprv()`, `ExportXprv(network)`, `GetWif(network)`, `ToString(network)`, or `ToBase58()`. `Mnemonic.ToString()` returns `NKaspa.Mnemonic`. The sentence is `ToPhrase()`. `Words` is an `IReadOnlyList<string>`. `Parse` and `ParseValidated` throw `FormatException` (`BIP39 checksum does not match.`) when the checksum is wrong. The lenient constructor still returns an object with `IsValidChecksum` false. `DeriveSeed` and `DeriveExtKey` throw on that object unless `allowInvalidChecksum` is true. Case-insensitivity and removal of zero-width characters (including a leading BOM and marks inside a word) are NKaspa extensions to BIP39, together with NFKD. `ToPhrase()` stores the canonical lowercase wordlist words, so the derived seed matches other wallets given that canonical phrase. A phrase with uppercase or full-width characters typed verbatim into another wallet may fail. Default `JsonSerializer.Serialize` refuses `Key`, `ExtKey`, and `Mnemonic`. Opt in with `NKaspaJsonSerializer` and `allowPrivateKeys: true`. `FeeRate` is sompi per gram of mass.
 
 The minimum relay fee is 100 sompi times the larger of compute mass and normalized transient mass. Storage mass is not part of that floor. A standard one-input Schnorr payment with change is 2036 grams, 203600 sompi, about 0.002 KAS. `SendEstimatedFees` multiplies a rate by the fee mass, which also includes normalized storage. `SendMinimumRelayFee` pays the relay floor. `MustSpend` and `SpendAllCoins` put every named coin in the transaction and sign each input. Coins that share a script are not merged. `SetVersion(1)` is a Toccata payment. The default compute budget is 10 per input. wRPC JSON for version 1 includes both `sigOpCount` and `computeBudget`.
 
@@ -207,9 +210,11 @@ var fee = FeeRate.MinimumRelay.GetFee(2_036);
 // 低于 0.02 KAS 的找零会并进手续费。
 // 更大的找零只有在输出建不出来，金额不超过 max(MinimumChange, MaxFoldedChange)（MaxFoldedChange 默认 0.1 KAS），
 // 并且不超过无找零交易所需手续费的 MaxFoldedFeeFactor 倍（默认 100）时才并进手续费。
-// 超过上限会抛异常，不把整笔找零烧掉。成功并入后看 ChangeFolded。
+// MaxFoldedChange 和 MaxFoldedFeeFactor 是公开属性，调用方可以放宽。它们是钱包安全上限，不是共识规则。放宽之后，更多 sompi 会进手续费。
+// 超过上限会抛异常，不把整笔找零烧掉。成功构建后 ChangeFoldedIntoFee 是从找零拿掉并加进手续费的 sompi。
+// 找零保留或构建抛出时它是 0。它不是总手续费。TransactionMass 不重复这个数。
 // 默认 mass 上限是 Toccata 之后的块限额（compute 与 storage 500000，transient 1000000）。
-// `new TransactionBuilder(Network.Mainnet, toccataActive: false)` 保留旧的 100000 上限和 1 sompi/gram。
+// `new TransactionBuilder(Network.Mainnet, toccataActive: false)` 保留旧的 100000 上限。中继费率仍是 100 sompi/gram。
 // `new TransactionBuilder(network, virtualDaaScore)` 按该网络的激活分数选择。
 // `Network.IsToccataActive(daaScore)` 就是这个比较。
 var tx = new TransactionBuilder()
@@ -224,7 +229,7 @@ IKaspaRpcClient rpc = new KaspaWrpcJsonClient(channel);
 var info = await rpc.GetServerInfoAsync();
 ```
 
-`coin` 是 `OutPoint` 加上它花费的 `UtxoEntry`。`payee` 是 `KaspaAddress`。`channel` 是 `IKaspaJsonChannel`。`KaspaWebSocketChannel` 可以打开套接字。`KaspaWebSocketOptions` 设置 15 秒连接超时、30 秒请求超时、可选的自动重连，以及 `MaxMessageBytes`（默认 16 MiB）。更大的帧会让这次读取失败，缓冲区不会无限增长。`State` 是 Closed、Connecting、Open 或 Reconnecting。`Reconnected` 在后来的套接字打开后触发，第一次连接不触发。断开时，还在等待的请求会失败。测试用本地回环服务器，没有连过真实节点。`KeyPath.KaspaReceive(0)` 是 `m/44'/111111'/0'/0/0`。主网扩展密钥前缀是 `kprv` / `kpub`。测试网、模拟网和开发网是 `ktrv` / `ktub`。`ExtKey.ToString()` 返回 `NKaspa.ExtKey`。导出扩展私钥用 `ExportXprv()`、`ExportXprv(network)`、`GetWif(network)`、`ToString(network)` 或 `ToBase58()`。`Mnemonic.ToString()` 返回 `NKaspa.Mnemonic`。句子用 `ToPhrase()`。`Words` 是 `IReadOnlyList<string>`。`Parse` 和 `ParseValidated` 在校验和错误时抛 `FormatException`（`BIP39 checksum does not match.`）。宽松构造仍返回 `IsValidChecksum == false` 的对象。对这种对象调用 `DeriveSeed` 或 `DeriveExtKey` 会抛异常，除非 `allowInvalidChecksum` 为 true。默认的 `JsonSerializer.Serialize` 拒绝 `Key`、`ExtKey` 和 `Mnemonic`。要写出秘密，用 `NKaspaJsonSerializer` 并传 `allowPrivateKeys: true`。`FeeRate` 的单位是 sompi/gram。
+`coin` 是 `OutPoint` 加上它花费的 `UtxoEntry`。`payee` 是 `KaspaAddress`。`channel` 是 `IKaspaJsonChannel`。`KaspaWebSocketChannel` 可以打开套接字。`KaspaWebSocketOptions` 设置 15 秒连接超时、30 秒请求超时、可选的自动重连，以及 `MaxMessageBytes`（默认 16 MiB）。更大的帧会让这次读取失败，缓冲区不会无限增长。`State` 是 Closed、Connecting、Open 或 Reconnecting。`Reconnected` 在后来的套接字打开后触发，第一次连接不触发。断开时，还在等待的请求会失败。测试用本地回环服务器，没有连过真实节点。`KeyPath.KaspaReceive(0)` 是 `m/44'/111111'/0'/0/0`。主网扩展密钥前缀是 `kprv` / `kpub`。测试网、模拟网和开发网是 `ktrv` / `ktub`。`ExtKey.ToString()` 返回 `NKaspa.ExtKey`。导出扩展私钥用 `ExportXprv()`、`ExportXprv(network)`、`GetWif(network)`、`ToString(network)` 或 `ToBase58()`。`Mnemonic.ToString()` 返回 `NKaspa.Mnemonic`。句子用 `ToPhrase()`。`Words` 是 `IReadOnlyList<string>`。`Parse` 和 `ParseValidated` 在校验和错误时抛 `FormatException`（`BIP39 checksum does not match.`）。宽松构造仍返回 `IsValidChecksum == false` 的对象。对这种对象调用 `DeriveSeed` 或 `DeriveExtKey` 会抛异常，除非 `allowInvalidChecksum` 为 true。大小写不敏感，以及去掉零宽字符（含词内标记和句首 BOM），是 NKaspa 相对 BIP39 的扩展，另外还有 NFKD。`ToPhrase()` 保存词表里的规范小写词，因此用这句规范词派生的种子与其他钱包相同。把含大写或全角字符的句子原样输入其他钱包，可能会失败。默认的 `JsonSerializer.Serialize` 拒绝 `Key`、`ExtKey` 和 `Mnemonic`。要写出秘密，用 `NKaspaJsonSerializer` 并传 `allowPrivateKeys: true`。`FeeRate` 的单位是 sompi/gram。
 
 最低中继费 = 100 sompi × max(compute mass, 归一化 transient mass)。storage mass 不计入这个下限。标准单输入 Schnorr 付款（带一笔找零）是 2036 gram，即 203600 sompi，约 0.002 KAS。`SendEstimatedFees` 用费率乘以 fee mass，fee mass 含归一化后的 storage。`SendMinimumRelayFee` 只付中继下限。`MustSpend` 和 `SpendAllCoins` 让指定的每一枚币都进入交易，并且每笔输入单独签名。相同脚本的币不会被并成一笔输入。`SetVersion(1)` 是 Toccata 付款。每个输入的默认 compute budget 是 10。版本 1 的 wRPC JSON 同时写出 `sigOpCount` 和 `computeBudget`。
 

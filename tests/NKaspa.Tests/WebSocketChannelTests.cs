@@ -1,5 +1,7 @@
 using System.Net;
+using System.Net.Sockets;
 using System.Net.WebSockets;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using NKaspa.RPC;
@@ -309,6 +311,103 @@ namespace NKaspa.Tests
             }
         }
 
+        /// <summary>
+        /// Drops the accepted peer. Managed HttpListener builds the WebSocket on a NetworkStream
+        /// that does not own the TCP socket, so WebSocket.Abort leaves the connection open.
+        /// Reset that socket when the private HttpConnection is present. Windows HTTP.sys has no
+        /// such field; Abort still closes that stack.
+        /// </summary>
+        private static void DropPeer(HttpListenerContext context, WebSocket? socket)
+        {
+            ResetManagedSocket(context);
+            try
+            {
+                socket?.Abort();
+            }
+            catch (Exception)
+            {
+            }
+
+            try
+            {
+                socket?.Dispose();
+            }
+            catch (Exception)
+            {
+            }
+
+            try
+            {
+                context.Response.Abort();
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        /// <summary>Writes a 503 and then resets the socket so the listener cannot keep the connection.</summary>
+        private static void RefuseHttp(HttpListenerContext context)
+        {
+            try
+            {
+                context.Response.StatusCode = 503;
+                context.Response.KeepAlive = false;
+                context.Response.ContentLength64 = 0;
+                context.Response.Close();
+            }
+            catch (Exception)
+            {
+            }
+
+            ResetManagedSocket(context);
+        }
+
+        private static void ResetManagedSocket(HttpListenerContext context)
+        {
+            try
+            {
+                const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+                var contextType = context.GetType();
+                var connection = contextType.GetField("_connection", flags)?.GetValue(context);
+                if (connection == null)
+                {
+                    connection = contextType.GetProperty("Connection", flags)?.GetValue(context);
+                }
+
+                if (connection == null)
+                {
+                    return;
+                }
+
+                var socketField = connection.GetType().GetField("_socket", flags);
+                if (socketField?.GetValue(connection) is Socket tcp)
+                {
+                    try
+                    {
+                        tcp.LingerState = new LingerOption(true, 0);
+                        tcp.Close(0);
+                    }
+                    catch (Exception)
+                    {
+                    }
+
+                    try
+                    {
+                        socketField.SetValue(connection, null);
+                    }
+                    catch (Exception)
+                    {
+                    }
+                }
+
+                var close = connection.GetType().GetMethod("Close", flags, null, new[] { typeof(bool) }, null);
+                close?.Invoke(connection, new object[] { true });
+            }
+            catch (Exception)
+            {
+            }
+        }
+
         private static async Task ServePayloadAsync(HttpListener listener, byte[] payload, bool fragment)
         {
             var context = await listener.GetContextAsync();
@@ -331,8 +430,7 @@ namespace NKaspa.Tests
             }
             finally
             {
-                socket.Abort();
-                socket.Dispose();
+                DropPeer(context, socket);
             }
         }
 
@@ -355,8 +453,7 @@ namespace NKaspa.Tests
             }
             finally
             {
-                webSocket.Abort();
-                webSocket.Dispose();
+                DropPeer(context, webSocket);
             }
         }
 
@@ -377,8 +474,7 @@ namespace NKaspa.Tests
             }
             finally
             {
-                socket.Abort();
-                socket.Dispose();
+                DropPeer(context, socket);
             }
         }
 
@@ -392,8 +488,7 @@ namespace NKaspa.Tests
             }
             finally
             {
-                socket.Abort();
-                socket.Dispose();
+                DropPeer(context, socket);
             }
         }
 
@@ -422,14 +517,12 @@ namespace NKaspa.Tests
                     }
                     finally
                     {
-                        socket.Abort();
-                        socket.Dispose();
+                        DropPeer(context, socket);
                     }
                 }
                 else
                 {
-                    context.Response.StatusCode = 503;
-                    context.Response.Close();
+                    RefuseHttp(context);
                 }
             }
         }

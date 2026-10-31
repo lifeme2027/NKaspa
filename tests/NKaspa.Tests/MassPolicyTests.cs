@@ -4,8 +4,10 @@ using Xunit;
 namespace NKaspa.Tests
 {
     /// <summary>
-    /// Activation scores: mainnet 474165565 from the Toccata upgrade guide, testnet-10 467579632 from rusty-kaspa PR 1082.
-    /// Block limits are the single triple in current params.rs. The cap and the relay rate are what activation changes.
+    /// Activation scores: mainnet 474165565 from docs/toccata-guide.md line 3 at 4edcbbcc.
+    /// Testnet-10 467579632 is params.rs line 783 on tag tn10-toc2 (97415b68) and line 784 on tn10-toc3 (1015a623).
+    /// 476232000 is zk_hardening_activation on tn10-toc3 params.rs line 786, not the Toccata score.
+    /// Block limits are the single triple in current params.rs. Activation changes the cap. The relay rate stays 100.
     /// </summary>
     public class MassPolicyTests
     {
@@ -42,7 +44,7 @@ namespace NKaspa.Tests
             Assert.False(mainnetBefore.ToccataActive);
             Assert.True(mainnetAt.ToccataActive);
             Assert.Equal(100_000UL, mainnetBefore.MaximumTransactionMass);
-            Assert.Equal(1UL, mainnetBefore.MinimumRelayFeeRate);
+            Assert.Equal(100UL, mainnetBefore.MinimumRelayFeeRate);
             Assert.Equal(10_000_000UL, mainnetBefore.MinimumChange.Sompi);
             Assert.Equal(500_000UL, mainnetAt.MaximumTransactionMass);
             Assert.Equal(100UL, mainnetAt.MinimumRelayFeeRate);
@@ -68,7 +70,7 @@ namespace NKaspa.Tests
                 .SendFees(new Money(95_238_096));
             Assert.Equal(100_000UL, before.MaximumMass);
             Assert.Equal(10_000_000UL, before.MinimumChange.Sompi);
-            Assert.Equal(1UL, before.MinimumRelayFeeRate);
+            Assert.Equal(100UL, before.MinimumRelayFeeRate);
             var error = Assert.Throws<InvalidOperationException>(() => before.BuildTransaction(true));
             Assert.Contains("mass", error.Message, StringComparison.OrdinalIgnoreCase);
 
@@ -83,8 +85,11 @@ namespace NKaspa.Tests
         }
 
         [Fact]
-        public void Pre_toccata_minimum_relay_fee_is_one_sompi_per_relay_gram()
+        public void Pre_toccata_minimum_relay_fee_matches_the_post_toccata_rate()
         {
+            Assert.Equal(100UL, MassPolicy.PreToccataMinimumRelayFeeRate);
+            Assert.Equal(MassPolicy.PostToccataMinimumRelayFeeRate, MassPolicy.PreToccataMinimumRelayFeeRate);
+
             using var payer = Key.Parse(SecretA);
             using var payee = Key.Parse("B7E151628AED2A6ABF7158809CF4F3C762E7160F38B4DA56A784D9045190CFEF");
             var coin = new Coin(new OutPoint(new uint256(12), 0), new UtxoEntry(1_000_000_000UL, payer.PubKey.GetScriptPubKey(), 1, false));
@@ -98,8 +103,26 @@ namespace NKaspa.Tests
             var tx = builder.BuildTransaction(true);
             var paid = coin.Amount.Sompi - tx.Outputs[0].Value.Sompi - tx.Outputs[1].Value.Sompi;
             var mass = MassCalculator.Calculate(tx, new[] { coin.Utxo }, builder.MassLimits);
-            Assert.Equal(MassCalculator.RelayMass(mass) * MassPolicy.PreToccataMinimumRelayFeeRate, paid);
-            Assert.NotEqual(MassCalculator.RelayMass(mass) * 100, paid);
+            Assert.Equal(MassCalculator.RelayMass(mass) * 100, paid);
+            Assert.Equal(0UL, builder.ChangeFoldedIntoFee.Sompi);
+        }
+
+        [Fact]
+        public void Toccata_activation_score_can_be_replaced_without_changing_the_network_identity()
+        {
+            var overridden = Network.Testnet.WithToccataActivationDaaScore(Network.TestnetZkHardeningActivationDaaScore);
+            Assert.Equal(476_232_000UL, Network.TestnetZkHardeningActivationDaaScore);
+            Assert.Equal(476_232_000UL, overridden.ToccataActivationDaaScore);
+            Assert.Equal(Network.Testnet.AddressPrefix, overridden.AddressPrefix);
+            Assert.Equal(Network.Testnet.P2PPort, overridden.P2PPort);
+            Assert.Equal(Network.Testnet.ExtPubKeyVersion, overridden.ExtPubKeyVersion);
+            Assert.Equal(467_579_632UL, Network.Testnet.ToccataActivationDaaScore);
+            Assert.False(overridden.IsToccataActive(467_579_632));
+            Assert.True(overridden.IsToccataActive(476_232_000));
+            Assert.Equal(100UL, overridden.MassPolicyAt(467_579_632).MinimumRelayFeeRate);
+            Assert.Equal(100_000UL, overridden.MassPolicyAt(467_579_632).MaximumTransactionMass);
+            Assert.Equal(500_000UL, overridden.MassPolicyAt(476_232_000).MaximumTransactionMass);
+            Assert.True(Network.Testnet.IsToccataActive(467_579_632));
         }
 
         [Fact]

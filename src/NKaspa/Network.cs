@@ -24,20 +24,36 @@ namespace NKaspa
         }
 
         /// <summary>
-        /// Mainnet Toccata activation DAA score from the rusty-kaspa upgrade guide,
-        /// commit <c>90dbf074275d60c1fe74a3491883196f110970c0</c>, about 2026-06-30 16:15 UTC.
-        /// Current rusty-kaspa master no longer branches on this score.
-        /// params.rs sets the same post-fork block mass limits on mainnet, testnet, simnet, and devnet.
-        /// The activation scores themselves are not in that file.
+        /// Mainnet Toccata activation DAA score, 474165565.
+        /// rusty-kaspa master <c>4edcbbccb449f84832afb1ca157904b35f37d006</c>,
+        /// <c>docs/toccata-guide.md</c> line 3.
+        /// The same guide was published with tag v2.0.0, commit <c>90dbf074275d60c1fe74a3491883196f110970c0</c>.
+        /// Current <c>consensus/core/src/config/params.rs</c> no longer has <c>toccata_activation</c>.
+        /// Its override parser rejects that field. Block mass limits in that file are already the post-fork triple.
         /// </summary>
         public const ulong MainnetToccataActivationDaaScore = 474_165_565;
 
         /// <summary>
         /// Testnet-10 Toccata activation DAA score, 467579632.
-        /// rusty-kaspa pull request 1082 (Toccata cleanup) records this as the testnet activation,
-        /// the tn10-toc2 score. It is not a field in current <c>params.rs</c>.
+        /// rusty-kaspa tag tn10-toc2, commit <c>97415b689462bec8a1a36f1665302529ea8a3108</c>,
+        /// <c>consensus/core/src/config/params.rs</c> line 783:
+        /// <c>toccata_activation: ForkActivation::new(467_579_632)</c>.
+        /// Tag tn10-toc3, commit <c>1015a62359e0d06e0b3b3b7f7d06bc1bd4bf0c1b</c>, repeats it at line 784.
+        /// Master <c>4edcbbccb449f84832afb1ca157904b35f37d006</c> removed the field.
+        /// <see cref="WithToccataActivationDaaScore"/> replaces this score for one network value.
         /// </summary>
         public const ulong TestnetToccataActivationDaaScore = 467_579_632;
+
+        /// <summary>
+        /// Testnet-10 ZK-hardening DAA score, 476232000. This is not the Toccata activation.
+        /// rusty-kaspa tag tn10-toc3, commit <c>1015a62359e0d06e0b3b3b7f7d06bc1bd4bf0c1b</c>,
+        /// <c>consensus/core/src/config/params.rs</c> line 786:
+        /// <c>zk_hardening_activation: ForkActivation::new(476_232_000)</c>.
+        /// Master <c>4edcbbccb449f84832afb1ca157904b35f37d006</c> does not contain this field.
+        /// <see cref="Testnet"/> does not use it. Pass it to <see cref="WithToccataActivationDaaScore"/>
+        /// only when that checkpoint should be the policy switch.
+        /// </summary>
+        public const ulong TestnetZkHardeningActivationDaaScore = 476_232_000;
 
         /// <summary>Mainnet. Address prefix <c>kaspa</c>. Extended keys use <c>kpub</c> and <c>kprv</c>.</summary>
         public static Network Mainnet { get; } = new Network("mainnet", "kaspa", 16111, HdKeyVersions.Kpub, HdKeyVersions.Kprv, Policy.BlockMassLimits.Default, MainnetToccataActivationDaaScore);
@@ -90,8 +106,19 @@ namespace NKaspa
         /// <summary>
         /// DAA score at which <see cref="MassPolicyAt"/> returns <see cref="Policy.MassPolicy.PostToccata"/>.
         /// Zero means every score is post-Toccata. That is simnet, and devnet on current rusty-kaspa master.
+        /// Replace it with <see cref="WithToccataActivationDaaScore"/>.
         /// </summary>
         public ulong ToccataActivationDaaScore { get; }
+
+        /// <summary>
+        /// Same network identity with a different <see cref="ToccataActivationDaaScore"/>.
+        /// Address prefix, ports, and extended-key versions stay. The relay rate does not change with the score.
+        /// Both policies charge 100 sompi per gram. The score only selects the per-transaction mass cap.
+        /// </summary>
+        public Network WithToccataActivationDaaScore(ulong daaScore)
+        {
+            return new Network(Name, AddressPrefix, P2PPort, ExtPubKeyVersion, ExtPrivKeyVersion, MassLimits, daaScore);
+        }
 
         /// <summary>True when <paramref name="virtualDaaScore"/> has reached <see cref="ToccataActivationDaaScore"/>.</summary>
         public bool IsToccataActive(ulong virtualDaaScore)
@@ -101,7 +128,7 @@ namespace NKaspa
 
         /// <summary>
         /// Mass policy a builder should use at <paramref name="virtualDaaScore"/>.
-        /// Below the activation score this is <see cref="Policy.MassPolicy.PreToccata"/> (cap 100000, relay rate 1).
+        /// Below the activation score this is <see cref="Policy.MassPolicy.PreToccata"/> (cap 100000, relay rate 100).
         /// At and above it, this is <see cref="Policy.MassPolicy.PostToccata"/> (cap 500000, relay rate 100).
         /// </summary>
         public Policy.MassPolicy MassPolicyAt(ulong virtualDaaScore)

@@ -137,31 +137,42 @@ namespace NKaspa.Tests
             Assert.NotEqual(Canonical, string.Join(" ", copy));
         }
 
+        /// <summary>
+        /// Case folding, NFKD, and stripping zero-width marks are NKaspa extensions to BIP39.
+        /// That includes a leading BOM and marks inside a word. ToPhrase stores the canonical
+        /// lowercase wordlist words, so the seed matches other wallets given that phrase.
+        /// A zero-width character used as the only separator is still rejected.
+        /// </summary>
         [Fact]
-        public void Upper_case_ideographic_spaces_and_zero_width_match_the_canonical_sentence()
+        public void Case_fold_nfkd_and_zero_width_are_accepted_as_the_canonical_phrase()
         {
             const string Canonical = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
             var canonical = new Mnemonic(Canonical);
+            var canonicalSeed = Encoders.Hex.EncodeData(canonical.DeriveSeed());
+            var canonicalPassphraseSeed = Encoders.Hex.EncodeData(canonical.DeriveSeed("TREZOR"));
             Assert.True(canonical.IsValidChecksum);
 
-            var upper = Canonical.ToUpperInvariant();
-            var ideographic = string.Join("\u3000\u3000", Canonical.Split(' '));
-            var noisy = "\uFEFF" + ideographic.Replace("abandon", "aban\u200bdon", StringComparison.Ordinal);
-            var fullwidth = "\uFF21bandon " + Canonical.Substring("abandon ".Length);
-            var spaced = " \t" + Canonical.Replace(" ", "  \t ") + "\u3000";
-            var nbsp = Canonical.Replace(" ", "\u00A0", StringComparison.Ordinal);
-
-            foreach (var input in new[] { upper, ideographic, noisy, fullwidth, spaced, nbsp })
-            {
-                var parsed = new Mnemonic(input);
-                Assert.Equal(Canonical, parsed.ToPhrase());
-                Assert.Equal("NKaspa.Mnemonic", parsed.ToString());
-                Assert.True(parsed.IsValidChecksum);
-                Assert.Equal(Encoders.Hex.EncodeData(canonical.DeriveSeed()), Encoders.Hex.EncodeData(parsed.DeriveSeed()));
-                Assert.Equal(Encoders.Hex.EncodeData(canonical.DeriveSeed("TREZOR")), Encoders.Hex.EncodeData(parsed.DeriveSeed("TREZOR")));
-            }
+            AssertExtension(Canonical.ToUpperInvariant(), "uppercase");
+            AssertExtension(string.Join("\u3000\u3000", Canonical.Split(' ')), "ideographic space");
+            AssertExtension("\uFEFF" + Canonical, "leading BOM");
+            AssertExtension(Canonical.Replace("abandon", "aban\u200bdon", StringComparison.Ordinal), "zero-width inside a word");
+            AssertExtension("\uFF21bandon " + Canonical.Substring("abandon ".Length), "fullwidth");
+            AssertExtension(" \t" + Canonical.Replace(" ", "  \t ") + "\u3000", "extra whitespace");
+            AssertExtension(Canonical.Replace(" ", "\u00A0", StringComparison.Ordinal), "nbsp");
+            var noisy = "\uFEFF" + string.Join("\u3000\u3000", Canonical.Split(' ')).Replace("abandon", "aban\u200bdon", StringComparison.Ordinal);
+            AssertExtension(noisy, "bom, ideographic space, and inner zero-width");
 
             Assert.Throws<FormatException>(() => new Mnemonic(Canonical.Replace(" ", "\u200b", StringComparison.Ordinal)));
+
+            void AssertExtension(string input, string name)
+            {
+                var parsed = new Mnemonic(input);
+                Assert.True(parsed.IsValidChecksum, name);
+                Assert.Equal(Canonical, parsed.ToPhrase());
+                Assert.Equal("NKaspa.Mnemonic", parsed.ToString());
+                Assert.Equal(canonicalSeed, Encoders.Hex.EncodeData(parsed.DeriveSeed()));
+                Assert.Equal(canonicalPassphraseSeed, Encoders.Hex.EncodeData(parsed.DeriveSeed("TREZOR")));
+            }
         }
 
         [Fact]
@@ -173,6 +184,7 @@ namespace NKaspa.Tests
             Assert.Equal(
                 Encoders.Hex.EncodeData(mnemonic.DeriveSeed(composed)),
                 Encoders.Hex.EncodeData(mnemonic.DeriveSeed(decomposed)));
+            // The passphrase is NFKD only. Zero-width marks in the passphrase are not stripped.
             Assert.NotEqual(
                 Encoders.Hex.EncodeData(mnemonic.DeriveSeed(composed)),
                 Encoders.Hex.EncodeData(mnemonic.DeriveSeed(composed + "\u200b")));

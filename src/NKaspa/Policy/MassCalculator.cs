@@ -63,7 +63,11 @@ namespace NKaspa.Policy
         public ulong TransientMass { get; }
     }
 
-    /// <summary>Every mass dimension of one transaction, plus the fee-relevant gram count.</summary>
+    /// <summary>
+    /// Every mass dimension of one transaction, plus the fee-relevant gram count.
+    /// Change folded into the fee is not a field of this report.
+    /// That sompi count is <see cref="TransactionBuilder.ChangeFoldedIntoFee"/>.
+    /// </summary>
     public readonly struct TransactionMass
     {
         /// <summary>Creates the report.</summary>

@@ -227,8 +227,7 @@ namespace NKaspa.Tests
                 .SendEstimatedFees(FeeRate.MinimumRelay);
 
             var tx = builder.BuildTransaction(sign: true);
-            Assert.True(builder.ChangeFolded);
-            Assert.Equal(leftover, builder.FoldedChange.Sompi);
+            Assert.Equal(leftover, builder.ChangeFoldedIntoFee.Sompi);
             Assert.Single(tx.Outputs);
             Assert.Equal(input - leftover, tx.Outputs[0].Value.Sompi);
             Assert.Equal(leftover, input - tx.Outputs[0].Value.Sompi);
@@ -252,8 +251,7 @@ namespace NKaspa.Tests
                 .SendEstimatedFees(FeeRate.MinimumRelay);
 
             var tx = builder.BuildTransaction(sign: true);
-            Assert.False(builder.ChangeFolded);
-            Assert.Equal(0UL, builder.FoldedChange.Sompi);
+            Assert.Equal(0UL, builder.ChangeFoldedIntoFee.Sompi);
             Assert.Equal(2, tx.Outputs.Count);
             Assert.Equal(input - leftover, tx.Outputs[0].Value.Sompi);
             var fee = input - tx.Outputs[0].Value.Sompi - tx.Outputs[1].Value.Sompi;
@@ -284,8 +282,7 @@ namespace NKaspa.Tests
             Assert.Contains("mass", error.Message, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("Split the send or add inputs", error.Message, StringComparison.Ordinal);
             Assert.DoesNotContain("Not enough funds", error.Message, StringComparison.Ordinal);
-            Assert.False(builder.ChangeFolded);
-            Assert.Equal(0UL, builder.FoldedChange.Sompi);
+            Assert.Equal(0UL, builder.ChangeFoldedIntoFee.Sompi);
         }
 
         [Fact]
@@ -304,7 +301,7 @@ namespace NKaspa.Tests
                 .SendEstimatedFees(new FeeRate(150));
 
             var tx = builder.BuildTransaction(sign: true);
-            Assert.False(builder.ChangeFolded);
+            Assert.Equal(0UL, builder.ChangeFoldedIntoFee.Sompi);
             Assert.Equal(2, tx.Outputs.Count);
             Assert.Equal(send, tx.Outputs[0].Value.Sompi);
             var fee = input - tx.Outputs[0].Value.Sompi - tx.Outputs[1].Value.Sompi;
@@ -332,8 +329,7 @@ namespace NKaspa.Tests
             Assert.Contains("mass", error.Message, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("Split the send or add inputs", error.Message, StringComparison.Ordinal);
             Assert.DoesNotContain("Not enough funds", error.Message, StringComparison.Ordinal);
-            Assert.False(builder.ChangeFolded);
-            Assert.Equal(0UL, builder.FoldedChange.Sompi);
+            Assert.Equal(0UL, builder.ChangeFoldedIntoFee.Sompi);
         }
 
         [Fact]
