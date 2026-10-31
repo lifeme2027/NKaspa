@@ -137,6 +137,13 @@ namespace NKaspa
             return _encoded.GetHashCode();
         }
 
+        /// <summary>Returns whether two addresses encode the same text. Two null references are equal.</summary>
+        /// <param name="left">Left address, or null.</param>
+        /// <param name="right">Right address, or null.</param>
+        /// <returns><see langword="true"/> when both are null or both encode the same cashaddr string.</returns>
+        /// <example>
+        /// <para>Parsing the same text twice compares equal. A null reference equals only another null reference.</para>
+        /// </example>
         public static bool operator ==(KaspaAddress? left, KaspaAddress? right)
         {
             if (left is null)
@@ -147,6 +154,10 @@ namespace NKaspa
             return left.Equals(right);
         }
 
+        /// <summary>Returns whether two addresses differ. A null reference differs from any address.</summary>
+        /// <param name="left">Left address, or null.</param>
+        /// <param name="right">Right address, or null.</param>
+        /// <returns><see langword="true"/> when <paramref name="left"/> and <paramref name="right"/> are not equal.</returns>
         public static bool operator !=(KaspaAddress? left, KaspaAddress? right)
         {
             return !(left == right);

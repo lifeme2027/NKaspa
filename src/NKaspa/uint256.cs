@@ -314,6 +314,13 @@ namespace NKaspa
             }
         }
 
+        /// <summary>Returns whether two hashes have the same 32 bytes. Two null references are equal.</summary>
+        /// <param name="left">Left hash, or null.</param>
+        /// <param name="right">Right hash, or null.</param>
+        /// <returns><see langword="true"/> when both are null or <see cref="Equals(uint256)"/> is true.</returns>
+        /// <example>
+        /// <para>Numeric order treats byte 0 as the least significant byte, so <c>new uint256(1)</c> is less than <c>new uint256(2)</c>.</para>
+        /// </example>
         public static bool operator ==(uint256? left, uint256? right)
         {
             if (left is null)
@@ -324,11 +331,19 @@ namespace NKaspa
             return left.Equals(right);
         }
 
+        /// <summary>Returns whether two hashes differ. A null reference differs from a non-null hash.</summary>
+        /// <param name="left">Left hash, or null.</param>
+        /// <param name="right">Right hash, or null.</param>
+        /// <returns><see langword="true"/> when the hashes are not equal.</returns>
         public static bool operator !=(uint256? left, uint256? right)
         {
             return !(left == right);
         }
 
+        /// <summary>Compares two hashes as little-endian integers. A null operand yields false.</summary>
+        /// <param name="left">Left hash, or null.</param>
+        /// <param name="right">Right hash, or null.</param>
+        /// <returns><see langword="true"/> when neither hash is null and <paramref name="left"/> is strictly less than <paramref name="right"/>.</returns>
         public static bool operator <(uint256? left, uint256? right)
         {
             if (left is null || right is null)
@@ -339,6 +354,10 @@ namespace NKaspa
             return left.CompareTo(right) < 0;
         }
 
+        /// <summary>Compares two hashes as little-endian integers. A null operand yields false.</summary>
+        /// <param name="left">Left hash, or null.</param>
+        /// <param name="right">Right hash, or null.</param>
+        /// <returns><see langword="true"/> when neither hash is null and <paramref name="left"/> is strictly greater than <paramref name="right"/>.</returns>
         public static bool operator >(uint256? left, uint256? right)
         {
             if (left is null || right is null)
@@ -349,6 +368,10 @@ namespace NKaspa
             return left.CompareTo(right) > 0;
         }
 
+        /// <summary>Compares two hashes as little-endian integers. A null operand yields false.</summary>
+        /// <param name="left">Left hash, or null.</param>
+        /// <param name="right">Right hash, or null.</param>
+        /// <returns><see langword="true"/> when neither hash is null and <paramref name="left"/> is less than or equal to <paramref name="right"/>.</returns>
         public static bool operator <=(uint256? left, uint256? right)
         {
             if (left is null || right is null)
@@ -359,6 +382,10 @@ namespace NKaspa
             return left.CompareTo(right) <= 0;
         }
 
+        /// <summary>Compares two hashes as little-endian integers. A null operand yields false.</summary>
+        /// <param name="left">Left hash, or null.</param>
+        /// <param name="right">Right hash, or null.</param>
+        /// <returns><see langword="true"/> when neither hash is null and <paramref name="left"/> is greater than or equal to <paramref name="right"/>.</returns>
         public static bool operator >=(uint256? left, uint256? right)
         {
             if (left is null || right is null)
