@@ -14,12 +14,14 @@ namespace NKaspa
         private Script _signatureScript;
 
         /// <summary>Creates an input. The signature script starts empty and the sequence is 0.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="previousOutpoint"/> is null.</exception>
         public TxIn(OutPoint previousOutpoint)
             : this(previousOutpoint, Script.Empty, 0, 0)
         {
         }
 
         /// <summary>Creates an input.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="signatureScript"/> is null. <paramref name="previousOutpoint"/> is null.</exception>
         public TxIn(OutPoint previousOutpoint, Script signatureScript, ulong sequence, byte sigOpCount)
         {
             PreviousOutpoint = previousOutpoint ?? throw new ArgumentNullException(nameof(previousOutpoint));
@@ -32,6 +34,7 @@ namespace NKaspa
         /// Creates a version-1 input that commits a compute budget.
         /// <see cref="SigOpCount"/> stays 0. One budget unit is 100 compute grams.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="signatureScript"/> is null. <paramref name="previousOutpoint"/> is null.</exception>
         public static TxIn WithComputeBudget(OutPoint previousOutpoint, Script signatureScript, ulong sequence, ushort computeBudget)
         {
             var input = new TxIn(previousOutpoint, signatureScript, sequence, 0);
@@ -43,6 +46,7 @@ namespace NKaspa
         public OutPoint PreviousOutpoint { get; set; }
 
         /// <summary>Signature script. Empty until the input is signed.</summary>
+        /// <exception cref="System.ArgumentNullException">The assigned value is null.</exception>
         public Script SignatureScript
         {
             get { return _signatureScript; }

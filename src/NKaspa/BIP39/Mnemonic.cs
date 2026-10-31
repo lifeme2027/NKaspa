@@ -17,6 +17,8 @@ namespace NKaspa
         private readonly int[] _indexes;
 
         /// <summary>Parses a mnemonic. The default wordlist is English.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="mnemonic"/> is null.</exception>
+        /// <exception cref="System.FormatException">Word count should be 12, 15, 18, 21, or 24. Unknown BIP39 word.</exception>
         public Mnemonic(string mnemonic, Wordlist? wordlist = null)
         {
             if (mnemonic == null)
@@ -42,6 +44,9 @@ namespace NKaspa
         }
 
         /// <summary>Builds a mnemonic from entropy. The length must be 16, 20, 24, 28, or 32 bytes.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="entropy"/> is null. <paramref name="wordlist"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
+        /// <exception cref="System.ArgumentException">Entropy must be 128, 160, 192, 224, or 256 bits.</exception>
         public Mnemonic(Wordlist wordlist, byte[] entropy)
         {
             if (wordlist == null)
@@ -62,6 +67,9 @@ namespace NKaspa
         }
 
         /// <summary>Draws entropy for <paramref name="wordCount"/> and builds a mnemonic.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="wordlist"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
+        /// <exception cref="System.ArgumentException">Entropy must be 128, 160, 192, 224, or 256 bits. Word count should be 12, 15, 18, 21, or 24.</exception>
         public Mnemonic(Wordlist wordlist, WordCount wordCount)
             : this(wordlist, DrawEntropy(wordCount))
         {
@@ -90,6 +98,8 @@ namespace NKaspa
         }
 
         /// <summary>Master extended key from <see cref="DeriveSeed"/>.</summary>
+        /// <exception cref="System.ArgumentException">BIP32 seed must be between 16 and 64 bytes. Private key is zero or not in the secp256k1 range. Private key must be 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">BIP32 master key is invalid.</exception>
         public ExtKey DeriveExtKey(string? passphrase = null)
         {
             var seed = DeriveSeed(passphrase);

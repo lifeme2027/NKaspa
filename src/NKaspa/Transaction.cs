@@ -33,12 +33,14 @@ namespace NKaspa
         private byte[] _payload;
 
         /// <summary>Creates an empty native version-0 transaction.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
         public Transaction()
             : this(0, Array.Empty<TxIn>(), Array.Empty<TxOut>(), 0, SubnetworkId.Native, 0, Array.Empty<byte>())
         {
         }
 
         /// <summary>Creates a transaction. The input and output lists are copied.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="payload"/> is null. <paramref name="outputs"/> is null. <paramref name="inputs"/> is null.</exception>
         public Transaction(
             ushort version,
             IEnumerable<TxIn> inputs,
@@ -91,6 +93,7 @@ namespace NKaspa
         public ulong Gas { get; set; }
 
         /// <summary>A copy of the payload.</summary>
+        /// <exception cref="System.ArgumentNullException">The assigned value is null.</exception>
         public byte[] Payload
         {
             get { return (byte[])_payload.Clone(); }
@@ -113,24 +116,47 @@ namespace NKaspa
         public ulong StorageMass { get; set; }
 
         /// <summary>Transaction id. Version 0 is keyed BLAKE2b. Version 1 and later are keyed BLAKE3.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">BLAKE3 domain must fit in 32 bytes. BLAKE3 key must be 32 bytes. BLAKE2b key must be at most 64 bytes.</exception>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">Transaction input is missing an outpoint. Transaction output is missing a script. BLAKE2b hasher is already finished.</exception>
         public uint256 GetId()
         {
             return SigHash.TransactionId(this);
         }
 
         /// <summary>Transaction hash. Keyed BLAKE2b over the full encoding, for every supported version.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">BLAKE2b key must be at most 64 bytes.</exception>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">BLAKE2b hasher is already finished. Transaction input is missing an outpoint. Transaction output is missing a script.</exception>
         public uint256 GetHash()
         {
             return SigHash.TransactionHash(this);
         }
 
         /// <summary>Schnorr signature hash for one input.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="utxo"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="inputIndex"/> is outside the allowed range. BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">Sighash type is not one of the six Kaspa values. BLAKE2b key must be at most 64 bytes.</exception>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">Transaction input is missing an outpoint. BLAKE2b hasher is already finished. Transaction output is missing a script.</exception>
         public uint256 GetSignatureHash(int inputIndex, UtxoEntry utxo, SigHashType hashType = SigHashType.All)
         {
             return SigHash.CalcSchnorrSignatureHash(this, inputIndex, utxo, hashType);
         }
 
         /// <summary>ECDSA signature hash for one input.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="utxo"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="inputIndex"/> is outside the allowed range. BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">Sighash type is not one of the six Kaspa values. BLAKE2b key must be at most 64 bytes.</exception>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">
+        /// SHA256 did not produce a digest. Transaction input is missing an outpoint. BLAKE2b hasher is already
+        /// finished. Transaction output is missing a script.
+        /// </exception>
         public uint256 GetEcdsaSignatureHash(int inputIndex, UtxoEntry utxo, SigHashType hashType = SigHashType.All)
         {
             return SigHash.CalcEcdsaSignatureHash(this, inputIndex, utxo, hashType);
@@ -141,6 +167,22 @@ namespace NKaspa
         /// A Schnorr template uses BIP-340. An ECDSA template uses RFC 6979 compact signatures.
         /// The call does not change <see cref="TxIn.SigOpCount"/>.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="utxo"/> is null. <paramref name="key"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="inputIndex"/> is outside the allowed range. BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// Sighash type is not one of the six Kaspa values. Signature must be 64 bytes. BIP-340 auxiliary
+        /// randomness must be empty or 32 bytes. Schnorr message must be 32 bytes. Schnorr signature must be 64
+        /// bytes. BLAKE2b key must be at most 64 bytes. ECDSA message must be 32 bytes. ECDSA signature must be
+        /// 64 bytes.
+        /// </exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated. uint256 requires 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">
+        /// SignInput signs pay-to-pubkey scripts. Build a pay-to-script-hash signature with
+        /// Script.PayToScriptHashSignature. Stored private key is no longer valid. Transaction input is missing
+        /// an outpoint. BLAKE2b hasher is already finished. Transaction output is missing a script. SHA256 did
+        /// not produce a digest.
+        /// </exception>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed.</exception>
         public void SignInput(int inputIndex, Key key, UtxoEntry utxo, SigHashType hashType = SigHashType.All)
         {
             if (key == null)
@@ -181,6 +223,11 @@ namespace NKaspa
         }
 
         /// <summary>Verifies the Schnorr signature script on one input against <paramref name="publicKey"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="publicKey"/> is null. <paramref name="utxo"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="inputIndex"/> is outside the allowed range. BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">Schnorr signature must be 64 bytes. Sighash type is not one of the six Kaspa values. BLAKE2b key must be at most 64 bytes.</exception>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">Transaction input is missing an outpoint. BLAKE2b hasher is already finished. Transaction output is missing a script.</exception>
         public bool VerifyInput(int inputIndex, PubKey publicKey, UtxoEntry utxo)
         {
             if (publicKey == null)
@@ -198,6 +245,14 @@ namespace NKaspa
         }
 
         /// <summary>Verifies the ECDSA signature script on one input against <paramref name="publicKey"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="publicKey"/> is null. <paramref name="utxo"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="inputIndex"/> is outside the allowed range. BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">ECDSA signature must be 64 bytes. Sighash type is not one of the six Kaspa values. BLAKE2b key must be at most 64 bytes.</exception>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">
+        /// SHA256 did not produce a digest. Transaction input is missing an outpoint. BLAKE2b hasher is already
+        /// finished. Transaction output is missing a script.
+        /// </exception>
         public bool VerifyInput(int inputIndex, PubKeyECDSA publicKey, UtxoEntry utxo)
         {
             if (publicKey == null)
@@ -218,6 +273,46 @@ namespace NKaspa
         /// Runs the script engine on one input against <paramref name="utxo"/>.
         /// Spent outputs of the other inputs are omitted, so introspection of those inputs fails.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="utxo"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="inputIndex"/> is outside the allowed range. BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// The spent output for this input is missing. BLAKE3 key must be 32 bytes. wRPC request is missing a
+        /// numeric id. Set PointOfView or ChainBlock, not both. PointOfView is the selected parent P.
+        /// ChainBlock is the chain block B whose selected parent becomes P. Sighash type is not one of the six
+        /// Kaspa values. BLAKE2b key must be at most 64 bytes.
+        /// </exception>
+        /// <exception cref="System.FormatException">
+        /// Expected a boolean for isChainBlock. Expected a hex hash for {name}. uint256 hex must be 32 bytes.
+        /// uint256 requires 32 bytes. Hex string contains a non-hex character. Hex string length must be even.
+        /// Expected an unsigned 64-bit integer. JSON number does not fit in an unsigned 64-bit integer.
+        /// Expected a parent hash. Expected parent hashes. Expected an array for parents. Missing JSON string
+        /// {name}. Missing JSON property {name}. Hash is missing. networkId is not a string or an object.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">
+        /// WebSocket is not connected. Call ConnectAsync first. Transaction input is missing an outpoint.
+        /// BLAKE2b hasher is already finished. Transaction output is missing a script. SHA256 did not produce a
+        /// digest.
+        /// </exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC response has no params. RPC response id does not match the request. RPC error.</exception>
+        /// <exception cref="NKaspa.RPC.ConsensusSeqCommitException">
+        /// acceptedIdMerkleRoot is missing for {target.Hash}. seq commitment was requested for {target.Hash},
+        /// which is not a selected-parent ancestor of {pov.Hash}. header blueScore does not match verboseData
+        /// blueScore for {block.Hash}. blueScore is missing for {block.Hash}. getBlockDagInfo.sink changed from
+        /// {previous} to {dag.Sink} and the new selected chain does not contain {anchor}.
+        /// verboseData.isChainBlock is missing for {current.Hash}. selected parent chain cycled at
+        /// {current.Hash}. isChainBlock is false for {block.Hash} on the selected chain.
+        /// verboseData.isChainBlock is missing for {block.Hash}. getBlock did not return {hash}. The node data
+        /// is incomplete. verboseData.hash {block.VerboseHash} does not match the requested block {block.Hash}.
+        /// header.hash {block.HeaderHash} does not match the requested block {block.Hash}. Request limit of
+        /// {_maxRequests.ToString(System.Globalization.CultureInfo.InvariantCulture)} was reached before the
+        /// selected parent chain could be checked. blue score does not decrease from {child.Hash}
+        /// ({childScore.ToString(System.Globalization.CultureInfo.InvariantCulture)}) to selected parent
+        /// {parent.Hash} ({parentScore.ToString(System.Globalization.CultureInfo.InvariantCulture)}). selected
+        /// parent walk reached {block.Hash} but isChainBlock is false. isChainBlock is false for {block.Hash}
+        /// and getBlockDagInfo.sink changed from {previous} to {again.Sink}. getBlockDagInfo failed:
+        /// {ex.Message}. selectedParentHash {block.SelectedParentHash} does not match the first direct parent
+        /// {block.DirectParent} of {block.Hash}. Further failures of this type use the same exception.
+        /// </exception>
         public bool VerifyInput(int inputIndex, UtxoEntry utxo)
         {
             if (utxo == null)
@@ -241,6 +336,47 @@ namespace NKaspa
         /// Runs the script engine on every input. <paramref name="utxos"/> is parallel to <see cref="Inputs"/>.
         /// A script failure returns false. Null entries and a different count throw <see cref="ArgumentException"/>.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="utxos"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// Spent output {i.ToString()} is missing. The spent output list must have one entry per input. The
+        /// spent output for this input is missing. BLAKE3 key must be 32 bytes. wRPC request is missing a
+        /// numeric id. Set PointOfView or ChainBlock, not both. PointOfView is the selected parent P.
+        /// ChainBlock is the chain block B whose selected parent becomes P. Sighash type is not one of the six
+        /// Kaspa values. BLAKE2b key must be at most 64 bytes.
+        /// </exception>
+        /// <exception cref="System.FormatException">
+        /// Expected a boolean for isChainBlock. Expected a hex hash for {name}. uint256 hex must be 32 bytes.
+        /// uint256 requires 32 bytes. Hex string contains a non-hex character. Hex string length must be even.
+        /// Expected an unsigned 64-bit integer. JSON number does not fit in an unsigned 64-bit integer.
+        /// Expected a parent hash. Expected parent hashes. Expected an array for parents. Missing JSON string
+        /// {name}. Missing JSON property {name}. Hash is missing. networkId is not a string or an object.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">
+        /// WebSocket is not connected. Call ConnectAsync first. Transaction input is missing an outpoint.
+        /// BLAKE2b hasher is already finished. Transaction output is missing a script. SHA256 did not produce a
+        /// digest.
+        /// </exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC response has no params. RPC response id does not match the request. RPC error.</exception>
+        /// <exception cref="NKaspa.RPC.ConsensusSeqCommitException">
+        /// acceptedIdMerkleRoot is missing for {target.Hash}. seq commitment was requested for {target.Hash},
+        /// which is not a selected-parent ancestor of {pov.Hash}. header blueScore does not match verboseData
+        /// blueScore for {block.Hash}. blueScore is missing for {block.Hash}. getBlockDagInfo.sink changed from
+        /// {previous} to {dag.Sink} and the new selected chain does not contain {anchor}.
+        /// verboseData.isChainBlock is missing for {current.Hash}. selected parent chain cycled at
+        /// {current.Hash}. isChainBlock is false for {block.Hash} on the selected chain.
+        /// verboseData.isChainBlock is missing for {block.Hash}. getBlock did not return {hash}. The node data
+        /// is incomplete. verboseData.hash {block.VerboseHash} does not match the requested block {block.Hash}.
+        /// header.hash {block.HeaderHash} does not match the requested block {block.Hash}. Request limit of
+        /// {_maxRequests.ToString(System.Globalization.CultureInfo.InvariantCulture)} was reached before the
+        /// selected parent chain could be checked. blue score does not decrease from {child.Hash}
+        /// ({childScore.ToString(System.Globalization.CultureInfo.InvariantCulture)}) to selected parent
+        /// {parent.Hash} ({parentScore.ToString(System.Globalization.CultureInfo.InvariantCulture)}). selected
+        /// parent walk reached {block.Hash} but isChainBlock is false. isChainBlock is false for {block.Hash}
+        /// and getBlockDagInfo.sink changed from {previous} to {again.Sink}. getBlockDagInfo failed:
+        /// {ex.Message}. selectedParentHash {block.SelectedParentHash} does not match the first direct parent
+        /// {block.DirectParent} of {block.Hash}. Further failures of this type use the same exception.
+        /// </exception>
         public bool Verify(IReadOnlyList<UtxoEntry> utxos)
         {
             if (utxos == null)
@@ -285,12 +421,16 @@ namespace NKaspa
         /// Consensus bytes. Version 0 omits storage mass.
         /// Version 1 includes compute budgets, covenant bytes, and storage mass.
         /// </summary>
+        /// <exception cref="System.InvalidOperationException">Transaction input is missing an outpoint. Transaction output is missing a script.</exception>
         public byte[] ToBytes()
         {
             return Serialize(Version == 0 ? TxEncoding.ExcludeMassCommit : TxEncoding.None);
         }
 
         /// <summary>Lowercase hex of <see cref="ToBytes"/>.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
+        /// <exception cref="System.InvalidOperationException">Transaction input is missing an outpoint. Transaction output is missing a script.</exception>
         public string ToHex()
         {
             return Encoders.Hex.EncodeData(ToBytes());
@@ -300,6 +440,14 @@ namespace NKaspa
         /// Reads a version-0 or version-1 transaction.
         /// Version 0 leaves storage mass at zero. Version 1 reads the storage mass that follows the payload.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentException">Subnetwork id must be 20 bytes.</exception>
+        /// <exception cref="System.FormatException">
+        /// Transaction has trailing bytes. Transaction is truncated. Transaction field is too long. Covenant
+        /// flag must be 0 or 1. Transaction output count is invalid. uint256 requires 32 bytes. Transaction
+        /// input count is invalid. Script push is too long. Script push is truncated.
+        /// </exception>
+        /// <exception cref="System.NotSupportedException">Only version 0 and version 1 transactions can be deserialized.</exception>
         public static Transaction FromBytes(ReadOnlySpan<byte> bytes)
         {
             var reader = new KaspaReader(bytes);
@@ -330,6 +478,15 @@ namespace NKaspa
         }
 
         /// <summary>Reads a version-0 transaction from hex.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="hex"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">Subnetwork id must be 20 bytes.</exception>
+        /// <exception cref="System.FormatException">
+        /// Transaction has trailing bytes. Transaction is truncated. Transaction field is too long. Covenant
+        /// flag must be 0 or 1. Transaction output count is invalid. uint256 requires 32 bytes. Transaction
+        /// input count is invalid. Script push is too long. Script push is truncated. Hex string contains a
+        /// non-hex character. Hex string length must be even.
+        /// </exception>
+        /// <exception cref="System.NotSupportedException">Only version 0 and version 1 transactions can be deserialized.</exception>
         public static Transaction FromHex(string hex)
         {
             if (hex == null)

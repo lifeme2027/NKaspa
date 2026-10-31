@@ -12,6 +12,8 @@ namespace NKaspa.DataEncoders
         private static readonly int[] Map = BuildMap();
 
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException"><paramref name="data"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="offset"/> is outside the allowed range.</exception>
         public override string EncodeData(byte[] data, int offset, int count)
         {
             if (data == null)
@@ -28,6 +30,8 @@ namespace NKaspa.DataEncoders
         }
 
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException"><paramref name="encoded"/> is null.</exception>
+        /// <exception cref="System.FormatException">Base58 value does not fit in the decode buffer. Invalid Base58 character.</exception>
         public override byte[] DecodeData(string encoded)
         {
             return Decode(encoded);
@@ -75,6 +79,8 @@ namespace NKaspa.DataEncoders
         }
 
         /// <summary>Decodes a Base58 string. An unknown character throws <see cref="FormatException"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="encoded"/> is null.</exception>
+        /// <exception cref="System.FormatException">Base58 value does not fit in the decode buffer. Invalid Base58 character.</exception>
         public static byte[] Decode(string encoded)
         {
             if (encoded == null)

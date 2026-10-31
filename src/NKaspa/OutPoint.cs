@@ -7,6 +7,7 @@ namespace NKaspa
     public sealed class OutPoint : IEquatable<OutPoint>
     {
         /// <summary>Creates an outpoint. <paramref name="transactionId"/> is the Kaspa transaction id in wire order.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="transactionId"/> is null.</exception>
         public OutPoint(uint256 transactionId, uint index)
         {
             TransactionId = transactionId ?? throw new ArgumentNullException(nameof(transactionId));
@@ -20,6 +21,8 @@ namespace NKaspa
         public uint Index { get; }
 
         /// <summary>Wire-order id, a colon, and the index.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
         public override string ToString()
         {
             return TransactionId.ToString() + ":" + Index.ToString(System.Globalization.CultureInfo.InvariantCulture);

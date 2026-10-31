@@ -40,6 +40,9 @@ namespace NKaspa
         /// <paramref name="target"/> is the payment plus the fee and does not include change.
         /// Duplicate outpoints keep the first coin. The result is ordered by amount descending, then outpoint.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="coins"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">The selection target must be greater than zero.</exception>
+        /// <exception cref="System.InvalidOperationException">Not enough funds.</exception>
         public List<Coin> Select(IReadOnlyList<Coin> coins, Money target)
         {
             if (target.Sompi == 0)

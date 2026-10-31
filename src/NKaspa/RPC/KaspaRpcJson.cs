@@ -22,6 +22,8 @@ namespace NKaspa.RPC
     public static class KaspaRpcJson
     {
         /// <summary>Serializes <paramref name="transaction"/> as one JSON object.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="transaction"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
         public static string WriteTransaction(Transaction transaction)
         {
             using var stream = new MemoryStream();
@@ -34,6 +36,18 @@ namespace NKaspa.RPC
         }
 
         /// <summary>Parses one transaction object.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="json"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">Subnetwork id must be 20 bytes.</exception>
+        /// <exception cref="System.FormatException">
+        /// mass and storageMass do not match. Expected an unsigned 64-bit integer. JSON number does not fit in
+        /// an unsigned 64-bit integer. Expected hex string. Hex string contains a non-hex character. Hex string
+        /// length must be even. Transaction output is missing value. authorizingInput does not fit in an
+        /// unsigned 16-bit integer. uint256 hex must be 32 bytes. uint256 requires 32 bytes. Missing JSON
+        /// string {name}. Missing JSON property {name}. Script public key is missing script bytes. Script
+        /// public key is not an object or a hex string. Script public key hex must start with a 2-byte version.
+        /// computeBudget does not fit in an unsigned 16-bit integer. sigOpCount does not fit in a byte. Script
+        /// push is too long. Further failures of this type use the same exception.
+        /// </exception>
         public static Transaction ReadTransaction(string json)
         {
             if (json == null)
@@ -46,6 +60,8 @@ namespace NKaspa.RPC
         }
 
         /// <summary>Writes one transaction object.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="transaction"/> is null. <paramref name="writer"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
         public static void WriteTransaction(Utf8JsonWriter writer, Transaction transaction)
         {
             if (writer == null)
@@ -87,6 +103,18 @@ namespace NKaspa.RPC
         }
 
         /// <summary>Reads one transaction object.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentException">Subnetwork id must be 20 bytes.</exception>
+        /// <exception cref="System.FormatException">
+        /// mass and storageMass do not match. Expected an unsigned 64-bit integer. JSON number does not fit in
+        /// an unsigned 64-bit integer. Expected hex string. Hex string contains a non-hex character. Hex string
+        /// length must be even. Transaction output is missing value. authorizingInput does not fit in an
+        /// unsigned 16-bit integer. uint256 hex must be 32 bytes. uint256 requires 32 bytes. Missing JSON
+        /// string {name}. Missing JSON property {name}. Script public key is missing script bytes. Script
+        /// public key is not an object or a hex string. Script public key hex must start with a 2-byte version.
+        /// computeBudget does not fit in an unsigned 16-bit integer. sigOpCount does not fit in a byte. Script
+        /// push is too long. Further failures of this type use the same exception.
+        /// </exception>
         public static Transaction ReadTransaction(JsonElement element)
         {
             var version = (ushort)ReadU64(Require(element, "version"));

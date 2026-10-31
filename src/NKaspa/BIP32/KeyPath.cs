@@ -19,6 +19,9 @@ namespace NKaspa
         private readonly uint[] _indexes;
 
         /// <summary>Parses <c>m/44'/0'/0'/0/1</c>. The leading <c>m</c> is optional.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="path"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">Hardened index must be below 2^31.</exception>
+        /// <exception cref="System.FormatException">Key path is empty. Key path index is not a number. Key path contains an empty index.</exception>
         public KeyPath(string path)
         {
             if (path == null)
@@ -49,6 +52,7 @@ namespace NKaspa
         }
 
         /// <summary>Copies child indexes. Each value may already include the hardened bit.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="indexes"/> is null.</exception>
         public KeyPath(IEnumerable<uint> indexes)
         {
             if (indexes == null)
@@ -66,6 +70,8 @@ namespace NKaspa
         }
 
         /// <summary>Account node <c>m/44'/111111'/account'</c>.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">Hardened index must be below 2^31.</exception>
         public static KeyPath KaspaAccount(uint account = 0)
         {
             return new KeyPath(new[]
@@ -77,18 +83,23 @@ namespace NKaspa
         }
 
         /// <summary>Receive path <c>m/44'/111111'/account'/0/index</c>.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">Hardened index must be below 2^31.</exception>
         public static KeyPath KaspaReceive(uint index, uint account = 0)
         {
             return KaspaAccount(account).Derive(0).Derive(index);
         }
 
         /// <summary>Change path <c>m/44'/111111'/account'/1/index</c>.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">Hardened index must be below 2^31.</exception>
         public static KeyPath KaspaChange(uint index, uint account = 0)
         {
             return KaspaAccount(account).Derive(1).Derive(index);
         }
 
         /// <summary>Sets the BIP32 hardened bit. <paramref name="index"/> must be below 2^31.</summary>
+        /// <exception cref="System.ArgumentOutOfRangeException">Hardened index must be below 2^31.</exception>
         public static uint Harden(uint index)
         {
             if (index >= 0x80000000u)
@@ -100,6 +111,7 @@ namespace NKaspa
         }
 
         /// <summary>Appends one child index.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
         public KeyPath Derive(uint index)
         {
             var next = new uint[_indexes.Length + 1];
@@ -109,6 +121,8 @@ namespace NKaspa
         }
 
         /// <summary>Appends <paramref name="index"/>. <paramref name="hardened"/> sets the high bit.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">Hardened index must be below 2^31.</exception>
         public KeyPath Derive(uint index, bool hardened)
         {
             return Derive(hardened ? Harden(index) : index);

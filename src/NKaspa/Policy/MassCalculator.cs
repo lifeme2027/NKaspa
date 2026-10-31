@@ -164,6 +164,7 @@ namespace NKaspa.Policy
         private const ulong UtxoUnitSize = 100;
 
         /// <summary>rusty-kaspa <c>transaction_estimated_serialized_size</c>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="transaction"/> is null.</exception>
         public static ulong EstimatedSerializedSize(Transaction transaction)
         {
             RequireSupported(transaction);
@@ -194,6 +195,8 @@ namespace NKaspa.Policy
         }
 
         /// <summary>Compute and transient mass. A coinbase transaction is free.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="transaction"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">Subnetwork id must be 20 bytes.</exception>
         public static NonContextualMasses CalcNonContextualMasses(Transaction transaction)
         {
             RequireSupported(transaction);
@@ -236,18 +239,23 @@ namespace NKaspa.Policy
         }
 
         /// <summary>Compute mass.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="transaction"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">Subnetwork id must be 20 bytes.</exception>
         public static ulong ComputeMass(Transaction transaction)
         {
             return CalcNonContextualMasses(transaction).ComputeMass;
         }
 
         /// <summary>Raw transient mass, 4 per byte, before normalization.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="transaction"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">Subnetwork id must be 20 bytes.</exception>
         public static ulong TransientMass(Transaction transaction)
         {
             return CalcNonContextualMasses(transaction).TransientMass;
         }
 
         /// <summary>How many 100-byte units a UTXO with this script occupies. The result is at least 1.</summary>
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="scriptLength"/> is outside the allowed range.</exception>
         public static ulong UtxoPlurality(int scriptLength, bool hasCovenantId = false)
         {
             if (scriptLength < 0)
@@ -260,6 +268,8 @@ namespace NKaspa.Policy
         }
 
         /// <summary>Storage cell of a spent output.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="entry"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
         public static UtxoCell CellOf(UtxoEntry entry)
         {
             if (entry == null)
@@ -271,6 +281,8 @@ namespace NKaspa.Policy
         }
 
         /// <summary>Storage cell of a created output.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="output"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
         public static UtxoCell CellOf(TxOut output)
         {
             if (output == null)
@@ -286,6 +298,12 @@ namespace NKaspa.Policy
         /// the input plurality is 1, or both are 2. Otherwise the inputs use their arithmetic mean.
         /// A zero amount throws <see cref="ArgumentException"/>.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="outputs"/> is null. <paramref name="inputs"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// Output amount and plurality must be non-zero. Input amount and plurality must be non-zero. A
+        /// transaction needs at least one output. A non-coinbase transaction needs at least one input.
+        /// </exception>
+        /// <exception cref="System.OverflowException">Input amount mean does not fit in 64 bits.</exception>
         public static ulong StorageMass(
             IReadOnlyList<UtxoCell> inputs,
             IReadOnlyList<UtxoCell> outputs,
@@ -382,6 +400,12 @@ namespace NKaspa.Policy
         }
 
         /// <summary>Storage mass of plurality-1 cells.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="outputAmounts"/> is null. <paramref name="inputAmounts"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// Output amount and plurality must be non-zero. Input amount and plurality must be non-zero. A
+        /// transaction needs at least one output. A non-coinbase transaction needs at least one input.
+        /// </exception>
+        /// <exception cref="System.OverflowException">Input amount mean does not fit in 64 bits.</exception>
         public static ulong StorageMass(IReadOnlyList<ulong> inputAmounts, IReadOnlyList<ulong> outputAmounts)
         {
             if (inputAmounts == null)
@@ -410,6 +434,14 @@ namespace NKaspa.Policy
         }
 
         /// <summary>Storage mass of a transaction. A coinbase transaction is 0. <paramref name="spentEntries"/> lines up with the inputs.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="spentEntries"/> is null. <paramref name="transaction"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// One spent UTXO entry is required per input. A non-coinbase transaction needs at least one input.
+        /// Output amount and plurality must be non-zero. Input amount and plurality must be non-zero. A
+        /// transaction needs at least one output. Subnetwork id must be 20 bytes.
+        /// </exception>
+        /// <exception cref="System.OverflowException">Input amount mean does not fit in 64 bits.</exception>
         public static ulong StorageMass(Transaction transaction, IReadOnlyList<UtxoEntry> spentEntries)
         {
             RequireSupported(transaction);
@@ -452,6 +484,8 @@ namespace NKaspa.Policy
         /// Scales <paramref name="mass"/> from a dimension limited by <paramref name="dimensionLimit"/>
         /// onto the compute limit: ceil(mass * compute / limit).
         /// </summary>
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="dimensionLimit"/> is outside the allowed range.</exception>
+        /// <exception cref="System.OverflowException">Normalized mass does not fit in 64 bits.</exception>
         public static ulong Normalize(ulong mass, ulong dimensionLimit, ulong computeLimit)
         {
             if (dimensionLimit == 0)
@@ -470,6 +504,14 @@ namespace NKaspa.Policy
         }
 
         /// <summary>Normalized maximum of the three dimensions. With the default limits, transient mass is halved.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="spentEntries"/> is null. <paramref name="transaction"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// One spent UTXO entry is required per input. A non-coinbase transaction needs at least one input.
+        /// Output amount and plurality must be non-zero. Input amount and plurality must be non-zero. A
+        /// transaction needs at least one output. Subnetwork id must be 20 bytes.
+        /// </exception>
+        /// <exception cref="System.OverflowException">Normalized mass does not fit in 64 bits. Input amount mean does not fit in 64 bits.</exception>
         public static TransactionMass Calculate(
             Transaction transaction,
             IReadOnlyList<UtxoEntry> spentEntries,
@@ -491,6 +533,8 @@ namespace NKaspa.Policy
         }
 
         /// <summary>Normalized maximum of explicit masses.</summary>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
+        /// <exception cref="System.OverflowException">Normalized mass does not fit in 64 bits.</exception>
         public static ulong NormalizedMax(ulong computeMass, ulong transientMass, ulong storageMass, BlockMassLimits limits)
         {
             return Math.Max(
@@ -528,6 +572,10 @@ namespace NKaspa.Policy
         /// A rate below <see cref="MinimumFeeRate"/> throws <see cref="ArgumentOutOfRangeException"/>.
         /// This is the rate-based estimate. The relay floor for a built transaction is <see cref="MinimumRelayFee(TransactionMass)"/>.
         /// </summary>
+        /// <exception cref="System.ArgumentOutOfRangeException">
+        /// Fee rate {feeRate.ToString(System.Globalization.CultureInfo.InvariantCulture)} is below the network
+        /// minimum of {MinimumFeeRate.ToString(System.Globalization.CultureInfo.InvariantCulture)} sompi/gram.
+        /// </exception>
         public static Money EstimateFee(FeeRate feeRate, ulong mass)
         {
             return new Money(EstimateFee(mass, feeRate.SompiPerGram));
@@ -537,12 +585,20 @@ namespace NKaspa.Policy
         /// Fee at <paramref name="feeRate"/> for <see cref="TransactionMass.FeeMass"/>.
         /// Fee mass includes normalized storage mass, so this can be higher than <see cref="EstimateMinimumRelayFee"/>.
         /// </summary>
+        /// <exception cref="System.ArgumentOutOfRangeException">
+        /// Fee rate {feeRate.ToString(System.Globalization.CultureInfo.InvariantCulture)} is below the network
+        /// minimum of {MinimumFeeRate.ToString(System.Globalization.CultureInfo.InvariantCulture)} sompi/gram.
+        /// </exception>
         public static Money EstimateFee(FeeRate feeRate, TransactionMass mass)
         {
             return EstimateFee(feeRate, mass.FeeMass);
         }
 
         /// <summary>Fee in sompi. A rate below <see cref="MinimumFeeRate"/> throws <see cref="ArgumentOutOfRangeException"/>.</summary>
+        /// <exception cref="System.ArgumentOutOfRangeException">
+        /// Fee rate {feeRate.ToString(System.Globalization.CultureInfo.InvariantCulture)} is below the network
+        /// minimum of {MinimumFeeRate.ToString(System.Globalization.CultureInfo.InvariantCulture)} sompi/gram.
+        /// </exception>
         public static ulong EstimateFee(ulong mass, ulong feeRate)
         {
             if (feeRate < MinimumFeeRate)
@@ -556,6 +612,8 @@ namespace NKaspa.Policy
         }
 
         /// <summary>True when the subnetwork id is the coinbase id (first byte 1, the rest zero).</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="transaction"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">Subnetwork id must be 20 bytes.</exception>
         public static bool IsCoinbase(Transaction transaction)
         {
             if (transaction == null)

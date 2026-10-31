@@ -12,6 +12,7 @@ namespace NKaspa
     public sealed class UtxoEntry
     {
         /// <summary>Creates a UTXO entry.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="scriptPublicKey"/> is null.</exception>
         public UtxoEntry(Money amount, ScriptPubKey scriptPublicKey, ulong blockDaaScore, bool isCoinbase, uint256? covenantId = null)
         {
             Amount = amount;
@@ -22,6 +23,7 @@ namespace NKaspa
         }
 
         /// <summary>Creates a UTXO entry from a sompi count.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="scriptPublicKey"/> is null.</exception>
         public UtxoEntry(ulong sompi, ScriptPubKey scriptPublicKey, ulong blockDaaScore, bool isCoinbase, uint256? covenantId = null)
             : this(new Money(sompi), scriptPublicKey, blockDaaScore, isCoinbase, covenantId)
         {

@@ -22,6 +22,7 @@ namespace NKaspa.Crypto
         private readonly byte[] _bytes;
 
         /// <summary>Copies a 64-byte compact signature.</summary>
+        /// <exception cref="System.ArgumentException">ECDSA signature must be 64 bytes.</exception>
         public ECDSASignature(ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length != Length)
@@ -33,6 +34,9 @@ namespace NKaspa.Crypto
         }
 
         /// <summary>Parses a 128-character hex signature.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="hex"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">ECDSA signature must be 64 bytes.</exception>
+        /// <exception cref="System.FormatException">Hex string contains a non-hex character. Hex string length must be even.</exception>
         public static ECDSASignature Parse(string hex)
         {
             if (hex == null)
@@ -50,6 +54,7 @@ namespace NKaspa.Crypto
         }
 
         /// <summary>Writes the 64 signature bytes into <paramref name="destination"/>.</summary>
+        /// <exception cref="System.ArgumentException">Destination must be 64 bytes.</exception>
         public void WriteTo(Span<byte> destination)
         {
             if (destination.Length != Length)
@@ -61,6 +66,8 @@ namespace NKaspa.Crypto
         }
 
         /// <summary>Lowercase hex of the 64 signature bytes.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
         public override string ToString()
         {
             return Encoders.Hex.EncodeData(_bytes);
@@ -84,12 +91,16 @@ namespace NKaspa.Crypto
         }
 
         /// <summary>Lowercase hex of <see cref="ToDer"/>.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
         public string ToDerHex()
         {
             return Encoders.Hex.EncodeData(ToDer());
         }
 
         /// <summary>Parses a strict DER ECDSA signature into the 64-byte compact form.</summary>
+        /// <exception cref="System.ArgumentException">ECDSA signature must be 64 bytes.</exception>
+        /// <exception cref="System.FormatException">ECDSA signature is not strict DER.</exception>
         public static ECDSASignature FromDer(ReadOnlySpan<byte> der)
         {
             if (!TryFromDer(der, out var signature) || signature == null)
@@ -101,6 +112,7 @@ namespace NKaspa.Crypto
         }
 
         /// <summary>Parses strict DER. R and S must be non-zero and below the secp256k1 order.</summary>
+        /// <exception cref="System.ArgumentException">ECDSA signature must be 64 bytes.</exception>
         public static bool TryFromDer(ReadOnlySpan<byte> der, out ECDSASignature? signature)
         {
             signature = null;

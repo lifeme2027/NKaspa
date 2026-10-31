@@ -64,6 +64,7 @@ namespace NKaspa
         /// 1 is a Toccata payment: each input carries <see cref="ComputeBudget"/> and the signature hash omits sigops.
         /// Values above 1 are rejected.
         /// </summary>
+        /// <exception cref="System.ArgumentOutOfRangeException">Transaction version must be 0 or 1.</exception>
         public ushort Version
         {
             get { return _version; }
@@ -89,6 +90,7 @@ namespace NKaspa
         private bool _payMinimumRelay;
 
         /// <summary>Creates a builder for mainnet after Toccata. Fee mass may use the full block compute limit.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
         public TransactionBuilder()
             : this(Network.Mainnet, toccataActive: true)
         {
@@ -99,6 +101,7 @@ namespace NKaspa
         /// <paramref name="toccataActive"/> false keeps the pre-Toccata fee-mass cap of 100000.
         /// Every built-in network currently publishes the same post-Toccata block limits.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
         public TransactionBuilder(Network network, bool toccataActive = true)
         {
             if (network == null)
@@ -113,6 +116,7 @@ namespace NKaspa
         }
 
         /// <summary>Adds private keys used to sign pay-to-pubkey inputs.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="keys"/> is null.</exception>
         public TransactionBuilder AddKeys(params Key[] keys)
         {
             if (keys == null)
@@ -134,6 +138,7 @@ namespace NKaspa
         }
 
         /// <summary>Adds coins that may be spent.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="coins"/> is null.</exception>
         public TransactionBuilder AddCoins(params Coin[] coins)
         {
             if (coins == null)
@@ -174,6 +179,7 @@ namespace NKaspa
         /// Requires these outpoints to be inputs. The coins must already have been added, or be added later with <see cref="AddCoins"/>.
         /// Every required input is signed. Coins are not merged when they share a script.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="outpoints"/> is null.</exception>
         public TransactionBuilder MustSpend(params OutPoint[] outpoints)
         {
             if (outpoints == null)
@@ -203,6 +209,7 @@ namespace NKaspa
         /// Requires these coins to be inputs, and adds any that are not already in the builder.
         /// Every required input is signed. Coins are not merged when they share a script.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="coins"/> is null.</exception>
         public TransactionBuilder MustSpend(params Coin[] coins)
         {
             AddCoins(coins);
@@ -221,6 +228,7 @@ namespace NKaspa
         }
 
         /// <summary>Sets <see cref="Version"/>. Only 0 and 1 are accepted.</summary>
+        /// <exception cref="System.ArgumentOutOfRangeException">Transaction version must be 0 or 1.</exception>
         public TransactionBuilder SetVersion(ushort version)
         {
             Version = version;
@@ -235,6 +243,7 @@ namespace NKaspa
         }
 
         /// <summary>Sets the compute budget of one version-1 input. The outpoint does not have to be added yet.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="outpoint"/> is null.</exception>
         public TransactionBuilder SetComputeBudget(OutPoint outpoint, ushort computeBudget)
         {
             if (outpoint == null)
@@ -247,6 +256,9 @@ namespace NKaspa
         }
 
         /// <summary>Adds a payment to an address.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="address"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">Send amount must be greater than zero.</exception>
+        /// <exception cref="System.ArgumentException">Schnorr x-only public key must be 32 bytes. ECDSA public key must be 33 bytes. Script hash must be 32 bytes.</exception>
         public TransactionBuilder Send(KaspaAddress address, Money amount)
         {
             if (address == null)
@@ -258,6 +270,8 @@ namespace NKaspa
         }
 
         /// <summary>Adds a payment to a script.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="scriptPubKey"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">Send amount must be greater than zero.</exception>
         public TransactionBuilder Send(ScriptPubKey scriptPubKey, Money amount)
         {
             if (scriptPubKey == null)
@@ -275,6 +289,8 @@ namespace NKaspa
         }
 
         /// <summary>Sends change to an address.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="address"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">Schnorr x-only public key must be 32 bytes. ECDSA public key must be 33 bytes. Script hash must be 32 bytes.</exception>
         public TransactionBuilder SetChange(KaspaAddress address)
         {
             if (address == null)
@@ -286,6 +302,7 @@ namespace NKaspa
         }
 
         /// <summary>Sends change to a script.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="scriptPubKey"/> is null.</exception>
         public TransactionBuilder SetChange(ScriptPubKey scriptPubKey)
         {
             _change = scriptPubKey ?? throw new ArgumentNullException(nameof(scriptPubKey));
@@ -305,6 +322,7 @@ namespace NKaspa
         /// A rate below 100 sompi per gram is rejected.
         /// The minimum relay floor is narrower. See <see cref="SendMinimumRelayFee"/>.
         /// </summary>
+        /// <exception cref="System.ArgumentOutOfRangeException">Fee rate is below 100 sompi per gram.</exception>
         public TransactionBuilder SendEstimatedFees(FeeRate feeRate)
         {
             if (feeRate.SompiPerGram < FeeRate.MinimumRelaySompiPerGram)
@@ -332,6 +350,10 @@ namespace NKaspa
         /// Fee for <paramref name="mass"/> grams at <paramref name="feeRate"/>.
         /// A rate below 100 sompi per gram is rejected.
         /// </summary>
+        /// <exception cref="System.ArgumentOutOfRangeException">
+        /// Fee rate {feeRate.ToString(System.Globalization.CultureInfo.InvariantCulture)} is below the network
+        /// minimum of {MinimumFeeRate.ToString(System.Globalization.CultureInfo.InvariantCulture)} sompi/gram.
+        /// </exception>
         public static Money EstimateFee(FeeRate feeRate, ulong mass)
         {
             return MassCalculator.EstimateFee(feeRate, mass);
@@ -351,6 +373,37 @@ namespace NKaspa
         /// Unsigned inputs have an empty signature script and a zero signature-operation count.
         /// <see cref="Transaction.StorageMass"/> is set to the KIP-9 storage mass. It does not change the transaction id.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">
+        /// BLAKE2b digest size must be from 1 to 64 bytes. Fee rate
+        /// {feeRate.ToString(System.Globalization.CultureInfo.InvariantCulture)} is below the network minimum
+        /// of {MinimumFeeRate.ToString(System.Globalization.CultureInfo.InvariantCulture)} sompi/gram. The
+        /// selection target must be greater than zero.
+        /// </exception>
+        /// <exception cref="System.ArgumentException">
+        /// Sighash type is not one of the six Kaspa values. Signature must be 64 bytes. BIP-340 auxiliary
+        /// randomness must be empty or 32 bytes. Schnorr message must be 32 bytes. Schnorr signature must be 64
+        /// bytes. BLAKE2b key must be at most 64 bytes. ECDSA message must be 32 bytes. ECDSA signature must be
+        /// 64 bytes. ECDSA public key is not on the curve. ECDSA public key must be compressed (0x02 or 0x03).
+        /// ECDSA public key must be 33 bytes. Schnorr x-only public key is not on the curve. Schnorr x-only
+        /// public key must be 32 bytes. One spent UTXO entry is required per input. A non-coinbase transaction
+        /// needs at least one input. Output amount and plurality must be non-zero. Input amount and plurality
+        /// must be non-zero. A transaction needs at least one output. Further failures of this type use the
+        /// same exception.
+        /// </exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated. uint256 requires 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">
+        /// Fee estimate did not converge. No outputs to send. No private key matches an input script. SignInput
+        /// signs pay-to-pubkey scripts. Build a pay-to-script-hash signature with
+        /// Script.PayToScriptHashSignature. Stored private key is no longer valid. Transaction input is missing
+        /// an outpoint. BLAKE2b hasher is already finished. Transaction output is missing a script. SHA256 did
+        /// not produce a digest. Fee is below the minimum relay rate of 100 sompi per gram. Transaction mass
+        /// exceeds the standard maximum. Change is due and no change script was set. Not enough funds. A
+        /// must-spend outpoint was not added with AddCoins. Set SendFees, SendEstimatedFees, or
+        /// SendMinimumRelayFee. Set only one of SendFees, SendEstimatedFees, or SendMinimumRelayFee.
+        /// </exception>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed.</exception>
+        /// <exception cref="System.OverflowException">Input amount mean does not fit in 64 bits. Normalized mass does not fit in 64 bits.</exception>
         public Transaction BuildTransaction(bool sign)
         {
             if (_sends.Count == 0)
@@ -419,6 +472,41 @@ namespace NKaspa
         /// Version 0 inputs record one sigop so a later signature matches <see cref="BuildTransaction"/>.
         /// Version 1 keeps the builder compute budget in memory. That budget is not part of the PSKT JSON.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">
+        /// BLAKE2b digest size must be from 1 to 64 bytes. Fee rate
+        /// {feeRate.ToString(System.Globalization.CultureInfo.InvariantCulture)} is below the network minimum
+        /// of {MinimumFeeRate.ToString(System.Globalization.CultureInfo.InvariantCulture)} sompi/gram. The
+        /// selection target must be greater than zero.
+        /// </exception>
+        /// <exception cref="System.ArgumentException">
+        /// Sighash type is not one of the six Kaspa values. Signature must be 64 bytes. BIP-340 auxiliary
+        /// randomness must be empty or 32 bytes. Schnorr message must be 32 bytes. Schnorr signature must be 64
+        /// bytes. BLAKE2b key must be at most 64 bytes. ECDSA message must be 32 bytes. ECDSA signature must be
+        /// 64 bytes. ECDSA public key is not on the curve. ECDSA public key must be compressed (0x02 or 0x03).
+        /// ECDSA public key must be 33 bytes. Schnorr x-only public key is not on the curve. Schnorr x-only
+        /// public key must be 32 bytes. One spent UTXO entry is required per input. A non-coinbase transaction
+        /// needs at least one input. Output amount and plurality must be non-zero. Input amount and plurality
+        /// must be non-zero. A transaction needs at least one output. Further failures of this type use the
+        /// same exception.
+        /// </exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated. uint256 requires 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">
+        /// Built input is not a known coin. Fee estimate did not converge. No outputs to send. No private key
+        /// matches an input script. SignInput signs pay-to-pubkey scripts. Build a pay-to-script-hash signature
+        /// with Script.PayToScriptHashSignature. Stored private key is no longer valid. Transaction input is
+        /// missing an outpoint. BLAKE2b hasher is already finished. Transaction output is missing a script.
+        /// SHA256 did not produce a digest. Fee is below the minimum relay rate of 100 sompi per gram.
+        /// Transaction mass exceeds the standard maximum. Change is due and no change script was set. Not
+        /// enough funds. A must-spend outpoint was not added with AddCoins. Set SendFees, SendEstimatedFees, or
+        /// SendMinimumRelayFee. Set only one of SendFees, SendEstimatedFees, or SendMinimumRelayFee.
+        /// </exception>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed.</exception>
+        /// <exception cref="System.OverflowException">Input amount mean does not fit in 64 bits. Normalized mass does not fit in 64 bits.</exception>
+        /// <exception cref="NKaspa.PSKT.PSKTException">
+        /// Signer is reached from the constructor, updater, or combiner. This operation belongs to the
+        /// {role.ToString()} role. Outputs not allowed to contain covenant due to pskt or tx versions mismatch.
+        /// </exception>
         public NKaspa.PSKT.PSKT BuildPSKT()
         {
             var transaction = BuildTransaction(false);
@@ -462,6 +550,23 @@ namespace NKaspa
         /// Adds a partial signature for every builder key that can spend an input.
         /// The PSKT is moved to the signer role. It is not finalized and it is not broadcast.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="pskt"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// ECDSA public key is not on the curve. ECDSA public key must be compressed (0x02 or 0x03). ECDSA
+        /// public key must be 33 bytes. BIP-340 auxiliary randomness must be empty or 32 bytes. Schnorr message
+        /// must be 32 bytes. Schnorr signature must be 64 bytes. Sighash type is not one of the six Kaspa
+        /// values. BLAKE2b key must be at most 64 bytes. ECDSA message must be 32 bytes. ECDSA signature must
+        /// be 64 bytes. Schnorr x-only public key is not on the curve. Schnorr x-only public key must be 32
+        /// bytes.
+        /// </exception>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes. Script push is too long. Script push is truncated.</exception>
+        /// <exception cref="System.InvalidOperationException">
+        /// Stored private key is no longer valid. Transaction input is missing an outpoint. BLAKE2b hasher is
+        /// already finished. Transaction output is missing a script. SHA256 did not produce a digest.
+        /// </exception>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed.</exception>
+        /// <exception cref="NKaspa.PSKT.PSKTException">Missing UTXO entry. This operation belongs to the {role.ToString()} role. Signer is reached from the constructor, updater, or combiner.</exception>
         public NKaspa.PSKT.PSKT Sign(NKaspa.PSKT.PSKT pskt)
         {
             if (pskt == null)
@@ -482,6 +587,51 @@ namespace NKaspa
         /// True when <paramref name="transaction"/> spends known coins, verifies every signature,
         /// pays every <see cref="Send(ScriptPubKey, Money)"/> output, and stays within <see cref="MaximumMass"/>.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="transaction"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// One spent UTXO entry is required per input. A non-coinbase transaction needs at least one input.
+        /// Output amount and plurality must be non-zero. Input amount and plurality must be non-zero. A
+        /// transaction needs at least one output. Subnetwork id must be 20 bytes. Spent output {i.ToString()}
+        /// is missing. The spent output list must have one entry per input. The spent output for this input is
+        /// missing. BLAKE3 key must be 32 bytes. wRPC request is missing a numeric id. Set PointOfView or
+        /// ChainBlock, not both. PointOfView is the selected parent P. ChainBlock is the chain block B whose
+        /// selected parent becomes P. Sighash type is not one of the six Kaspa values. BLAKE2b key must be at
+        /// most 64 bytes.
+        /// </exception>
+        /// <exception cref="System.FormatException">
+        /// Expected a boolean for isChainBlock. Expected a hex hash for {name}. uint256 hex must be 32 bytes.
+        /// uint256 requires 32 bytes. Hex string contains a non-hex character. Hex string length must be even.
+        /// Expected an unsigned 64-bit integer. JSON number does not fit in an unsigned 64-bit integer.
+        /// Expected a parent hash. Expected parent hashes. Expected an array for parents. Missing JSON string
+        /// {name}. Missing JSON property {name}. Hash is missing. networkId is not a string or an object.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">
+        /// WebSocket is not connected. Call ConnectAsync first. Transaction input is missing an outpoint.
+        /// BLAKE2b hasher is already finished. Transaction output is missing a script. SHA256 did not produce a
+        /// digest.
+        /// </exception>
+        /// <exception cref="System.OverflowException">Normalized mass does not fit in 64 bits. Input amount mean does not fit in 64 bits.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC response has no params. RPC response id does not match the request. RPC error.</exception>
+        /// <exception cref="NKaspa.RPC.ConsensusSeqCommitException">
+        /// acceptedIdMerkleRoot is missing for {target.Hash}. seq commitment was requested for {target.Hash},
+        /// which is not a selected-parent ancestor of {pov.Hash}. header blueScore does not match verboseData
+        /// blueScore for {block.Hash}. blueScore is missing for {block.Hash}. getBlockDagInfo.sink changed from
+        /// {previous} to {dag.Sink} and the new selected chain does not contain {anchor}.
+        /// verboseData.isChainBlock is missing for {current.Hash}. selected parent chain cycled at
+        /// {current.Hash}. isChainBlock is false for {block.Hash} on the selected chain.
+        /// verboseData.isChainBlock is missing for {block.Hash}. getBlock did not return {hash}. The node data
+        /// is incomplete. verboseData.hash {block.VerboseHash} does not match the requested block {block.Hash}.
+        /// header.hash {block.HeaderHash} does not match the requested block {block.Hash}. Request limit of
+        /// {_maxRequests.ToString(System.Globalization.CultureInfo.InvariantCulture)} was reached before the
+        /// selected parent chain could be checked. blue score does not decrease from {child.Hash}
+        /// ({childScore.ToString(System.Globalization.CultureInfo.InvariantCulture)}) to selected parent
+        /// {parent.Hash} ({parentScore.ToString(System.Globalization.CultureInfo.InvariantCulture)}). selected
+        /// parent walk reached {block.Hash} but isChainBlock is false. isChainBlock is false for {block.Hash}
+        /// and getBlockDagInfo.sink changed from {previous} to {again.Sink}. getBlockDagInfo failed:
+        /// {ex.Message}. selectedParentHash {block.SelectedParentHash} does not match the first direct parent
+        /// {block.DirectParent} of {block.Hash}. Further failures of this type use the same exception.
+        /// </exception>
         public bool Verify(Transaction transaction)
         {
             if (transaction == null || transaction.Version != Version)

@@ -9,6 +9,8 @@ namespace NKaspa.DataEncoders
         private const string Alphabet = "0123456789abcdef";
 
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException"><paramref name="data"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="offset"/> is outside the allowed range.</exception>
         public override string EncodeData(byte[] data, int offset, int count)
         {
             if (data == null)
@@ -38,6 +40,8 @@ namespace NKaspa.DataEncoders
         }
 
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException"><paramref name="encoded"/> is null.</exception>
+        /// <exception cref="System.FormatException">Hex string contains a non-hex character. Hex string length must be even.</exception>
         public override byte[] DecodeData(string encoded)
         {
             if (encoded == null)

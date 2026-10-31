@@ -24,6 +24,7 @@ namespace NKaspa.DataEncoders
         private static readonly sbyte[] CharsetIndex = BuildCharsetIndex();
 
         /// <summary>Creates an encoder bound to one human-readable prefix, without the colon.</summary>
+        /// <exception cref="System.ArgumentException">Address prefix must not contain a colon. Address prefix is required.</exception>
         public KaspaBech32Encoder(string prefix)
         {
             if (string.IsNullOrEmpty(prefix))
@@ -46,6 +47,7 @@ namespace NKaspa.DataEncoders
         /// Encodes a version byte and payload as <c>{prefix}:{data}</c>.
         /// The version byte is part of the converted payload, which is how Kaspa addresses are formed.
         /// </summary>
+        /// <exception cref="System.InvalidOperationException">8-to-5 conversion produced an unexpected length.</exception>
         public string Encode(byte version, ReadOnlySpan<byte> payload)
         {
             var raw = new byte[payload.Length + 1];
@@ -71,6 +73,13 @@ namespace NKaspa.DataEncoders
         /// <summary>
         /// Decodes an address that uses this encoder's prefix.
         /// </summary>
+        /// <exception cref="System.FormatException">
+        /// Kaspa address prefix does not match this encoder. Kaspa address is empty. A Kaspa address must look
+        /// like {prefix}:{payload}. Kaspa address length is outside the cashaddr limits. Kaspa address prefix
+        /// contains a non-printable character. Kaspa address contains a character outside the bech32 charset.
+        /// Kaspa address checksum does not match the prefix and payload. Kaspa address payload padding is
+        /// invalid.
+        /// </exception>
         public byte[] Decode(string address, out byte version)
         {
             if (!TryDecode(address, out var prefix, out version, out var payload, out var error))

@@ -62,6 +62,8 @@ namespace NKaspa
         }
 
         /// <summary>Opcode name, then the pushed data as lowercase hex when this is a data push.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
         public override string ToString()
         {
             var name = Code.ToString();

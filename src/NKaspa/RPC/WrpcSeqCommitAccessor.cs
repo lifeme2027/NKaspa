@@ -32,6 +32,7 @@ namespace NKaspa.RPC
         private readonly Dictionary<string, RpcChainBlock?> _blocks = new Dictionary<string, RpcChainBlock?>(StringComparer.Ordinal);
 
         /// <summary>Creates an accessor. <paramref name="finalityDepth"/> is the KIP-21 window <c>F</c>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="client"/> is null.</exception>
         public WrpcSeqCommitAccessor(IKaspaRpcClient client, ulong finalityDepth = DefaultFinalityDepth)
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
@@ -45,6 +46,17 @@ namespace NKaspa.RPC
         }
 
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException"><paramref name="blockHash"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
+        /// <exception cref="System.ArgumentException">wRPC request is missing a numeric id.</exception>
+        /// <exception cref="System.FormatException">
+        /// Expected a boolean for isChainBlock. Expected a hex hash for {name}. uint256 hex must be 32 bytes.
+        /// uint256 requires 32 bytes. Hex string contains a non-hex character. Hex string length must be even.
+        /// Expected an unsigned 64-bit integer. JSON number does not fit in an unsigned 64-bit integer.
+        /// Expected a parent hash. Expected parent hashes. Expected an array for parents.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">WebSocket is not connected. Call ConnectAsync first.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC response has no params. RPC response id does not match the request. RPC error.</exception>
         public bool? IsChainAncestor(uint256 blockHash)
         {
             if (blockHash == null)
@@ -62,6 +74,18 @@ namespace NKaspa.RPC
         }
 
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException"><paramref name="blockHash"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
+        /// <exception cref="System.ArgumentException">wRPC request is missing a numeric id.</exception>
+        /// <exception cref="System.FormatException">
+        /// Expected a boolean for isChainBlock. Expected a hex hash for {name}. uint256 hex must be 32 bytes.
+        /// uint256 requires 32 bytes. Hex string contains a non-hex character. Hex string length must be even.
+        /// Expected an unsigned 64-bit integer. JSON number does not fit in an unsigned 64-bit integer.
+        /// Expected a parent hash. Expected parent hashes. Expected an array for parents. Missing JSON string
+        /// {name}. Missing JSON property {name}. Hash is missing. networkId is not a string or an object.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">WebSocket is not connected. Call ConnectAsync first.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC response has no params. RPC response id does not match the request. RPC error.</exception>
         public uint256? SeqCommitmentWithinDepth(uint256 blockHash)
         {
             if (blockHash == null)

@@ -12,12 +12,15 @@ namespace NKaspa.JsonConverters
     public sealed class UtxoEntryJsonConverter : JsonConverter<UtxoEntry>
     {
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
         public override UtxoEntry Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             return JsonValueReader.Read(ref reader, KaspaRpcJson.ReadUtxoEntry);
         }
 
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException">The assigned value is null. <paramref name="writer"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
         public override void Write(Utf8JsonWriter writer, UtxoEntry value, JsonSerializerOptions options)
         {
             KaspaRpcJson.WriteUtxoEntry(writer, value);
@@ -31,12 +34,15 @@ namespace NKaspa.JsonConverters
     public sealed class CoinJsonConverter : JsonConverter<Coin>
     {
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
         public override Coin Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             return JsonValueReader.Read(ref reader, KaspaRpcJson.ReadCoin);
         }
 
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException">The assigned value is null. <paramref name="writer"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
         public override void Write(Utf8JsonWriter writer, Coin value, JsonSerializerOptions options)
         {
             KaspaRpcJson.WriteCoin(writer, value);

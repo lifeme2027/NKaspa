@@ -20,6 +20,7 @@ namespace NKaspa.DataEncoders
         /// Cashaddr-style bech32 encoder bound to <paramref name="prefix"/>.
         /// Kaspa counterpart of NBitcoin.DataEncoders.Encoders.Bech32, for Kaspa prefixes.
         /// </summary>
+        /// <exception cref="System.ArgumentException">Address prefix must not contain a colon. Address prefix is required.</exception>
         public static KaspaBech32Encoder KaspaBech32(string prefix)
         {
             return new KaspaBech32Encoder(prefix);

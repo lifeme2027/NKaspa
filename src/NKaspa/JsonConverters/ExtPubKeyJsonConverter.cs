@@ -13,12 +13,26 @@ namespace NKaspa.JsonConverters
         private readonly Network _network;
 
         /// <summary>Creates a converter that writes and requires <paramref name="network"/>'s public prefix.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
         public ExtPubKeyJsonConverter(Network network)
         {
             _network = network ?? throw new ArgumentNullException(nameof(network));
         }
 
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// ECDSA public key is not on the curve. ECDSA public key must be compressed (0x02 or 0x03). ECDSA
+        /// public key must be 33 bytes. An HD fingerprint is 4 bytes.
+        /// </exception>
+        /// <exception cref="System.FormatException">
+        /// Extended public key prefix does not match the {_network.Name} network. Extended public key must be a
+        /// Base58Check string. Extended public key is not on the curve. Extended public key must start with
+        /// 0x02 or 0x03. A master extended key must have a zero parent fingerprint and a zero child index.
+        /// Extended key version is not a public prefix, or it does not match the key type. An extended key
+        /// payload is 78 bytes. Invalid Base58Check checksum. Base58Check payload is shorter than the checksum.
+        /// Base58 value does not fit in the decode buffer. Invalid Base58 character.
+        /// </exception>
         public override ExtPubKey Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType != JsonTokenType.String)
@@ -36,6 +50,7 @@ namespace NKaspa.JsonConverters
         }
 
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException">The assigned value is null.</exception>
         public override void Write(Utf8JsonWriter writer, ExtPubKey value, JsonSerializerOptions options)
         {
             if (value == null)

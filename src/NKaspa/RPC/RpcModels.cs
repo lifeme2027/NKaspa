@@ -23,6 +23,9 @@ namespace NKaspa.RPC
     public interface IKaspaJsonChannel
     {
         /// <summary>Sends <paramref name="requestJson"/> and returns the raw response text.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="requestJson"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">wRPC request is missing a numeric id.</exception>
+        /// <exception cref="System.InvalidOperationException">WebSocket is not connected. Call ConnectAsync first.</exception>
         Task<string> ExchangeAsync(string requestJson, CancellationToken cancellationToken = default);
     }
 
@@ -34,27 +37,88 @@ namespace NKaspa.RPC
     public interface IKaspaRpcClient
     {
         /// <summary>getServerInfo.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentException">wRPC request is missing a numeric id.</exception>
+        /// <exception cref="System.FormatException">
+        /// Expected an unsigned 64-bit integer. JSON number does not fit in an unsigned 64-bit integer.
+        /// Expected a boolean for {name}. Missing JSON string {name}. Missing JSON property {name}. networkId
+        /// is not a string or an object.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">WebSocket is not connected. Call ConnectAsync first.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC response has no params. RPC response id does not match the request. RPC error.</exception>
         Task<RpcServerInfo> GetServerInfoAsync(CancellationToken cancellationToken = default);
 
         /// <summary>getBlockDagInfo.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentException">wRPC request is missing a numeric id.</exception>
+        /// <exception cref="System.FormatException">
+        /// uint256 hex must be 32 bytes. uint256 requires 32 bytes. Hex string contains a non-hex character.
+        /// Hex string length must be even. Missing JSON string {name}. Expected an unsigned 64-bit integer.
+        /// JSON number does not fit in an unsigned 64-bit integer. Missing JSON property {name}. Hash is
+        /// missing. networkId is not a string or an object.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">WebSocket is not connected. Call ConnectAsync first.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC response has no params. RPC response id does not match the request. RPC error.</exception>
         Task<RpcBlockDagInfo> GetBlockDagInfoAsync(CancellationToken cancellationToken = default);
 
         /// <summary>getUtxosByAddresses.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="addresses"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">wRPC request is missing a numeric id.</exception>
+        /// <exception cref="System.FormatException">
+        /// Expected a boolean for isCoinbase. uint256 hex must be 32 bytes. uint256 requires 32 bytes. Hex
+        /// string contains a non-hex character. Hex string length must be even. Expected an unsigned 64-bit
+        /// integer. JSON number does not fit in an unsigned 64-bit integer. Script public key is missing script
+        /// bytes. Script public key is not an object or a hex string. Expected hex string. Script public key
+        /// hex must start with a 2-byte version. Missing JSON property {name}. Outpoint is not an object.
+        /// Outpoint index is not an unsigned 32-bit integer. Outpoint string must be transactionId:index. JSON
+        /// number does not fit in an unsigned 32-bit integer. Missing JSON string {name}.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">WebSocket is not connected. Call ConnectAsync first.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC response has no params. RPC response id does not match the request. RPC error.</exception>
         Task<IReadOnlyList<RpcUtxo>> GetUtxosByAddressesAsync(IReadOnlyList<string> addresses, CancellationToken cancellationToken = default);
 
         /// <summary>getBalanceByAddress.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="address"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">wRPC request is missing a numeric id.</exception>
+        /// <exception cref="System.FormatException">Expected an unsigned 64-bit integer. JSON number does not fit in an unsigned 64-bit integer. Missing JSON property {name}.</exception>
+        /// <exception cref="System.InvalidOperationException">WebSocket is not connected. Call ConnectAsync first.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC response has no params. RPC response id does not match the request. RPC error.</exception>
         Task<Money> GetBalanceByAddressAsync(string address, CancellationToken cancellationToken = default);
 
         /// <summary>submitTransaction.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="transaction"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
+        /// <exception cref="System.ArgumentException">wRPC request is missing a numeric id.</exception>
+        /// <exception cref="System.FormatException">
+        /// uint256 hex must be 32 bytes. uint256 requires 32 bytes. Hex string contains a non-hex character.
+        /// Hex string length must be even. Missing JSON string {name}.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">WebSocket is not connected. Call ConnectAsync first.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC response has no params. RPC response id does not match the request. RPC error.</exception>
         Task<uint256> SubmitTransactionAsync(Transaction transaction, bool allowOrphan = false, CancellationToken cancellationToken = default);
 
         /// <summary>getFeeEstimate.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentException">wRPC request is missing a numeric id.</exception>
+        /// <exception cref="System.InvalidOperationException">WebSocket is not connected. Call ConnectAsync first.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC response has no params. RPC response id does not match the request. RPC error.</exception>
         Task<RpcFeeEstimate> GetFeeEstimateAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
         /// getBlock. <paramref name="includeTransactions"/> false asks for the header only.
         /// A missing block returns null. This method does not submit a transaction.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="hash"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
+        /// <exception cref="System.ArgumentException">wRPC request is missing a numeric id.</exception>
+        /// <exception cref="System.FormatException">
+        /// Expected a boolean for isChainBlock. Expected a hex hash for {name}. uint256 hex must be 32 bytes.
+        /// uint256 requires 32 bytes. Hex string contains a non-hex character. Hex string length must be even.
+        /// Expected an unsigned 64-bit integer. JSON number does not fit in an unsigned 64-bit integer.
+        /// Expected a parent hash. Expected parent hashes. Expected an array for parents.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">WebSocket is not connected. Call ConnectAsync first.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC response has no params. RPC response id does not match the request. RPC error.</exception>
         Task<RpcChainBlock?> GetBlockAsync(uint256 hash, bool includeTransactions = false, CancellationToken cancellationToken = default);
     }
 
@@ -65,6 +129,7 @@ namespace NKaspa.RPC
     public sealed class RpcChainBlock
     {
         /// <summary>Creates the header view. Omitted consensus fields stay null or false.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="hash"/> is null.</exception>
         public RpcChainBlock(
             uint256 hash,
             ulong blueScore,
@@ -230,6 +295,7 @@ namespace NKaspa.RPC
     public sealed class RpcUtxo
     {
         /// <summary>Creates an entry.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="entry"/> is null. <paramref name="outpoint"/> is null. <paramref name="address"/> is null.</exception>
         public RpcUtxo(string address, OutPoint outpoint, UtxoEntry entry)
         {
             Address = address ?? throw new ArgumentNullException(nameof(address));
@@ -272,6 +338,7 @@ namespace NKaspa.RPC
     public sealed class RpcFeeEstimate
     {
         /// <summary>Creates an estimate. A missing bucket list is empty.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="lowBuckets"/> is null. <paramref name="normalBuckets"/> is null.</exception>
         public RpcFeeEstimate(RpcFeeBucket? priorityBucket, IReadOnlyList<RpcFeeBucket> normalBuckets, IReadOnlyList<RpcFeeBucket> lowBuckets)
         {
             PriorityBucket = priorityBucket;

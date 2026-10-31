@@ -37,6 +37,8 @@ namespace NKaspa
         /// Master key from a 16- to 64-byte seed.
         /// The stored version is Kaspa mainnet <c>kprv</c>. Pass another version to <see cref="ToBase58(uint)"/> to print <c>xprv</c>.
         /// </summary>
+        /// <exception cref="System.ArgumentException">BIP32 seed must be between 16 and 64 bytes. Private key is zero or not in the secp256k1 range. Private key must be 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">BIP32 master key is invalid.</exception>
         public static ExtKey CreateFromSeed(ReadOnlySpan<byte> seed)
         {
             if (seed.Length < 16 || seed.Length > 64)
@@ -69,6 +71,15 @@ namespace NKaspa
         }
 
         /// <summary>Parses a Base58Check extended private key. Unknown versions and bad keys throw <see cref="FormatException"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="text"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">Private key is zero or not in the secp256k1 range. Private key must be 32 bytes. An HD fingerprint is 4 bytes.</exception>
+        /// <exception cref="System.FormatException">
+        /// Extended private key is not in the secp256k1 range. Extended private key prefix byte is not 0x00. A
+        /// master extended key must have a zero parent fingerprint and a zero child index. Extended key version
+        /// is not a private prefix, or it does not match the key type. An extended key payload is 78 bytes.
+        /// Invalid Base58Check checksum. Base58Check payload is shorter than the checksum. Base58 value does
+        /// not fit in the decode buffer. Invalid Base58 character.
+        /// </exception>
         public static ExtKey Parse(string text)
         {
             if (text == null)
@@ -131,6 +142,8 @@ namespace NKaspa
         /// A copy of the private key at this node.
         /// Disposing the returned key does not dispose this extended key.
         /// </summary>
+        /// <exception cref="System.ArgumentException">Private key is zero or not in the secp256k1 range. Private key must be 32 bytes.</exception>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed. The ExtKey has been disposed.</exception>
         public Key PrivateKey
         {
             get
@@ -149,6 +162,7 @@ namespace NKaspa
         }
 
         /// <summary>A copy of the 32-byte chain code.</summary>
+        /// <exception cref="System.ObjectDisposedException">The ExtKey has been disposed.</exception>
         public byte[] ChainCode
         {
             get
@@ -189,6 +203,13 @@ namespace NKaspa
         }
 
         /// <summary>Extended public key at this node. The version becomes the matching public prefix.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// Unknown extended private key version. ECDSA public key is not on the curve. ECDSA public key must be
+        /// compressed (0x02 or 0x03). ECDSA public key must be 33 bytes.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">Stored private key is no longer valid.</exception>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed. The ExtKey has been disposed.</exception>
         public ExtPubKey Neuter()
         {
             AssertNotDisposed();
@@ -202,6 +223,16 @@ namespace NKaspa
         }
 
         /// <summary>Derives the child at <paramref name="index"/>. The high bit means hardened.</summary>
+        /// <exception cref="System.ArgumentException">
+        /// Private key is zero or not in the secp256k1 range. Private key must be 32 bytes. Compressed public
+        /// key must be 33 bytes. An HD fingerprint is 4 bytes. ECDSA public key is not on the curve. ECDSA
+        /// public key must be compressed (0x02 or 0x03). ECDSA public key must be 33 bytes.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">
+        /// BIP32 child private key is invalid. Cannot derive a child at depth 255. Stored private key is no
+        /// longer valid. BIP32 parent private key is invalid.
+        /// </exception>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed. The ExtKey has been disposed.</exception>
         public ExtKey Derive(uint index)
         {
             AssertNotDisposed();
@@ -262,6 +293,17 @@ namespace NKaspa
         }
 
         /// <summary>Derives each index in <paramref name="path"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="path"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// Private key is zero or not in the secp256k1 range. Private key must be 32 bytes. Compressed public
+        /// key must be 33 bytes. An HD fingerprint is 4 bytes. ECDSA public key is not on the curve. ECDSA
+        /// public key must be compressed (0x02 or 0x03). ECDSA public key must be 33 bytes.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">
+        /// BIP32 child private key is invalid. Cannot derive a child at depth 255. Stored private key is no
+        /// longer valid. BIP32 parent private key is invalid.
+        /// </exception>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed. The ExtKey has been disposed.</exception>
         public ExtKey Derive(KeyPath path)
         {
             if (path == null)
@@ -285,12 +327,14 @@ namespace NKaspa
         }
 
         /// <summary>Base58Check using the version stored on this key.</summary>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed. The ExtKey has been disposed.</exception>
         public string ToBase58()
         {
             return ToBase58(_version);
         }
 
         /// <summary>Base58Check using <paramref name="version"/> as the 4-byte prefix.</summary>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed. The ExtKey has been disposed.</exception>
         public string ToBase58(uint version)
         {
             AssertNotDisposed();
@@ -313,6 +357,8 @@ namespace NKaspa
         }
 
         /// <summary>Base58Check with the Kaspa private prefix of <paramref name="network"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed. The ExtKey has been disposed.</exception>
         public string ToString(Network network)
         {
             if (network == null)
@@ -324,6 +370,7 @@ namespace NKaspa
         }
 
         /// <summary>Base58Check with the stored version.</summary>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed. The ExtKey has been disposed.</exception>
         public override string ToString()
         {
             return ToBase58();
@@ -364,6 +411,7 @@ namespace NKaspa
         }
 
         /// <inheritdoc />
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed. The ExtKey has been disposed.</exception>
         public override int GetHashCode()
         {
             AssertNotDisposed();

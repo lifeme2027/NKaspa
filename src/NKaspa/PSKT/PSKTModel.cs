@@ -63,6 +63,7 @@ namespace NKaspa.PSKT
     public sealed class PSKTKeySource
     {
         /// <summary>Creates a key source.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="path"/> is null.</exception>
         public PSKTKeySource(HDFingerprint fingerprint, KeyPath path)
         {
             Path = path ?? throw new ArgumentNullException(nameof(path));
@@ -111,6 +112,7 @@ namespace NKaspa.PSKT
         }
 
         /// <summary>Schnorr partial signature under <paramref name="publicKey"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="signature"/> is null. <paramref name="publicKey"/> is null.</exception>
         public static PSKTSignature Schnorr(PubKeyECDSA publicKey, SchnorrSignature signature)
         {
             if (signature == null)
@@ -122,6 +124,7 @@ namespace NKaspa.PSKT
         }
 
         /// <summary>ECDSA partial signature under <paramref name="publicKey"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="signature"/> is null. <paramref name="publicKey"/> is null.</exception>
         public static PSKTSignature Ecdsa(PubKeyECDSA publicKey, ECDSASignature signature)
         {
             if (signature == null)
@@ -149,6 +152,7 @@ namespace NKaspa.PSKT
     public sealed class PSKTDerivation
     {
         /// <summary>Creates a derivation entry.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="publicKey"/> is null.</exception>
         public PSKTDerivation(PubKeyECDSA publicKey, PSKTKeySource? source)
         {
             PublicKey = publicKey ?? throw new ArgumentNullException(nameof(publicKey));
@@ -169,6 +173,7 @@ namespace NKaspa.PSKT
     public sealed class PSKTXpub
     {
         /// <summary>Creates an xpub entry.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="source"/> is null. <paramref name="extendedPublicKey"/> is null.</exception>
         public PSKTXpub(ExtPubKey extendedPublicKey, PSKTKeySource source)
         {
             ExtendedPublicKey = extendedPublicKey ?? throw new ArgumentNullException(nameof(extendedPublicKey));
@@ -268,6 +273,7 @@ namespace NKaspa.PSKT
     public sealed class PSKTInput
     {
         /// <summary>Creates an input that spends <paramref name="previousOutpoint"/>. Sighash defaults to <see cref="SigHashType.All"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="previousOutpoint"/> is null.</exception>
         public PSKTInput(OutPoint previousOutpoint)
         {
             PreviousOutpoint = previousOutpoint ?? throw new ArgumentNullException(nameof(previousOutpoint));
@@ -362,6 +368,7 @@ namespace NKaspa.PSKT
     public sealed class PSKTOutput
     {
         /// <summary>Creates an output. <paramref name="amount"/> is sompi.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="scriptPublicKey"/> is null.</exception>
         public PSKTOutput(ulong amount, ScriptPubKey scriptPublicKey)
         {
             Amount = amount;

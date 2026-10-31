@@ -10,6 +10,8 @@ namespace NKaspa.DataEncoders
     public sealed class Base58CheckEncoder : DataEncoder
     {
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException"><paramref name="data"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="offset"/> is outside the allowed range.</exception>
         public override string EncodeData(byte[] data, int offset, int count)
         {
             if (data == null)
@@ -26,6 +28,11 @@ namespace NKaspa.DataEncoders
         }
 
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException"><paramref name="encoded"/> is null.</exception>
+        /// <exception cref="System.FormatException">
+        /// Invalid Base58Check checksum. Base58Check payload is shorter than the checksum. Base58 value does
+        /// not fit in the decode buffer. Invalid Base58 character.
+        /// </exception>
         public override byte[] DecodeData(string encoded)
         {
             return Decode(encoded);
@@ -45,6 +52,11 @@ namespace NKaspa.DataEncoders
         /// Decodes Base58Check. A bad checksum throws <see cref="FormatException"/>.
         /// The returned buffer is the payload without the checksum.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="encoded"/> is null.</exception>
+        /// <exception cref="System.FormatException">
+        /// Invalid Base58Check checksum. Base58Check payload is shorter than the checksum. Base58 value does
+        /// not fit in the decode buffer. Invalid Base58 character.
+        /// </exception>
         public static byte[] Decode(string encoded)
         {
             var full = Base58Encoder.Decode(encoded);

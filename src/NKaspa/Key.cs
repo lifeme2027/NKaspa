@@ -28,12 +28,16 @@ namespace NKaspa
         }
 
         /// <summary>Imports a 32-byte secret. The buffer is copied. The value must be in range.</summary>
+        /// <exception cref="System.ArgumentException">Private key is zero or not in the secp256k1 range. Private key must be 32 bytes.</exception>
         public Key(ReadOnlySpan<byte> secret)
             : this(CopyValid(secret))
         {
         }
 
         /// <summary>Draws a secret from <see cref="RandomNumberGenerator"/> until it is in range.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentException">Private key is zero or not in the secp256k1 range. Private key must be 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">Could not draw a secp256k1 private key.</exception>
         public static Key Create()
         {
             var secret = new byte[Length];
@@ -79,6 +83,8 @@ namespace NKaspa
         }
 
         /// <summary>Parses a 64-character hex secret.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="hex"/> is null.</exception>
+        /// <exception cref="System.FormatException">Hex string contains a non-hex character. Hex string length must be even.</exception>
         public static Key Parse(string hex)
         {
             if (hex == null)
@@ -90,6 +96,9 @@ namespace NKaspa
         }
 
         /// <summary>BIP-340 x-only public key.</summary>
+        /// <exception cref="System.ArgumentException">Schnorr x-only public key is not on the curve. Schnorr x-only public key must be 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">Stored private key is no longer valid.</exception>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed.</exception>
         public PubKey PubKey
         {
             get
@@ -100,6 +109,9 @@ namespace NKaspa
         }
 
         /// <summary>Compressed ECDSA public key.</summary>
+        /// <exception cref="System.ArgumentException">ECDSA public key is not on the curve. ECDSA public key must be compressed (0x02 or 0x03). ECDSA public key must be 33 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">Stored private key is no longer valid.</exception>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed.</exception>
         public PubKeyECDSA PubKeyECDSA
         {
             get
@@ -111,12 +123,26 @@ namespace NKaspa
         }
 
         /// <summary>Schnorr address for <paramref name="network"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// Address prefix must not contain a colon. Address prefix is required. {name} must be {size} bytes.
+        /// Schnorr x-only public key is not on the curve. Schnorr x-only public key must be 32 bytes.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">8-to-5 conversion produced an unexpected length. Stored private key is no longer valid.</exception>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed.</exception>
         public KaspaPubKeyAddress GetAddress(Network network)
         {
             return PubKey.GetAddress(network);
         }
 
         /// <summary>ECDSA address for <paramref name="network"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// Address prefix must not contain a colon. Address prefix is required. ECDSA public key must be 33
+        /// bytes. ECDSA public key is not on the curve. ECDSA public key must be compressed (0x02 or 0x03).
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">8-to-5 conversion produced an unexpected length. Stored private key is no longer valid.</exception>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed.</exception>
         public KaspaPubKeyEcdsaAddress GetEcdsaAddress(Network network)
         {
             return PubKeyECDSA.GetAddress(network);
@@ -127,6 +153,9 @@ namespace NKaspa
         /// An empty <paramref name="auxRand32"/> draws 32 fresh auxiliary bytes.
         /// Pass 32 explicit bytes, including zeros, to make the signature deterministic.
         /// </summary>
+        /// <exception cref="System.ArgumentException">BIP-340 auxiliary randomness must be empty or 32 bytes. Schnorr message must be 32 bytes. Schnorr signature must be 64 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">Stored private key is no longer valid.</exception>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed.</exception>
         public SchnorrSignature SignSchnorr(ReadOnlySpan<byte> hash32, ReadOnlySpan<byte> auxRand32 = default)
         {
             if (hash32.Length != 32)
@@ -156,6 +185,9 @@ namespace NKaspa
         }
 
         /// <summary>RFC 6979 ECDSA signature of a 32-byte message, normalized to low S.</summary>
+        /// <exception cref="System.ArgumentException">ECDSA message must be 32 bytes. ECDSA signature must be 64 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">Stored private key is no longer valid.</exception>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed.</exception>
         public ECDSASignature SignECDSA(ReadOnlySpan<byte> hash32)
         {
             if (hash32.Length != 32)
@@ -173,6 +205,7 @@ namespace NKaspa
         }
 
         /// <summary>A copy of the 32-byte secret.</summary>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed.</exception>
         public byte[] ToBytes()
         {
             AssertNotDisposed();
@@ -180,6 +213,9 @@ namespace NKaspa
         }
 
         /// <summary>Lowercase hex of the secret.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed.</exception>
         public string ToHex()
         {
             AssertNotDisposed();
@@ -216,6 +252,7 @@ namespace NKaspa
         }
 
         /// <inheritdoc />
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed.</exception>
         public override int GetHashCode()
         {
             AssertNotDisposed();

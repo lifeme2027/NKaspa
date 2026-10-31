@@ -34,6 +34,7 @@ namespace NKaspa
         }
 
         /// <summary>Word at <paramref name="index"/>. Indexes run from 0 through 2047.</summary>
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="index"/> is outside the allowed range.</exception>
         public string this[int index]
         {
             get
@@ -48,6 +49,7 @@ namespace NKaspa
         }
 
         /// <summary>The list for <paramref name="language"/>.</summary>
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="language"/> is outside the allowed range.</exception>
         public static Wordlist Load(Language language)
         {
             if (language == Language.English)
@@ -71,6 +73,7 @@ namespace NKaspa
         }
 
         /// <summary>Index of <paramref name="word"/>. An unknown word throws <see cref="FormatException"/>.</summary>
+        /// <exception cref="System.FormatException">Unknown BIP39 word.</exception>
         public int GetIndex(string word)
         {
             if (!TryGetIndex(word, out var index))

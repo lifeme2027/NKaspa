@@ -14,6 +14,8 @@ namespace NKaspa.PSKT
         }
 
         /// <summary>Creates a bundle that holds <paramref name="pskt"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="pskt"/> is null.</exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated.</exception>
         public PSKTBundle(PSKT pskt)
         {
             Add(pskt);
@@ -26,6 +28,8 @@ namespace NKaspa.PSKT
         }
 
         /// <summary>Appends a copy so later role changes do not alter <paramref name="pskt"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="pskt"/> is null.</exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated.</exception>
         public void Add(PSKT pskt)
         {
             if (pskt == null)
@@ -37,6 +41,8 @@ namespace NKaspa.PSKT
         }
 
         /// <summary>Appends every item from <paramref name="other"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="other"/> is null.</exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated.</exception>
         public void Merge(PSKTBundle other)
         {
             if (other == null)
@@ -51,24 +57,62 @@ namespace NKaspa.PSKT
         }
 
         /// <summary>JSON array of inner objects.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
+        /// <exception cref="System.ArgumentException">ECDSA signature must be 64 bytes.</exception>
         public string ToJson()
         {
             return PSKTJson.WriteBundle(_items);
         }
 
         /// <summary><c>PSKB</c> plus lowercase hex of <see cref="ToJson"/>.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
+        /// <exception cref="System.ArgumentException">ECDSA signature must be 64 bytes.</exception>
         public string ToHex()
         {
             return PSKTJson.ToTransport(PSKTJson.PskbPrefix, ToJson());
         }
 
         /// <summary>Parses <c>PSKB</c> plus hex. Each item is a Combiner.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="text"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">Hardened index must be below 2^31.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// An HD fingerprint is 4 bytes. ECDSA public key is not on the curve. ECDSA public key must be
+        /// compressed (0x02 or 0x03). ECDSA public key must be 33 bytes. ECDSA signature must be 64 bytes.
+        /// Schnorr signature must be 64 bytes.
+        /// </exception>
+        /// <exception cref="System.FormatException">
+        /// PSKT JSON must be an object. Missing JSON property {name}. uint256 hex must be 32 bytes. uint256
+        /// requires 32 bytes. Hex string contains a non-hex character. Hex string length must be even. Expected
+        /// an unsigned integer. Key path is empty. Key path index is not a number. Key path contains an empty
+        /// index. Script push is too long. Script push is truncated. Script public key hex must start with a
+        /// 2-byte version. Sighash type is not one of the six Kaspa values. Expected a byte. Partial signature
+        /// is empty. Partial signature must be schnorr or eCDSA. ECDSA signature is not strict DER. Further
+        /// failures of this type use the same exception.
+        /// </exception>
         public static PSKTBundle FromHex(string text)
         {
             return FromJson(PSKTJson.FromTransport(text, PSKTJson.PskbPrefix, "PSKB serialization requires 'PSKB' prefix."));
         }
 
         /// <summary>Parses a JSON array of PSKT objects.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="json"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">Hardened index must be below 2^31.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// An HD fingerprint is 4 bytes. ECDSA public key is not on the curve. ECDSA public key must be
+        /// compressed (0x02 or 0x03). ECDSA public key must be 33 bytes. ECDSA signature must be 64 bytes.
+        /// Schnorr signature must be 64 bytes.
+        /// </exception>
+        /// <exception cref="System.FormatException">
+        /// PSKT JSON must be an object. Missing JSON property {name}. uint256 hex must be 32 bytes. uint256
+        /// requires 32 bytes. Hex string contains a non-hex character. Hex string length must be even. Expected
+        /// an unsigned integer. Key path is empty. Key path index is not a number. Key path contains an empty
+        /// index. Script push is too long. Script push is truncated. Script public key hex must start with a
+        /// 2-byte version. Sighash type is not one of the six Kaspa values. Expected a byte. Partial signature
+        /// is empty. Partial signature must be schnorr or eCDSA. ECDSA signature is not strict DER. Further
+        /// failures of this type use the same exception.
+        /// </exception>
         public static PSKTBundle FromJson(string json)
         {
             if (json == null)

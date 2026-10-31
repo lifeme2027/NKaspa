@@ -80,6 +80,7 @@ namespace NKaspa
         };
 
         /// <summary>Finds a network by name or address prefix.</summary>
+        /// <exception cref="System.ArgumentException">Unknown Kaspa network '{name}'.</exception>
         public static Network GetNetwork(string name)
         {
             if (!TryGetNetwork(name, out var network) || network == null)

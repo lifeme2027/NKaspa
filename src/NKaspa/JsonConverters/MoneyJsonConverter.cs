@@ -11,6 +11,7 @@ namespace NKaspa.JsonConverters
     public sealed class MoneyJsonConverter : JsonConverter<Money>
     {
         /// <inheritdoc />
+        /// <exception cref="System.FormatException">{name} must be a whole unsigned 64-bit integer.</exception>
         public override Money Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             return new Money(ReadSompi(ref reader, "Money"));

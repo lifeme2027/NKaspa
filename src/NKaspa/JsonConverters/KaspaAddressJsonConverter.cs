@@ -12,6 +12,7 @@ namespace NKaspa.JsonConverters
         private readonly Network _network;
 
         /// <summary>Creates a converter that requires <paramref name="network"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
         public KaspaAddressJsonConverter(Network network)
         {
             _network = network ?? throw new ArgumentNullException(nameof(network));
@@ -38,12 +39,22 @@ namespace NKaspa.JsonConverters
         private readonly Network _network;
 
         /// <summary>Creates a converter that requires <paramref name="network"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
         public KaspaAddressConverter(Network network)
         {
             _network = network ?? throw new ArgumentNullException(nameof(network));
         }
 
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentException">Address prefix must not contain a colon. Address prefix is required.</exception>
+        /// <exception cref="System.FormatException">
+        /// JSON address is {address.GetType().Name}, not {typeof(TAddress).Name}. Kaspa address must be a JSON
+        /// string. Kaspa address is null. Unknown Kaspa address prefix '{prefix}'. Kaspa address is for
+        /// {network.Name}, not {expectedNetwork.Name}. Kaspa address version or payload length is not Schnorr
+        /// (0, 32 bytes), ECDSA (1, 33 bytes), or P2SH (8, 32 bytes).
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">8-to-5 conversion produced an unexpected length.</exception>
         public override TAddress Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType != JsonTokenType.String)
@@ -61,6 +72,8 @@ namespace NKaspa.JsonConverters
         }
 
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException">The assigned value is null.</exception>
+        /// <exception cref="System.FormatException">Address network is {value.Network.Name}, not {_network.Name}.</exception>
         public override void Write(Utf8JsonWriter writer, TAddress value, JsonSerializerOptions options)
         {
             if (value == null)

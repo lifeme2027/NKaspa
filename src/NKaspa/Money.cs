@@ -34,6 +34,8 @@ namespace NKaspa
         /// Creates an amount from a KAS quantity.
         /// The value must be a whole number of sompi and must fit in 64 bits.
         /// </summary>
+        /// <exception cref="System.ArgumentOutOfRangeException">KAS amount does not fit in 64-bit sompi. A Kaspa amount cannot be negative.</exception>
+        /// <exception cref="System.ArgumentException">KAS amount is finer than one sompi.</exception>
         public static Money Coins(decimal kas)
         {
             if (kas < 0)

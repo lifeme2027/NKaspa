@@ -13,6 +13,7 @@ namespace NKaspa
         private readonly byte[]? _bytes;
 
         /// <summary>Copies 20 bytes.</summary>
+        /// <exception cref="System.ArgumentException">Subnetwork id must be 20 bytes.</exception>
         public SubnetworkId(ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length != Length)
@@ -30,18 +31,21 @@ namespace NKaspa
         }
 
         /// <summary>Coinbase subnetwork. The first byte is 1.</summary>
+        /// <exception cref="System.ArgumentException">Subnetwork id must be 20 bytes.</exception>
         public static SubnetworkId Coinbase
         {
             get { return FromByte(1); }
         }
 
         /// <summary>Registry subnetwork. The first byte is 2.</summary>
+        /// <exception cref="System.ArgumentException">Subnetwork id must be 20 bytes.</exception>
         public static SubnetworkId Registry
         {
             get { return FromByte(2); }
         }
 
         /// <summary>An id whose first byte is <paramref name="first"/> and whose other bytes are zero.</summary>
+        /// <exception cref="System.ArgumentException">Subnetwork id must be 20 bytes.</exception>
         public static SubnetworkId FromByte(byte first)
         {
             var bytes = new byte[Length];
@@ -120,6 +124,8 @@ namespace NKaspa
         }
 
         /// <summary>Lowercase hex of the 20 bytes.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
         public override string ToString()
         {
             return DataEncoders.Encoders.Hex.EncodeData(ToBytes());

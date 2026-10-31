@@ -15,6 +15,7 @@ namespace NKaspa
         private readonly byte _b3;
 
         /// <summary>Copies four fingerprint bytes.</summary>
+        /// <exception cref="System.ArgumentException">An HD fingerprint is 4 bytes.</exception>
         public HDFingerprint(ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length != 4)
@@ -29,6 +30,7 @@ namespace NKaspa
         }
 
         /// <summary>HASH160 of a 33-byte compressed public key, truncated to 4 bytes.</summary>
+        /// <exception cref="System.ArgumentException">Compressed public key must be 33 bytes. An HD fingerprint is 4 bytes.</exception>
         public static HDFingerprint FromCompressedPublicKey(ReadOnlySpan<byte> compressedPublicKey)
         {
             if (compressedPublicKey.Length != 33)
@@ -71,6 +73,8 @@ namespace NKaspa
         }
 
         /// <summary>Lowercase hex of the four bytes.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
         public override string ToString()
         {
             return DataEncoders.Encoders.Hex.EncodeData(ToBytes());

@@ -33,6 +33,7 @@ namespace NKaspa
         private readonly Op[] _ops;
 
         /// <summary>Copies <paramref name="script"/> and parses it. A truncated push throws <see cref="FormatException"/>.</summary>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated.</exception>
         public Script(ReadOnlySpan<byte> script)
         {
             _bytes = script.ToArray();
@@ -40,12 +41,16 @@ namespace NKaspa
         }
 
         /// <summary>Copies and parses <paramref name="script"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="script"/> is null.</exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated.</exception>
         public Script(byte[] script)
             : this(script == null ? throw new ArgumentNullException(nameof(script)) : script.AsSpan())
         {
         }
 
         /// <summary>Parses lowercase or uppercase hex.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="hex"/> is null.</exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated. Hex string contains a non-hex character. Hex string length must be even.</exception>
         public static Script Parse(string hex)
         {
             if (hex == null)
@@ -75,12 +80,16 @@ namespace NKaspa
         }
 
         /// <summary>Lowercase hex of the script bytes.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
         public string ToHex()
         {
             return Encoders.Hex.EncodeData(_bytes);
         }
 
         /// <summary>Space-separated opcodes. Data pushes append lowercase hex.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
         public override string ToString()
         {
             if (_ops.Length == 0)
@@ -102,6 +111,8 @@ namespace NKaspa
         /// and pushed bytes are <c>0x</c> hex so <c>ScriptShortForm</c> can parse the text back.
         /// <see cref="ToString"/> stays the NKaspa form without the <c>0x</c> prefix.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
         public string ToRustString()
         {
             if (_ops.Length == 0)
@@ -128,6 +139,11 @@ namespace NKaspa
         }
 
         /// <summary>Unkeyed BLAKE2b-256 of these script bytes. This is the Kaspa script hash.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">BLAKE2b key must be at most 64 bytes.</exception>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">BLAKE2b hasher is already finished.</exception>
         public uint256 GetScriptHash()
         {
             return Hashes.Blake2b256(_bytes);
@@ -196,6 +212,7 @@ namespace NKaspa
         }
 
         /// <summary>The 32-byte script hash inside a pay-to-script-hash script.</summary>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes.</exception>
         public bool TryGetPayToScriptHash(out uint256 scriptHash)
         {
             if (!IsPayToScriptHash)
@@ -234,6 +251,9 @@ namespace NKaspa
         }
 
         /// <summary>Schnorr pay-to-pubkey script. The 32 bytes are not required to be a curve point.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentException">Schnorr x-only public key must be 32 bytes.</exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated.</exception>
         public static Script PayToPubKey(ReadOnlySpan<byte> xOnlyPublicKey)
         {
             if (xOnlyPublicKey.Length != 32)
@@ -249,6 +269,9 @@ namespace NKaspa
         }
 
         /// <summary>Schnorr pay-to-pubkey script.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="publicKey"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">Schnorr x-only public key must be 32 bytes.</exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated.</exception>
         public static Script PayToPubKey(PubKey publicKey)
         {
             if (publicKey == null)
@@ -260,6 +283,8 @@ namespace NKaspa
         }
 
         /// <summary>ECDSA pay-to-pubkey script.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="publicKey"/> is null.</exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated.</exception>
         public static Script PayToPubKey(PubKeyECDSA publicKey)
         {
             if (publicKey == null)
@@ -276,6 +301,9 @@ namespace NKaspa
         }
 
         /// <summary>Pay-to-script-hash script for a 32-byte BLAKE2b script hash.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentException">Script hash must be 32 bytes.</exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated.</exception>
         public static Script PayToScriptHash(ReadOnlySpan<byte> scriptHash)
         {
             if (scriptHash.Length != 32)
@@ -292,6 +320,9 @@ namespace NKaspa
         }
 
         /// <summary>Pay-to-script-hash script for a script hash.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="scriptHash"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">Script hash must be 32 bytes.</exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated.</exception>
         public static Script PayToScriptHash(uint256 scriptHash)
         {
             if (scriptHash == null)
@@ -303,6 +334,11 @@ namespace NKaspa
         }
 
         /// <summary>Pay-to-script-hash script for the BLAKE2b-256 of <paramref name="redeemScript"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="redeemScript"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">Script hash must be 32 bytes. BLAKE2b key must be at most 64 bytes.</exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated. uint256 requires 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">BLAKE2b hasher is already finished.</exception>
         public static Script PayToScriptHash(Script redeemScript)
         {
             if (redeemScript == null)
@@ -314,6 +350,9 @@ namespace NKaspa
         }
 
         /// <summary>Signature script: <c>OP_DATA_65 || signature || sighash type</c>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="signature"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">Sighash type is not one of the six Kaspa values. Signature must be 64 bytes.</exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated.</exception>
         public static Script SignatureScript(SchnorrSignature signature, SigHashType hashType)
         {
             if (signature == null)
@@ -325,6 +364,9 @@ namespace NKaspa
         }
 
         /// <summary>ECDSA signature script. The signature is the 64-byte compact form, not DER.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="signature"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">Sighash type is not one of the six Kaspa values. Signature must be 64 bytes.</exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated.</exception>
         public static Script SignatureScript(ECDSASignature signature, SigHashType hashType)
         {
             if (signature == null)
@@ -339,6 +381,8 @@ namespace NKaspa
         /// Pay-to-script-hash signature script.
         /// <paramref name="signaturePushes"/> is written first, then a canonical push of the redeem script.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="redeemScript"/> is null.</exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated.</exception>
         public static Script PayToScriptHashSignature(Script redeemScript, Script? signaturePushes = null)
         {
             if (redeemScript == null)
@@ -471,6 +515,49 @@ namespace NKaspa
         /// Runs <paramref name="scriptSig"/> and <paramref name="scriptPubKey"/> for one input.
         /// The input may spend its committed sigop count or compute budget, plus 9999 script units.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException">
+        /// <paramref name="utxos"/> is null. <paramref name="scriptPubKey"/> is null. <paramref
+        /// name="scriptSig"/> is null. <paramref name="tx"/> is null.
+        /// </exception>
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="inputIndex"/> is outside the allowed range. BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// The spent output for this input is missing. BLAKE3 key must be 32 bytes. wRPC request is missing a
+        /// numeric id. Set PointOfView or ChainBlock, not both. PointOfView is the selected parent P.
+        /// ChainBlock is the chain block B whose selected parent becomes P. Sighash type is not one of the six
+        /// Kaspa values. BLAKE2b key must be at most 64 bytes.
+        /// </exception>
+        /// <exception cref="System.FormatException">
+        /// Expected a boolean for isChainBlock. Expected a hex hash for {name}. uint256 hex must be 32 bytes.
+        /// uint256 requires 32 bytes. Hex string contains a non-hex character. Hex string length must be even.
+        /// Expected an unsigned 64-bit integer. JSON number does not fit in an unsigned 64-bit integer.
+        /// Expected a parent hash. Expected parent hashes. Expected an array for parents. Missing JSON string
+        /// {name}. Missing JSON property {name}. Hash is missing. networkId is not a string or an object.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">
+        /// WebSocket is not connected. Call ConnectAsync first. Transaction input is missing an outpoint.
+        /// BLAKE2b hasher is already finished. Transaction output is missing a script. SHA256 did not produce a
+        /// digest.
+        /// </exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC response has no params. RPC response id does not match the request. RPC error.</exception>
+        /// <exception cref="NKaspa.RPC.ConsensusSeqCommitException">
+        /// acceptedIdMerkleRoot is missing for {target.Hash}. seq commitment was requested for {target.Hash},
+        /// which is not a selected-parent ancestor of {pov.Hash}. header blueScore does not match verboseData
+        /// blueScore for {block.Hash}. blueScore is missing for {block.Hash}. getBlockDagInfo.sink changed from
+        /// {previous} to {dag.Sink} and the new selected chain does not contain {anchor}.
+        /// verboseData.isChainBlock is missing for {current.Hash}. selected parent chain cycled at
+        /// {current.Hash}. isChainBlock is false for {block.Hash} on the selected chain.
+        /// verboseData.isChainBlock is missing for {block.Hash}. getBlock did not return {hash}. The node data
+        /// is incomplete. verboseData.hash {block.VerboseHash} does not match the requested block {block.Hash}.
+        /// header.hash {block.HeaderHash} does not match the requested block {block.Hash}. Request limit of
+        /// {_maxRequests.ToString(System.Globalization.CultureInfo.InvariantCulture)} was reached before the
+        /// selected parent chain could be checked. blue score does not decrease from {child.Hash}
+        /// ({childScore.ToString(System.Globalization.CultureInfo.InvariantCulture)}) to selected parent
+        /// {parent.Hash} ({parentScore.ToString(System.Globalization.CultureInfo.InvariantCulture)}). selected
+        /// parent walk reached {block.Hash} but isChainBlock is false. isChainBlock is false for {block.Hash}
+        /// and getBlockDagInfo.sink changed from {previous} to {again.Sink}. getBlockDagInfo failed:
+        /// {ex.Message}. selectedParentHash {block.SelectedParentHash} does not match the first direct parent
+        /// {block.DirectParent} of {block.Hash}. Further failures of this type use the same exception.
+        /// </exception>
         public static bool VerifyScript(
             Script scriptSig,
             ScriptPubKey scriptPubKey,
@@ -485,6 +572,49 @@ namespace NKaspa
         /// Runs <paramref name="scriptSig"/> and <paramref name="scriptPubKey"/> for one input.
         /// <paramref name="error"/> is null when the input is valid.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException">
+        /// <paramref name="utxos"/> is null. <paramref name="scriptPubKey"/> is null. <paramref
+        /// name="scriptSig"/> is null. <paramref name="tx"/> is null.
+        /// </exception>
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="inputIndex"/> is outside the allowed range. BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// The spent output for this input is missing. BLAKE3 key must be 32 bytes. wRPC request is missing a
+        /// numeric id. Set PointOfView or ChainBlock, not both. PointOfView is the selected parent P.
+        /// ChainBlock is the chain block B whose selected parent becomes P. Sighash type is not one of the six
+        /// Kaspa values. BLAKE2b key must be at most 64 bytes.
+        /// </exception>
+        /// <exception cref="System.FormatException">
+        /// Expected a boolean for isChainBlock. Expected a hex hash for {name}. uint256 hex must be 32 bytes.
+        /// uint256 requires 32 bytes. Hex string contains a non-hex character. Hex string length must be even.
+        /// Expected an unsigned 64-bit integer. JSON number does not fit in an unsigned 64-bit integer.
+        /// Expected a parent hash. Expected parent hashes. Expected an array for parents. Missing JSON string
+        /// {name}. Missing JSON property {name}. Hash is missing. networkId is not a string or an object.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">
+        /// WebSocket is not connected. Call ConnectAsync first. Transaction input is missing an outpoint.
+        /// BLAKE2b hasher is already finished. Transaction output is missing a script. SHA256 did not produce a
+        /// digest.
+        /// </exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC response has no params. RPC response id does not match the request. RPC error.</exception>
+        /// <exception cref="NKaspa.RPC.ConsensusSeqCommitException">
+        /// acceptedIdMerkleRoot is missing for {target.Hash}. seq commitment was requested for {target.Hash},
+        /// which is not a selected-parent ancestor of {pov.Hash}. header blueScore does not match verboseData
+        /// blueScore for {block.Hash}. blueScore is missing for {block.Hash}. getBlockDagInfo.sink changed from
+        /// {previous} to {dag.Sink} and the new selected chain does not contain {anchor}.
+        /// verboseData.isChainBlock is missing for {current.Hash}. selected parent chain cycled at
+        /// {current.Hash}. isChainBlock is false for {block.Hash} on the selected chain.
+        /// verboseData.isChainBlock is missing for {block.Hash}. getBlock did not return {hash}. The node data
+        /// is incomplete. verboseData.hash {block.VerboseHash} does not match the requested block {block.Hash}.
+        /// header.hash {block.HeaderHash} does not match the requested block {block.Hash}. Request limit of
+        /// {_maxRequests.ToString(System.Globalization.CultureInfo.InvariantCulture)} was reached before the
+        /// selected parent chain could be checked. blue score does not decrease from {child.Hash}
+        /// ({childScore.ToString(System.Globalization.CultureInfo.InvariantCulture)}) to selected parent
+        /// {parent.Hash} ({parentScore.ToString(System.Globalization.CultureInfo.InvariantCulture)}). selected
+        /// parent walk reached {block.Hash} but isChainBlock is false. isChainBlock is false for {block.Hash}
+        /// and getBlockDagInfo.sink changed from {previous} to {again.Sink}. getBlockDagInfo failed:
+        /// {ex.Message}. selectedParentHash {block.SelectedParentHash} does not match the first direct parent
+        /// {block.DirectParent} of {block.Hash}. Further failures of this type use the same exception.
+        /// </exception>
         public static bool VerifyScript(
             Script scriptSig,
             ScriptPubKey scriptPubKey,
@@ -499,6 +629,49 @@ namespace NKaspa
         }
 
         /// <summary>Runs <paramref name="scriptSig"/> against a version-0 <paramref name="scriptPubKey"/>.</summary>
+        /// <exception cref="System.ArgumentNullException">
+        /// <paramref name="scriptPubKey"/> is null. <paramref name="utxos"/> is null. <paramref
+        /// name="scriptSig"/> is null. <paramref name="tx"/> is null.
+        /// </exception>
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="inputIndex"/> is outside the allowed range. BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// The spent output for this input is missing. BLAKE3 key must be 32 bytes. wRPC request is missing a
+        /// numeric id. Set PointOfView or ChainBlock, not both. PointOfView is the selected parent P.
+        /// ChainBlock is the chain block B whose selected parent becomes P. Sighash type is not one of the six
+        /// Kaspa values. BLAKE2b key must be at most 64 bytes.
+        /// </exception>
+        /// <exception cref="System.FormatException">
+        /// Expected a boolean for isChainBlock. Expected a hex hash for {name}. uint256 hex must be 32 bytes.
+        /// uint256 requires 32 bytes. Hex string contains a non-hex character. Hex string length must be even.
+        /// Expected an unsigned 64-bit integer. JSON number does not fit in an unsigned 64-bit integer.
+        /// Expected a parent hash. Expected parent hashes. Expected an array for parents. Missing JSON string
+        /// {name}. Missing JSON property {name}. Hash is missing. networkId is not a string or an object.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">
+        /// WebSocket is not connected. Call ConnectAsync first. Transaction input is missing an outpoint.
+        /// BLAKE2b hasher is already finished. Transaction output is missing a script. SHA256 did not produce a
+        /// digest.
+        /// </exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC response has no params. RPC response id does not match the request. RPC error.</exception>
+        /// <exception cref="NKaspa.RPC.ConsensusSeqCommitException">
+        /// acceptedIdMerkleRoot is missing for {target.Hash}. seq commitment was requested for {target.Hash},
+        /// which is not a selected-parent ancestor of {pov.Hash}. header blueScore does not match verboseData
+        /// blueScore for {block.Hash}. blueScore is missing for {block.Hash}. getBlockDagInfo.sink changed from
+        /// {previous} to {dag.Sink} and the new selected chain does not contain {anchor}.
+        /// verboseData.isChainBlock is missing for {current.Hash}. selected parent chain cycled at
+        /// {current.Hash}. isChainBlock is false for {block.Hash} on the selected chain.
+        /// verboseData.isChainBlock is missing for {block.Hash}. getBlock did not return {hash}. The node data
+        /// is incomplete. verboseData.hash {block.VerboseHash} does not match the requested block {block.Hash}.
+        /// header.hash {block.HeaderHash} does not match the requested block {block.Hash}. Request limit of
+        /// {_maxRequests.ToString(System.Globalization.CultureInfo.InvariantCulture)} was reached before the
+        /// selected parent chain could be checked. blue score does not decrease from {child.Hash}
+        /// ({childScore.ToString(System.Globalization.CultureInfo.InvariantCulture)}) to selected parent
+        /// {parent.Hash} ({parentScore.ToString(System.Globalization.CultureInfo.InvariantCulture)}). selected
+        /// parent walk reached {block.Hash} but isChainBlock is false. isChainBlock is false for {block.Hash}
+        /// and getBlockDagInfo.sink changed from {previous} to {again.Sink}. getBlockDagInfo failed:
+        /// {ex.Message}. selectedParentHash {block.SelectedParentHash} does not match the first direct parent
+        /// {block.DirectParent} of {block.Hash}. Further failures of this type use the same exception.
+        /// </exception>
         public static bool VerifyScript(
             Script scriptSig,
             Script scriptPubKey,
@@ -510,6 +683,49 @@ namespace NKaspa
         }
 
         /// <summary>Runs <paramref name="scriptSig"/> against a version-0 <paramref name="scriptPubKey"/>.</summary>
+        /// <exception cref="System.ArgumentNullException">
+        /// <paramref name="scriptPubKey"/> is null. <paramref name="utxos"/> is null. <paramref
+        /// name="scriptSig"/> is null. <paramref name="tx"/> is null.
+        /// </exception>
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="inputIndex"/> is outside the allowed range. BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// The spent output for this input is missing. BLAKE3 key must be 32 bytes. wRPC request is missing a
+        /// numeric id. Set PointOfView or ChainBlock, not both. PointOfView is the selected parent P.
+        /// ChainBlock is the chain block B whose selected parent becomes P. Sighash type is not one of the six
+        /// Kaspa values. BLAKE2b key must be at most 64 bytes.
+        /// </exception>
+        /// <exception cref="System.FormatException">
+        /// Expected a boolean for isChainBlock. Expected a hex hash for {name}. uint256 hex must be 32 bytes.
+        /// uint256 requires 32 bytes. Hex string contains a non-hex character. Hex string length must be even.
+        /// Expected an unsigned 64-bit integer. JSON number does not fit in an unsigned 64-bit integer.
+        /// Expected a parent hash. Expected parent hashes. Expected an array for parents. Missing JSON string
+        /// {name}. Missing JSON property {name}. Hash is missing. networkId is not a string or an object.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">
+        /// WebSocket is not connected. Call ConnectAsync first. Transaction input is missing an outpoint.
+        /// BLAKE2b hasher is already finished. Transaction output is missing a script. SHA256 did not produce a
+        /// digest.
+        /// </exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC response has no params. RPC response id does not match the request. RPC error.</exception>
+        /// <exception cref="NKaspa.RPC.ConsensusSeqCommitException">
+        /// acceptedIdMerkleRoot is missing for {target.Hash}. seq commitment was requested for {target.Hash},
+        /// which is not a selected-parent ancestor of {pov.Hash}. header blueScore does not match verboseData
+        /// blueScore for {block.Hash}. blueScore is missing for {block.Hash}. getBlockDagInfo.sink changed from
+        /// {previous} to {dag.Sink} and the new selected chain does not contain {anchor}.
+        /// verboseData.isChainBlock is missing for {current.Hash}. selected parent chain cycled at
+        /// {current.Hash}. isChainBlock is false for {block.Hash} on the selected chain.
+        /// verboseData.isChainBlock is missing for {block.Hash}. getBlock did not return {hash}. The node data
+        /// is incomplete. verboseData.hash {block.VerboseHash} does not match the requested block {block.Hash}.
+        /// header.hash {block.HeaderHash} does not match the requested block {block.Hash}. Request limit of
+        /// {_maxRequests.ToString(System.Globalization.CultureInfo.InvariantCulture)} was reached before the
+        /// selected parent chain could be checked. blue score does not decrease from {child.Hash}
+        /// ({childScore.ToString(System.Globalization.CultureInfo.InvariantCulture)}) to selected parent
+        /// {parent.Hash} ({parentScore.ToString(System.Globalization.CultureInfo.InvariantCulture)}). selected
+        /// parent walk reached {block.Hash} but isChainBlock is false. isChainBlock is false for {block.Hash}
+        /// and getBlockDagInfo.sink changed from {previous} to {again.Sink}. getBlockDagInfo failed:
+        /// {ex.Message}. selectedParentHash {block.SelectedParentHash} does not match the first direct parent
+        /// {block.DirectParent} of {block.Hash}. Further failures of this type use the same exception.
+        /// </exception>
         public static bool VerifyScript(
             Script scriptSig,
             Script scriptPubKey,
@@ -554,6 +770,7 @@ namespace NKaspa
         }
 
         /// <summary>Appends an opcode that is not a data push.</summary>
+        /// <exception cref="System.ArgumentException">Use AddData for a push.</exception>
         public ScriptBuilder AddOp(OpcodeType opcode)
         {
             var code = (byte)opcode;
@@ -632,6 +849,7 @@ namespace NKaspa
         /// Appends the canonical encoding of a script number.
         /// Zero, -1, and 1 through 16 use the small-integer opcodes.
         /// </summary>
+        /// <exception cref="System.ArgumentException">Use AddData for a push.</exception>
         public ScriptBuilder AddInt64(long value)
         {
             if (value == 0)
@@ -688,6 +906,8 @@ namespace NKaspa
         }
 
         /// <summary>Parses the bytes written so far. A truncated push throws <see cref="FormatException"/>.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated.</exception>
         public Script ToScript()
         {
             return new Script(_bytes.ToArray());

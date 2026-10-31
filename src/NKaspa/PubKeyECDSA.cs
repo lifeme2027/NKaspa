@@ -17,6 +17,7 @@ namespace NKaspa
         private readonly byte[] _compressed;
 
         /// <summary>Copies a 33-byte compressed key and checks that it is on secp256k1.</summary>
+        /// <exception cref="System.ArgumentException">ECDSA public key is not on the curve. ECDSA public key must be compressed (0x02 or 0x03). ECDSA public key must be 33 bytes.</exception>
         public PubKeyECDSA(ReadOnlySpan<byte> compressed)
         {
             if (compressed.Length != Length)
@@ -38,6 +39,9 @@ namespace NKaspa
         }
 
         /// <summary>Parses a 66-character hex compressed key.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="hex"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">ECDSA public key is not on the curve. ECDSA public key must be compressed (0x02 or 0x03). ECDSA public key must be 33 bytes.</exception>
+        /// <exception cref="System.FormatException">Hex string contains a non-hex character. Hex string length must be even.</exception>
         public static PubKeyECDSA Parse(string hex)
         {
             if (hex == null)
@@ -66,24 +70,32 @@ namespace NKaspa
         }
 
         /// <summary>Lowercase hex of the compressed key.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
         public override string ToString()
         {
             return Encoders.Hex.EncodeData(_compressed);
         }
 
         /// <summary>ECDSA pay-to-pubkey address on <paramref name="network"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">Address prefix must not contain a colon. Address prefix is required. ECDSA public key must be 33 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">8-to-5 conversion produced an unexpected length.</exception>
         public KaspaPubKeyEcdsaAddress GetAddress(Network network)
         {
             return new KaspaPubKeyEcdsaAddress(_compressed, network);
         }
 
         /// <summary>Version-0 ECDSA pay-to-pubkey script.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentException">ECDSA public key must be 33 bytes.</exception>
         public ScriptPubKey GetScriptPubKey()
         {
             return ScriptPubKey.PayToPubKeyEcdsa(_compressed);
         }
 
         /// <summary>Verifies a compact ECDSA signature over a 32-byte message.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="signature"/> is null.</exception>
         public bool Verify(ECDSASignature signature, ReadOnlySpan<byte> hash32)
         {
             if (signature == null)

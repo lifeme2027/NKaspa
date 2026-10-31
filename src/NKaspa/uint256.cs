@@ -45,6 +45,7 @@ namespace NKaspa
         }
 
         /// <summary>Copies another value.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="other"/> is null.</exception>
         public uint256(uint256 other)
         {
             if (other == null)
@@ -71,12 +72,15 @@ namespace NKaspa
         /// <paramref name="littleEndian"/> true (the default) stores Kaspa wire order as given.
         /// False treats <paramref name="bytes"/> as a big-endian integer and reverses it into wire order.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="bytes"/> is null.</exception>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes.</exception>
         public uint256(byte[] bytes, bool littleEndian = true)
             : this(bytes, 0, bytes == null ? 0 : bytes.Length, littleEndian)
         {
         }
 
         /// <summary>Creates a value from a 32-byte span in Kaspa wire order.</summary>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes.</exception>
         public uint256(ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length != Length)
@@ -88,6 +92,8 @@ namespace NKaspa
         }
 
         /// <summary>Creates a value from a slice. See <see cref="uint256(byte[], bool)"/> for endianness.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="bytes"/> is null.</exception>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes.</exception>
         public uint256(byte[] bytes, int offset, int length, bool littleEndian = true)
         {
             if (bytes == null)
@@ -109,6 +115,8 @@ namespace NKaspa
         }
 
         /// <summary>Parses a 64-digit hex string. An optional <c>0x</c> prefix is accepted. The hex is Kaspa wire order.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.FormatException">uint256 hex must be 32 bytes. uint256 requires 32 bytes. Hex string contains a non-hex character. Hex string length must be even.</exception>
         public uint256(string hex)
         {
             if (!TryParse(hex, out var parsed) || parsed == null)
@@ -120,6 +128,8 @@ namespace NKaspa
         }
 
         /// <summary>Parses Kaspa wire-order hex. Returns false when the text is not 32 bytes of hex.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes. Hex string contains a non-hex character. Hex string length must be even.</exception>
         public static bool TryParse(string? hex, out uint256? result)
         {
             result = null;
@@ -144,6 +154,8 @@ namespace NKaspa
         }
 
         /// <summary>Parses Kaspa wire-order hex.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="hex"/> is null.</exception>
+        /// <exception cref="System.FormatException">uint256 hex must be 32 bytes. uint256 requires 32 bytes. Hex string contains a non-hex character. Hex string length must be even.</exception>
         public static uint256 Parse(string hex)
         {
             if (hex == null)
@@ -160,6 +172,7 @@ namespace NKaspa
         }
 
         /// <summary>Byte at <paramref name="index"/> in wire order. Index 0 is the least significant byte.</summary>
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="index"/> is outside the allowed range.</exception>
         public byte GetByte(int index)
         {
             if (index < 0 || index >= Length)
@@ -187,6 +200,7 @@ namespace NKaspa
         }
 
         /// <summary>Writes Kaspa wire order into <paramref name="destination"/>, which must hold 32 bytes.</summary>
+        /// <exception cref="System.ArgumentException">Destination must hold 32 bytes.</exception>
         public void WriteTo(Span<byte> destination)
         {
             if (destination.Length < Length)
@@ -198,6 +212,9 @@ namespace NKaspa
         }
 
         /// <summary>Reads 32 wire-order bytes from a stream.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="stream"/> is null.</exception>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes.</exception>
+        /// <exception cref="System.IO.EndOfStreamException">Stream ended before 32 bytes of uint256.</exception>
         public static uint256 ReadFrom(Stream stream)
         {
             if (stream == null)
@@ -222,6 +239,7 @@ namespace NKaspa
         }
 
         /// <summary>Writes 32 wire-order bytes to a stream.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="stream"/> is null.</exception>
         public void WriteTo(Stream stream)
         {
             if (stream == null)
@@ -233,6 +251,8 @@ namespace NKaspa
         }
 
         /// <summary>Lowercase hex in Kaspa wire order. The bytes are not reversed.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
         public override string ToString()
         {
             return Hex.EncodeData(_bytes);
@@ -259,6 +279,7 @@ namespace NKaspa
         }
 
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentException">Object is not a uint256.</exception>
         public int CompareTo(object? obj)
         {
             if (obj == null)

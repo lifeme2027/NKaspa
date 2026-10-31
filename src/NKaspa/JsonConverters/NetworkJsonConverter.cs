@@ -11,6 +11,8 @@ namespace NKaspa.JsonConverters
     public sealed class NetworkJsonConverter : JsonConverter<Network>
     {
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.FormatException">Network must be a string or an object. Unknown Kaspa network '{name ?? string.Empty}'. networkId is not a string or an object.</exception>
         public override Network Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType == JsonTokenType.String)
@@ -30,6 +32,7 @@ namespace NKaspa.JsonConverters
         }
 
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException">The assigned value is null.</exception>
         public override void Write(Utf8JsonWriter writer, Network value, JsonSerializerOptions options)
         {
             if (value == null)

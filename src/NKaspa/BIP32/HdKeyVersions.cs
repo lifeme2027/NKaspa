@@ -57,6 +57,7 @@ namespace NKaspa
         }
 
         /// <summary>Public prefix that pairs with a known private prefix.</summary>
+        /// <exception cref="System.ArgumentException">Unknown extended private key version.</exception>
         public static uint ToPublic(uint privateVersion)
         {
             if (privateVersion == Xprv)

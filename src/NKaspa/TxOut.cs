@@ -7,6 +7,7 @@ namespace NKaspa
     public sealed class CovenantBinding
     {
         /// <summary>Creates a binding. <paramref name="covenantId"/> is the 32-byte covenant id.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="covenantId"/> is null.</exception>
         public CovenantBinding(ushort authorizingInput, uint256 covenantId)
         {
             AuthorizingInput = authorizingInput;
@@ -28,6 +29,7 @@ namespace NKaspa
     public sealed class TxOut
     {
         /// <summary>Creates an output.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="scriptPublicKey"/> is null.</exception>
         public TxOut(Money value, ScriptPubKey scriptPublicKey)
         {
             Value = value;
@@ -35,6 +37,7 @@ namespace NKaspa
         }
 
         /// <summary>Creates an output from a sompi count.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="scriptPublicKey"/> is null.</exception>
         public TxOut(ulong sompi, ScriptPubKey scriptPublicKey)
             : this(new Money(sompi), scriptPublicKey)
         {

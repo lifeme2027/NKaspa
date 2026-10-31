@@ -25,6 +25,11 @@ namespace NKaspa
         /// Indexes <paramref name="tx"/> against <paramref name="utxos"/>.
         /// A wrong genesis id or an authorizing input that does not exist returns an error and no context.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="utxos"/> is null. <paramref name="tx"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">BLAKE2b key must be at most 64 bytes.</exception>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">BLAKE2b hasher is already finished.</exception>
         public static ScriptError? TryFromTransaction(Transaction tx, IReadOnlyList<UtxoEntry?> utxos, out CovenantsContext context)
         {
             if (tx == null)
@@ -165,6 +170,11 @@ namespace NKaspa
         /// Genesis covenant id. Keyed BLAKE2b over the outpoint and the authorized outputs.
         /// The covenant binding itself is not hashed. Lengths are little-endian u64.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="authorizedOutputs"/> is null. <paramref name="outpoint"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">BLAKE2b key must be at most 64 bytes.</exception>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">BLAKE2b hasher is already finished.</exception>
         public static uint256 CovenantId(OutPoint outpoint, IReadOnlyList<KeyValuePair<uint, TxOut>> authorizedOutputs)
         {
             if (outpoint == null)

@@ -44,6 +44,7 @@ namespace NKaspa
         private readonly byte[] _script;
 
         /// <summary>Wraps an existing script. The bytes are copied.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="script"/> is null.</exception>
         public ScriptPubKey(ushort version, byte[] script)
         {
             if (script == null)
@@ -56,6 +57,7 @@ namespace NKaspa
         }
 
         /// <summary>Wraps a parsed script. The bytes are copied.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="script"/> is null.</exception>
         public ScriptPubKey(ushort version, Script script)
         {
             if (script == null)
@@ -83,6 +85,8 @@ namespace NKaspa
         }
 
         /// <summary>Schnorr pay-to-pubkey script, version 0.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentException">Schnorr x-only public key must be 32 bytes.</exception>
         public static ScriptPubKey PayToPubKey(ReadOnlySpan<byte> xOnlyPublicKey)
         {
             if (xOnlyPublicKey.Length != 32)
@@ -98,6 +102,8 @@ namespace NKaspa
         }
 
         /// <summary>ECDSA pay-to-pubkey script, version 0. The key is the 33-byte compressed form.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentException">ECDSA public key must be 33 bytes.</exception>
         public static ScriptPubKey PayToPubKeyEcdsa(ReadOnlySpan<byte> compressedPublicKey)
         {
             if (compressedPublicKey.Length != 33)
@@ -113,6 +119,8 @@ namespace NKaspa
         }
 
         /// <summary>Pay-to-script-hash script, version 0. <paramref name="scriptHash"/> is BLAKE2b-256 of the redeem script.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentException">Script hash must be 32 bytes.</exception>
         public static ScriptPubKey PayToScriptHash(ReadOnlySpan<byte> scriptHash)
         {
             if (scriptHash.Length != 32)
@@ -129,6 +137,9 @@ namespace NKaspa
         }
 
         /// <summary>Schnorr pay-to-pubkey script, version 0.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="publicKey"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">Schnorr x-only public key must be 32 bytes.</exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated.</exception>
         public static ScriptPubKey PayToPubKey(PubKey publicKey)
         {
             if (publicKey == null)
@@ -140,6 +151,8 @@ namespace NKaspa
         }
 
         /// <summary>ECDSA pay-to-pubkey script, version 0.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="publicKey"/> is null.</exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated.</exception>
         public static ScriptPubKey PayToPubKeyEcdsa(PubKeyECDSA publicKey)
         {
             if (publicKey == null)
@@ -151,48 +164,68 @@ namespace NKaspa
         }
 
         /// <summary>Pay-to-script-hash script, version 0.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="scriptHash"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">Script hash must be 32 bytes.</exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated.</exception>
         public static ScriptPubKey PayToScriptHash(uint256 scriptHash)
         {
             return new ScriptPubKey(0, global::NKaspa.Script.PayToScriptHash(scriptHash));
         }
 
         /// <summary>Pay-to-script-hash script for <paramref name="redeemScript"/>, version 0.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="redeemScript"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">Script hash must be 32 bytes. BLAKE2b key must be at most 64 bytes.</exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated. uint256 requires 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">BLAKE2b hasher is already finished.</exception>
         public static ScriptPubKey PayToScriptHash(Script redeemScript)
         {
             return new ScriptPubKey(0, global::NKaspa.Script.PayToScriptHash(redeemScript));
         }
 
         /// <summary>The script bytes parsed as a <see cref="Script"/>.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated.</exception>
         public Script ToScript()
         {
             return new Script(_script);
         }
 
         /// <summary>True for a version-0 Schnorr pay-to-pubkey script.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated.</exception>
         public bool IsPayToPubKey
         {
             get { return Version == 0 && ToScript().IsPayToPubKey; }
         }
 
         /// <summary>True for a version-0 ECDSA pay-to-pubkey script.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated.</exception>
         public bool IsPayToPubKeyEcdsa
         {
             get { return Version == 0 && ToScript().IsPayToPubKeyEcdsa; }
         }
 
         /// <summary>True for a version-0 pay-to-script-hash script.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated.</exception>
         public bool IsPayToScriptHash
         {
             get { return Version == 0 && ToScript().IsPayToScriptHash; }
         }
 
         /// <summary>Lowercase hex of the script bytes. The version is not included.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
         public string ToHex()
         {
             return Encoders.Hex.EncodeData(_script);
         }
 
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
         public override string ToString()
         {
             return ToHex();

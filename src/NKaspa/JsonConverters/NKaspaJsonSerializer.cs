@@ -29,12 +29,18 @@ namespace NKaspa.JsonConverters
         public const string PrivateKeyWarning = "WARNING: serializing a private key writes secret material into JSON. Leave allowPrivateKeys false unless that output is protected.";
 
         /// <summary>Compact JSON for <paramref name="value"/> on <paramref name="network"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
+        /// <exception cref="System.Exception">The operation failed.</exception>
+        /// <exception cref="System.Text.Json.JsonException">The operation failed.</exception>
         public static string Serialize<T>(T value, Network network)
         {
             return Serialize(value, network, writeIndented: false, allowPrivateKeys: false);
         }
 
         /// <summary>JSON for <paramref name="value"/>. Indentation does not change the tokens.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
+        /// <exception cref="System.Exception">The operation failed.</exception>
+        /// <exception cref="System.Text.Json.JsonException">The operation failed.</exception>
         public static string Serialize<T>(T value, Network network, bool writeIndented)
         {
             return Serialize(value, network, writeIndented, allowPrivateKeys: false);
@@ -44,6 +50,9 @@ namespace NKaspa.JsonConverters
         /// JSON for <paramref name="value"/>.
         /// <paramref name="allowPrivateKeys"/> must stay false unless the caller accepts <see cref="PrivateKeyWarning"/>.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
+        /// <exception cref="System.Exception">The operation failed.</exception>
+        /// <exception cref="System.Text.Json.JsonException">The operation failed.</exception>
         public static string Serialize<T>(T value, Network network, bool writeIndented, bool allowPrivateKeys)
         {
             return Serialize(value, CreateOptions(network, writeIndented, allowPrivateKeys));
@@ -54,6 +63,9 @@ namespace NKaspa.JsonConverters
         /// A converter <see cref="FormatException"/>, <see cref="InvalidOperationException"/>, or <see cref="ArgumentException"/>
         /// is thrown as itself.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="options"/> is null.</exception>
+        /// <exception cref="System.Exception">The operation failed.</exception>
+        /// <exception cref="System.Text.Json.JsonException">The operation failed.</exception>
         public static string Serialize<T>(T value, JsonSerializerOptions options)
         {
             if (options == null)
@@ -77,6 +89,10 @@ namespace NKaspa.JsonConverters
         }
 
         /// <summary>Reads <paramref name="json"/> with the Kaspa converters for <paramref name="network"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="json"/> is null. <paramref name="network"/> is null.</exception>
+        /// <exception cref="System.FormatException">JSON value is null.</exception>
+        /// <exception cref="System.Exception">The operation failed.</exception>
+        /// <exception cref="System.Text.Json.JsonException">The operation failed.</exception>
         public static T Deserialize<T>(string json, Network network)
         {
             return Deserialize<T>(json, network, allowPrivateKeys: false);
@@ -86,6 +102,10 @@ namespace NKaspa.JsonConverters
         /// Reads <paramref name="json"/>.
         /// <paramref name="allowPrivateKeys"/> must stay false unless the caller accepts <see cref="PrivateKeyWarning"/>.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="json"/> is null. <paramref name="network"/> is null.</exception>
+        /// <exception cref="System.FormatException">JSON value is null.</exception>
+        /// <exception cref="System.Exception">The operation failed.</exception>
+        /// <exception cref="System.Text.Json.JsonException">The operation failed.</exception>
         public static T Deserialize<T>(string json, Network network, bool allowPrivateKeys)
         {
             return Deserialize<T>(json, CreateOptions(network, writeIndented: false, allowPrivateKeys));
@@ -96,6 +116,10 @@ namespace NKaspa.JsonConverters
         /// A converter <see cref="FormatException"/>, <see cref="InvalidOperationException"/>, or <see cref="ArgumentException"/>
         /// is thrown as itself. Other JSON syntax errors remain <see cref="JsonException"/>.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="options"/> is null. <paramref name="json"/> is null.</exception>
+        /// <exception cref="System.FormatException">JSON value is null.</exception>
+        /// <exception cref="System.Exception">The operation failed.</exception>
+        /// <exception cref="System.Text.Json.JsonException">The operation failed.</exception>
         public static T Deserialize<T>(string json, JsonSerializerOptions options)
         {
             if (json == null)
@@ -130,12 +154,14 @@ namespace NKaspa.JsonConverters
         }
 
         /// <summary>Options with the Kaspa converters, camelCase names, and private keys refused.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
         public static JsonSerializerOptions CreateOptions(Network network)
         {
             return CreateOptions(network, writeIndented: false, allowPrivateKeys: false);
         }
 
         /// <summary>Options with the Kaspa converters. See <see cref="PrivateKeyWarning"/> before passing true.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
         public static JsonSerializerOptions CreateOptions(Network network, bool writeIndented, bool allowPrivateKeys)
         {
             var options = new JsonSerializerOptions
@@ -156,6 +182,7 @@ namespace NKaspa.JsonConverters
         /// Private keys are refused. Call this before the options are used. A second call registers a second set.
         /// When <see cref="JsonSerializerOptions.PropertyNamingPolicy"/> is null, it becomes camelCase.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null. <paramref name="options"/> is null.</exception>
         public static JsonSerializerOptions AddNKaspaConverters(this JsonSerializerOptions options, Network network)
         {
             return AddNKaspaConverters(options, network, allowPrivateKeys: false);
@@ -166,6 +193,7 @@ namespace NKaspa.JsonConverters
         /// <paramref name="allowPrivateKeys"/> writes <see cref="Key"/> and <see cref="ExtKey"/> secrets.
         /// <see cref="NKaspaJsonSerializer.PrivateKeyWarning"/> applies when it is true.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null. <paramref name="options"/> is null.</exception>
         public static JsonSerializerOptions AddNKaspaConverters(this JsonSerializerOptions options, Network network, bool allowPrivateKeys)
         {
             if (options == null)

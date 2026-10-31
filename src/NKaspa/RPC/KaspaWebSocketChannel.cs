@@ -37,6 +37,7 @@ namespace NKaspa.RPC
         private int _disposed;
 
         /// <summary>Creates a channel for <paramref name="uri"/>. The socket stays closed until <see cref="ConnectAsync"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="uri"/> is null.</exception>
         public KaspaWebSocketChannel(Uri uri)
         {
             _uri = uri ?? throw new ArgumentNullException(nameof(uri));
@@ -61,6 +62,7 @@ namespace NKaspa.RPC
         }
 
         /// <summary>Opens the WebSocket and starts reading frames.</summary>
+        /// <exception cref="System.InvalidOperationException">WebSocket is already connected.</exception>
         public async Task ConnectAsync(CancellationToken cancellationToken = default)
         {
             if (_reader != null)
@@ -76,6 +78,9 @@ namespace NKaspa.RPC
         /// Sends one text frame and returns the response with the same numeric <c>id</c>.
         /// Handshake and notification frames are not returned here.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="requestJson"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">wRPC request is missing a numeric id.</exception>
+        /// <exception cref="System.InvalidOperationException">WebSocket is not connected. Call ConnectAsync first.</exception>
         public async Task<string> ExchangeAsync(string requestJson, CancellationToken cancellationToken = default)
         {
             if (requestJson == null)

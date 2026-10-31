@@ -65,6 +65,8 @@ namespace NKaspa.Crypto
         }
 
         /// <summary>Creates a hasher. <paramref name="hashSize"/> is the digest length in bytes, from 1 to 64.</summary>
+        /// <exception cref="System.ArgumentOutOfRangeException">BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">BLAKE2b key must be at most 64 bytes.</exception>
         public Blake2b(int hashSize = 32, ReadOnlySpan<byte> key = default)
         {
             if (hashSize < 1 || hashSize > MaxHashSize)
@@ -99,6 +101,9 @@ namespace NKaspa.Crypto
         }
 
         /// <summary>Absorbs the next slice of the message.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="data"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="offset"/> is outside the allowed range.</exception>
+        /// <exception cref="System.InvalidOperationException">BLAKE2b hasher is already finished.</exception>
         public void Update(byte[] data, int offset, int count)
         {
             if (data == null)
@@ -115,6 +120,7 @@ namespace NKaspa.Crypto
         }
 
         /// <summary>Absorbs the next slice of the message.</summary>
+        /// <exception cref="System.InvalidOperationException">BLAKE2b hasher is already finished.</exception>
         public void Update(ReadOnlySpan<byte> data)
         {
             if (_finished)
@@ -161,6 +167,7 @@ namespace NKaspa.Crypto
         }
 
         /// <summary>Returns the digest and retires this instance.</summary>
+        /// <exception cref="System.InvalidOperationException">BLAKE2b hasher is already finished.</exception>
         public byte[] FinalizeHash()
         {
             if (_finished)
@@ -183,6 +190,9 @@ namespace NKaspa.Crypto
         }
 
         /// <summary>Unkeyed or keyed BLAKE2b of a whole message.</summary>
+        /// <exception cref="System.ArgumentOutOfRangeException">BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">BLAKE2b key must be at most 64 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">BLAKE2b hasher is already finished.</exception>
         public static byte[] ComputeHash(ReadOnlySpan<byte> data, int hashSize = 32, ReadOnlySpan<byte> key = default)
         {
             var hasher = new Blake2b(hashSize, key);
@@ -191,6 +201,9 @@ namespace NKaspa.Crypto
         }
 
         /// <summary>Unkeyed BLAKE2b-256, the digest Kaspa uses for ids and script hashes.</summary>
+        /// <exception cref="System.ArgumentOutOfRangeException">BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">BLAKE2b key must be at most 64 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">BLAKE2b hasher is already finished.</exception>
         public static byte[] Hash256(ReadOnlySpan<byte> data)
         {
             return ComputeHash(data, 32);

@@ -34,6 +34,11 @@ namespace NKaspa.Crypto
         private static readonly byte[] EcdsaDomain = Sha256(Encoding.ASCII.GetBytes("TransactionSigningHashECDSA"));
 
         /// <summary>BLAKE2b-256 keyed with <c>TransactionSigningHash</c> over the Schnorr preimage.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="utxo"/> is null. <paramref name="tx"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="inputIndex"/> is outside the allowed range. BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">Sighash type is not one of the six Kaspa values. BLAKE2b key must be at most 64 bytes.</exception>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">Transaction input is missing an outpoint. BLAKE2b hasher is already finished. Transaction output is missing a script.</exception>
         public static uint256 CalcSchnorrSignatureHash(Transaction tx, int inputIndex, UtxoEntry utxo, SigHashType hashType = SigHashType.All)
         {
             if (tx == null)
@@ -90,6 +95,14 @@ namespace NKaspa.Crypto
         }
 
         /// <summary>ECDSA signing hash: domain-separated SHA256 of the Schnorr signature hash.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="utxo"/> is null. <paramref name="tx"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="inputIndex"/> is outside the allowed range. BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">Sighash type is not one of the six Kaspa values. BLAKE2b key must be at most 64 bytes.</exception>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">
+        /// SHA256 did not produce a digest. Transaction input is missing an outpoint. BLAKE2b hasher is already
+        /// finished. Transaction output is missing a script.
+        /// </exception>
         public static uint256 CalcEcdsaSignatureHash(Transaction tx, int inputIndex, UtxoEntry utxo, SigHashType hashType = SigHashType.All)
         {
             var schnorr = CalcSchnorrSignatureHash(tx, inputIndex, utxo, hashType).ToBytes();
@@ -101,6 +114,11 @@ namespace NKaspa.Crypto
         /// Version 0 is keyed BLAKE2b <c>TransactionID</c>.
         /// Version 1 and later are keyed BLAKE3 <c>TransactionV1Id</c> over the payload digest and the rest digest.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="tx"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">BLAKE3 domain must fit in 32 bytes. BLAKE3 key must be 32 bytes. BLAKE2b key must be at most 64 bytes.</exception>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">Transaction input is missing an outpoint. Transaction output is missing a script. BLAKE2b hasher is already finished.</exception>
         public static uint256 TransactionId(Transaction tx)
         {
             if (tx == null)
@@ -117,6 +135,11 @@ namespace NKaspa.Crypto
         }
 
         /// <summary>Transaction hash. Keyed BLAKE2b <c>TransactionHash</c> over the full encoding.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="tx"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">BLAKE2b key must be at most 64 bytes.</exception>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">BLAKE2b hasher is already finished. Transaction input is missing an outpoint. Transaction output is missing a script.</exception>
         public static uint256 TransactionHash(Transaction tx)
         {
             if (tx == null)
@@ -131,6 +154,7 @@ namespace NKaspa.Crypto
         /// One-shot <c>TransactionSigningHashECDSA</c> digest.
         /// The prefix is SHA256 of the domain string, then the message is absorbed, then one SHA256 is finalized.
         /// </summary>
+        /// <exception cref="System.InvalidOperationException">SHA256 did not produce a digest.</exception>
         public static byte[] EcdsaDomainHash(ReadOnlySpan<byte> data)
         {
             using var sha = SHA256.Create();

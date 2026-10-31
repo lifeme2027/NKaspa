@@ -68,6 +68,8 @@ namespace NKaspa
         /// Version 0 uses <see cref="TxIn.SigOpCount"/>. Version 1 uses <see cref="TxIn.ComputeBudget"/>, or 0 when it is unset.
         /// Both include <see cref="FreeScriptUnitsPerInput"/>.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="tx"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="inputIndex"/> is outside the allowed range.</exception>
         public static ulong AllowedScriptUnits(Transaction tx, int inputIndex)
         {
             if (tx == null)

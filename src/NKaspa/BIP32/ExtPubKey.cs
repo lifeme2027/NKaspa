@@ -30,6 +30,18 @@ namespace NKaspa
         }
 
         /// <summary>Parses a Base58Check extended public key.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="text"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// ECDSA public key is not on the curve. ECDSA public key must be compressed (0x02 or 0x03). ECDSA
+        /// public key must be 33 bytes. An HD fingerprint is 4 bytes.
+        /// </exception>
+        /// <exception cref="System.FormatException">
+        /// Extended public key is not on the curve. Extended public key must start with 0x02 or 0x03. A master
+        /// extended key must have a zero parent fingerprint and a zero child index. Extended key version is not
+        /// a public prefix, or it does not match the key type. An extended key payload is 78 bytes. Invalid
+        /// Base58Check checksum. Base58Check payload is shorter than the checksum. Base58 value does not fit in
+        /// the decode buffer. Invalid Base58 character.
+        /// </exception>
         public static ExtPubKey Parse(string text)
         {
             if (text == null)
@@ -78,6 +90,7 @@ namespace NKaspa
         }
 
         /// <summary>BIP-340 x-only key. Kaspa addresses use this key.</summary>
+        /// <exception cref="System.ArgumentException">Schnorr x-only public key is not on the curve. Schnorr x-only public key must be 32 bytes.</exception>
         public PubKey PubKey
         {
             get { return new PubKey(_compressed.XOnly); }
@@ -120,12 +133,27 @@ namespace NKaspa
         }
 
         /// <summary>Schnorr address of <see cref="PubKey"/> on <paramref name="network"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// Address prefix must not contain a colon. Address prefix is required. {name} must be {size} bytes.
+        /// Schnorr x-only public key is not on the curve. Schnorr x-only public key must be 32 bytes.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">8-to-5 conversion produced an unexpected length.</exception>
         public KaspaPubKeyAddress GetAddress(Network network)
         {
             return PubKey.GetAddress(network);
         }
 
         /// <summary>Derives a non-hardened child. A hardened index throws <see cref="InvalidOperationException"/>.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// ECDSA public key is not on the curve. ECDSA public key must be compressed (0x02 or 0x03). ECDSA
+        /// public key must be 33 bytes. Compressed public key must be 33 bytes. An HD fingerprint is 4 bytes.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">
+        /// BIP32 child public key is invalid. Cannot derive a child at depth 255. A public key cannot derive a
+        /// hardened child. BIP32 parent public key is invalid.
+        /// </exception>
         public ExtPubKey Derive(uint index)
         {
             if ((index & 0x80000000u) != 0)
@@ -158,6 +186,15 @@ namespace NKaspa
         }
 
         /// <summary>Derives each non-hardened index in <paramref name="path"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="path"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// ECDSA public key is not on the curve. ECDSA public key must be compressed (0x02 or 0x03). ECDSA
+        /// public key must be 33 bytes. Compressed public key must be 33 bytes. An HD fingerprint is 4 bytes.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">
+        /// BIP32 child public key is invalid. Cannot derive a child at depth 255. A public key cannot derive a
+        /// hardened child. BIP32 parent public key is invalid.
+        /// </exception>
         public ExtPubKey Derive(KeyPath path)
         {
             if (path == null)
@@ -194,6 +231,7 @@ namespace NKaspa
         }
 
         /// <summary>Base58Check with the Kaspa public prefix of <paramref name="network"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
         public string ToString(Network network)
         {
             if (network == null)

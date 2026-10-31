@@ -76,6 +76,7 @@ namespace NKaspa.Crypto
         }
 
         /// <summary>Unkeyed BLAKE3-256.</summary>
+        /// <exception cref="System.ArgumentException">BLAKE3 key must be 32 bytes.</exception>
         public static byte[] Hash(ReadOnlySpan<byte> data)
         {
             var hasher = new Blake3(ReadOnlySpan<byte>.Empty);
@@ -84,6 +85,7 @@ namespace NKaspa.Crypto
         }
 
         /// <summary>Keyed BLAKE3-256. <paramref name="key"/> is 32 bytes.</summary>
+        /// <exception cref="System.ArgumentException">BLAKE3 key must be 32 bytes.</exception>
         public static byte[] KeyedHash(ReadOnlySpan<byte> key, ReadOnlySpan<byte> data)
         {
             var hasher = new Blake3(key);
@@ -96,6 +98,8 @@ namespace NKaspa.Crypto
         /// The 32-byte key is the ASCII domain followed by zeros.
         /// This matches rusty-kaspa <c>blake3_hasher!</c> in <c>crypto/hashes/src/hashers.rs</c>.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="domain"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">BLAKE3 domain must fit in 32 bytes. BLAKE3 key must be 32 bytes.</exception>
         public static byte[] DomainHash(string domain, ReadOnlySpan<byte> data)
         {
             if (domain == null)

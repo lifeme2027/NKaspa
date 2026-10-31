@@ -11,6 +11,11 @@ namespace NKaspa.Crypto
     public static class Hashes
     {
         /// <summary>BLAKE2b-256 of the whole buffer, returned as <see cref="uint256"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="data"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">BLAKE2b key must be at most 64 bytes.</exception>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">BLAKE2b hasher is already finished.</exception>
         public static uint256 Blake2b256(byte[] data)
         {
             if (data == null)
@@ -22,18 +27,32 @@ namespace NKaspa.Crypto
         }
 
         /// <summary>BLAKE2b-256 of a slice, returned as <see cref="uint256"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="data"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="offset"/> is outside the allowed range. BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">BLAKE2b key must be at most 64 bytes.</exception>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">BLAKE2b hasher is already finished.</exception>
         public static uint256 Blake2b256(byte[] data, int offset, int count)
         {
             return new uint256(Blake2b256RawBytes(data, offset, count));
         }
 
         /// <summary>BLAKE2b-256 of a span, returned as <see cref="uint256"/>.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">BLAKE2b key must be at most 64 bytes.</exception>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">BLAKE2b hasher is already finished.</exception>
         public static uint256 Blake2b256(ReadOnlySpan<byte> data)
         {
             return new uint256(Blake2b.Hash256(data));
         }
 
         /// <summary>Raw 32-byte BLAKE2b-256 digest, in Kaspa wire order.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="data"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">BLAKE2b key must be at most 64 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">BLAKE2b hasher is already finished.</exception>
         public static byte[] Blake2b256RawBytes(byte[] data)
         {
             if (data == null)
@@ -45,6 +64,10 @@ namespace NKaspa.Crypto
         }
 
         /// <summary>Raw 32-byte BLAKE2b-256 digest, in Kaspa wire order.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="data"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="offset"/> is outside the allowed range. BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">BLAKE2b key must be at most 64 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">BLAKE2b hasher is already finished.</exception>
         public static byte[] Blake2b256RawBytes(byte[] data, int offset, int count)
         {
             if (data == null)

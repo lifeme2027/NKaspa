@@ -7,6 +7,7 @@ namespace NKaspa
     public sealed class Coin
     {
         /// <summary>Creates a coin from an outpoint and the UTXO entry it spends.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="utxo"/> is null. <paramref name="outpoint"/> is null.</exception>
         public Coin(OutPoint outpoint, UtxoEntry utxo)
         {
             Outpoint = outpoint ?? throw new ArgumentNullException(nameof(outpoint));

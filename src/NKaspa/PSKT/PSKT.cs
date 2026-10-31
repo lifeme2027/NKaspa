@@ -68,12 +68,44 @@ namespace NKaspa.PSKT
         }
 
         /// <summary>Parses <c>PSKT</c> plus hex of UTF-8 JSON. The role is Combiner.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="text"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">Hardened index must be below 2^31.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// An HD fingerprint is 4 bytes. ECDSA public key is not on the curve. ECDSA public key must be
+        /// compressed (0x02 or 0x03). ECDSA public key must be 33 bytes. ECDSA signature must be 64 bytes.
+        /// Schnorr signature must be 64 bytes.
+        /// </exception>
+        /// <exception cref="System.FormatException">
+        /// PSKT JSON must be an object. Missing JSON property {name}. uint256 hex must be 32 bytes. uint256
+        /// requires 32 bytes. Hex string contains a non-hex character. Hex string length must be even. Expected
+        /// an unsigned integer. Key path is empty. Key path index is not a number. Key path contains an empty
+        /// index. Script push is too long. Script push is truncated. Script public key hex must start with a
+        /// 2-byte version. Sighash type is not one of the six Kaspa values. Expected a byte. Partial signature
+        /// is empty. Partial signature must be schnorr or eCDSA. ECDSA signature is not strict DER. Further
+        /// failures of this type use the same exception.
+        /// </exception>
         public static PSKT FromHex(string text)
         {
             return FromJson(PSKTJson.FromTransport(text, PSKTJson.PsktPrefix, "PSKT serialization requires 'PSKT' prefix."));
         }
 
         /// <summary>Parses the compact JSON object. The role is Combiner.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="json"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">Hardened index must be below 2^31.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// An HD fingerprint is 4 bytes. ECDSA public key is not on the curve. ECDSA public key must be
+        /// compressed (0x02 or 0x03). ECDSA public key must be 33 bytes. ECDSA signature must be 64 bytes.
+        /// Schnorr signature must be 64 bytes.
+        /// </exception>
+        /// <exception cref="System.FormatException">
+        /// PSKT JSON must be an object. Missing JSON property {name}. uint256 hex must be 32 bytes. uint256
+        /// requires 32 bytes. Hex string contains a non-hex character. Hex string length must be even. Expected
+        /// an unsigned integer. Key path is empty. Key path index is not a number. Key path contains an empty
+        /// index. Script push is too long. Script push is truncated. Script public key hex must start with a
+        /// 2-byte version. Sighash type is not one of the six Kaspa values. Expected a byte. Partial signature
+        /// is empty. Partial signature must be schnorr or eCDSA. ECDSA signature is not strict DER. Further
+        /// failures of this type use the same exception.
+        /// </exception>
         public static PSKT FromJson(string json)
         {
             if (json == null)
@@ -87,18 +119,26 @@ namespace NKaspa.PSKT
         }
 
         /// <summary>Compact JSON. Field order matches rusty-kaspa serde.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
+        /// <exception cref="System.ArgumentException">ECDSA signature must be 64 bytes.</exception>
         public string ToJson()
         {
             return PSKTJson.Write(Global, _inputs, _outputs);
         }
 
         /// <summary><c>PSKT</c> plus lowercase hex of <see cref="ToJson"/>.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
+        /// <exception cref="System.ArgumentException">ECDSA signature must be 64 bytes.</exception>
         public string ToHex()
         {
             return PSKTJson.ToTransport(PSKTJson.PsktPrefix, ToJson());
         }
 
         /// <summary>Deep copy. The copy keeps the role.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated.</exception>
         public PSKT Clone()
         {
             var inputs = new List<PSKTInput>(_inputs.Count);
@@ -117,6 +157,7 @@ namespace NKaspa.PSKT
         }
 
         /// <summary>Sets the fallback lock time.</summary>
+        /// <exception cref="NKaspa.PSKT.PSKTException">This operation belongs to the {role.ToString()} role.</exception>
         public PSKT FallbackLockTime(ulong fallback)
         {
             Require(PSKTRole.Creator);
@@ -125,6 +166,7 @@ namespace NKaspa.PSKT
         }
 
         /// <summary>Sets the PSKT format version.</summary>
+        /// <exception cref="NKaspa.PSKT.PSKTException">This operation belongs to the {role.ToString()} role.</exception>
         public PSKT SetVersion(PSKTVersion version)
         {
             Require(PSKTRole.Creator);
@@ -133,6 +175,7 @@ namespace NKaspa.PSKT
         }
 
         /// <summary>Marks inputs modifiable.</summary>
+        /// <exception cref="NKaspa.PSKT.PSKTException">This operation belongs to the {role.ToString()} role.</exception>
         public PSKT InputsModifiable()
         {
             Require(PSKTRole.Creator);
@@ -141,6 +184,7 @@ namespace NKaspa.PSKT
         }
 
         /// <summary>Marks outputs modifiable.</summary>
+        /// <exception cref="NKaspa.PSKT.PSKTException">This operation belongs to the {role.ToString()} role.</exception>
         public PSKT OutputsModifiable()
         {
             Require(PSKTRole.Creator);
@@ -149,6 +193,7 @@ namespace NKaspa.PSKT
         }
 
         /// <summary>Moves a creator to the constructor role.</summary>
+        /// <exception cref="NKaspa.PSKT.PSKTException">This operation belongs to the {role.ToString()} role.</exception>
         public PSKT Constructor()
         {
             Require(PSKTRole.Creator);
@@ -157,6 +202,7 @@ namespace NKaspa.PSKT
         }
 
         /// <summary>Sets the transaction version.</summary>
+        /// <exception cref="NKaspa.PSKT.PSKTException">This operation belongs to the {role.ToString()} role.</exception>
         public PSKT SetTransactionVersion(ushort txVersion)
         {
             Require(PSKTRole.Constructor);
@@ -165,6 +211,8 @@ namespace NKaspa.PSKT
         }
 
         /// <summary>Appends an input and increments <see cref="PSKTGlobal.InputCount"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="input"/> is null.</exception>
+        /// <exception cref="NKaspa.PSKT.PSKTException">This operation belongs to the {role.ToString()} role.</exception>
         public PSKT AddInput(PSKTInput input)
         {
             Require(PSKTRole.Constructor);
@@ -179,6 +227,8 @@ namespace NKaspa.PSKT
         }
 
         /// <summary>Appends an output and increments <see cref="PSKTGlobal.OutputCount"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="output"/> is null.</exception>
+        /// <exception cref="NKaspa.PSKT.PSKTException">Outputs not allowed to contain covenant due to pskt or tx versions mismatch. This operation belongs to the {role.ToString()} role.</exception>
         public PSKT AddOutput(PSKTOutput output)
         {
             Require(PSKTRole.Constructor);
@@ -198,6 +248,10 @@ namespace NKaspa.PSKT
         }
 
         /// <summary>Sets the payload. A non-null payload requires format version 1 or higher.</summary>
+        /// <exception cref="NKaspa.PSKT.PSKTException">
+        /// Cannot set payload on PSKT version {(byte)Global.Version}, payload requires version 1 or higher.
+        /// This operation belongs to the {role.ToString()} role.
+        /// </exception>
         public PSKT SetPayload(byte[]? payload)
         {
             Require(PSKTRole.Constructor);
@@ -211,6 +265,7 @@ namespace NKaspa.PSKT
         }
 
         /// <summary>Clears both modifiable flags and moves to the updater role.</summary>
+        /// <exception cref="NKaspa.PSKT.PSKTException">This operation belongs to the {role.ToString()} role.</exception>
         public PSKT Updater()
         {
             Require(PSKTRole.Constructor);
@@ -221,6 +276,7 @@ namespace NKaspa.PSKT
         }
 
         /// <summary>Sets one input sequence.</summary>
+        /// <exception cref="NKaspa.PSKT.PSKTException">OutputNotModifiable. This operation belongs to the {role.ToString()} role.</exception>
         public PSKT SetSequence(int inputIndex, ulong sequence)
         {
             Require(PSKTRole.Updater);
@@ -234,6 +290,7 @@ namespace NKaspa.PSKT
         }
 
         /// <summary>Moves to the signer role. A constructor is finished first.</summary>
+        /// <exception cref="NKaspa.PSKT.PSKTException">Signer is reached from the constructor, updater, or combiner. This operation belongs to the {role.ToString()} role.</exception>
         public PSKT Signer()
         {
             if (_role == PSKTRole.Constructor)
@@ -255,6 +312,23 @@ namespace NKaspa.PSKT
         /// Schnorr uses BIP-340. ECDSA uses RFC 6979 compact signatures, stored in JSON as DER.
         /// Pass 32 <paramref name="auxRand32"/> bytes, including zeros, for a deterministic Schnorr signature.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="key"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// ECDSA public key is not on the curve. ECDSA public key must be compressed (0x02 or 0x03). ECDSA
+        /// public key must be 33 bytes. BIP-340 auxiliary randomness must be empty or 32 bytes. Schnorr message
+        /// must be 32 bytes. Schnorr signature must be 64 bytes. Sighash type is not one of the six Kaspa
+        /// values. BLAKE2b key must be at most 64 bytes. ECDSA message must be 32 bytes. ECDSA signature must
+        /// be 64 bytes. Schnorr x-only public key is not on the curve. Schnorr x-only public key must be 32
+        /// bytes.
+        /// </exception>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes. Script push is too long. Script push is truncated.</exception>
+        /// <exception cref="System.InvalidOperationException">
+        /// Stored private key is no longer valid. Transaction input is missing an outpoint. BLAKE2b hasher is
+        /// already finished. Transaction output is missing a script. SHA256 did not produce a digest.
+        /// </exception>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed.</exception>
+        /// <exception cref="NKaspa.PSKT.PSKTException">Missing UTXO entry. This operation belongs to the {role.ToString()} role.</exception>
         public PSKT Sign(Key key, byte[]? auxRand32 = null, PSKTKeySource? keySource = null)
         {
             Require(PSKTRole.Signer);
@@ -303,6 +377,7 @@ namespace NKaspa.PSKT
         }
 
         /// <summary>Moves to the combiner role.</summary>
+        /// <exception cref="NKaspa.PSKT.PSKTException">Combiner is reached from the constructor, updater, or signer.</exception>
         public PSKT Combiner()
         {
             if (_role != PSKTRole.Constructor && _role != PSKTRole.Updater && _role != PSKTRole.Signer && _role != PSKTRole.Combiner)
@@ -318,6 +393,15 @@ namespace NKaspa.PSKT
         /// Merges <paramref name="other"/> into a new combiner PSKT.
         /// Neither argument is modified. Rules match rusty-kaspa <c>Add</c>.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="other"/> is null.</exception>
+        /// <exception cref="NKaspa.PSKT.PSKTException">
+        /// Outputs not allowed to contain covenant due to pskt or tx versions mismatch. The transaction
+        /// payloads are not compatible. Payload requires PSKT version 1 or higher. The transaction ids are not
+        /// the same. The transaction version numbers are not the same. The version numbers are not the same.
+        /// Two different unknown field values. Two different proprietary values. combining PSKT, key-source
+        /// conflict for xpub {rhs[i].ToXpub()}. The transaction lock times are not the same. This operation
+        /// belongs to the {role.ToString()} role.
+        /// </exception>
         public PSKT Combine(PSKT other)
         {
             Require(PSKTRole.Combiner);
@@ -341,6 +425,7 @@ namespace NKaspa.PSKT
         }
 
         /// <summary>Moves to the finalizer role.</summary>
+        /// <exception cref="NKaspa.PSKT.PSKTException">Finalizer is reached from the signer or combiner.</exception>
         public PSKT Finalizer()
         {
             if (_role != PSKTRole.Signer && _role != PSKTRole.Combiner && _role != PSKTRole.Finalizer)
@@ -353,6 +438,15 @@ namespace NKaspa.PSKT
         }
 
         /// <summary>Builds final scripts for pay-to-pubkey and multisig pay-to-script-hash, then sets the unsigned id.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">BLAKE3 domain must fit in 32 bytes. BLAKE3 key must be 32 bytes. BLAKE2b key must be at most 64 bytes.</exception>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">Transaction input is missing an outpoint. Transaction output is missing a script. BLAKE2b hasher is already finished.</exception>
+        /// <exception cref="NKaspa.PSKT.PSKTException">
+        /// Signature at index {i.ToString(System.Globalization.CultureInfo.InvariantCulture)} is empty.
+        /// Signatures count mismatch. This operation belongs to the {role.ToString()} role.
+        /// </exception>
         public PSKT Finalize()
         {
             return Finalize(BuildFinalScripts);
@@ -362,6 +456,15 @@ namespace NKaspa.PSKT
         /// Writes one non-empty script per input, then sets <see cref="PSKTGlobal.Id"/> to the unsigned transaction id.
         /// A null sequence becomes <see cref="ulong.MaxValue"/>.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="finalScripts"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">BLAKE3 domain must fit in 32 bytes. BLAKE3 key must be 32 bytes. BLAKE2b key must be at most 64 bytes.</exception>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">Transaction input is missing an outpoint. Transaction output is missing a script. BLAKE2b hasher is already finished.</exception>
+        /// <exception cref="NKaspa.PSKT.PSKTException">
+        /// Signature at index {i.ToString(System.Globalization.CultureInfo.InvariantCulture)} is empty.
+        /// Signatures count mismatch. This operation belongs to the {role.ToString()} role.
+        /// </exception>
         public PSKT Finalize(Func<PSKT, IReadOnlyList<Script>> finalScripts)
         {
             Require(PSKTRole.Finalizer);
@@ -392,6 +495,7 @@ namespace NKaspa.PSKT
         }
 
         /// <summary>Moves to the extractor. Fails when finalize has not set the id.</summary>
+        /// <exception cref="NKaspa.PSKT.PSKTException">Transaction is not finalized. Extractor is reached from the finalizer.</exception>
         public PSKT Extractor()
         {
             if (_role != PSKTRole.Finalizer && _role != PSKTRole.Extractor)
@@ -412,6 +516,18 @@ namespace NKaspa.PSKT
         /// Copies final scripts onto the unsigned transaction and sets KIP-9 storage mass.
         /// This method does not execute scripts and does not broadcast. <see cref="Transaction.Verify(IReadOnlyList{UtxoEntry})"/> checks the scripts.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">BLAKE2b digest size must be from 1 to 64 bytes.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// BLAKE3 domain must fit in 32 bytes. BLAKE3 key must be 32 bytes. BLAKE2b key must be at most 64
+        /// bytes. One spent UTXO entry is required per input. A non-coinbase transaction needs at least one
+        /// input. Output amount and plurality must be non-zero. Input amount and plurality must be non-zero. A
+        /// transaction needs at least one output. Subnetwork id must be 20 bytes.
+        /// </exception>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">Transaction input is missing an outpoint. Transaction output is missing a script. BLAKE2b hasher is already finished.</exception>
+        /// <exception cref="System.OverflowException">Input amount mean does not fit in 64 bits.</exception>
+        /// <exception cref="NKaspa.PSKT.PSKTException">Transaction is not finalized. This operation belongs to the {role.ToString()} role.</exception>
         public Transaction ExtractTransaction()
         {
             Require(PSKTRole.Extractor);
@@ -451,6 +567,7 @@ namespace NKaspa.PSKT
         /// Payload is included only when the PSKT version is 1 or higher.
         /// Version 1 carries <see cref="PSKTInput.ComputeBudget"/> when it was set in memory, otherwise 0.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
         public Transaction ToUnsignedTransaction()
         {
             var inputs = new TxIn[_inputs.Count];
@@ -485,6 +602,10 @@ namespace NKaspa.PSKT
         /// Schnorr multisig redeem script: required, x-only keys in the given order, key count, <c>OP_CHECKMULTISIG</c>.
         /// Keys are not sorted.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="keys"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">Multisig requires 1 to 16 keys and a threshold inside that range.</exception>
+        /// <exception cref="System.ArgumentException">Use AddData for a push.</exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated.</exception>
         public static Script MultisigRedeemScript(int required, IReadOnlyList<PubKey> keys)
         {
             if (keys == null)
@@ -507,6 +628,10 @@ namespace NKaspa.PSKT
         }
 
         /// <summary>ECDSA multisig redeem script. Keys stay in the given order and use <c>OP_CHECKMULTISIGECDSA</c>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="keys"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">Multisig requires 1 to 16 keys and a threshold inside that range.</exception>
+        /// <exception cref="System.ArgumentException">Use AddData for a push.</exception>
+        /// <exception cref="System.FormatException">Script push is too long. Script push is truncated.</exception>
         public static Script MultisigRedeemScript(int required, IReadOnlyList<PubKeyECDSA> keys)
         {
             if (keys == null)

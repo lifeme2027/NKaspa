@@ -8,6 +8,11 @@ namespace NKaspa.JsonConverters
     public sealed class ScriptJsonConverter : JsonConverter<Script>
     {
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.FormatException">
+        /// Script must be a hex string. Script push is too long. Script push is truncated. Hex string contains
+        /// a non-hex character. Hex string length must be even.
+        /// </exception>
         public override Script Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType != JsonTokenType.String)
@@ -19,6 +24,8 @@ namespace NKaspa.JsonConverters
         }
 
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException">The assigned value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
         public override void Write(Utf8JsonWriter writer, Script value, JsonSerializerOptions options)
         {
             if (value == null)
@@ -39,12 +46,15 @@ namespace NKaspa.JsonConverters
     public sealed class ScriptPubKeyJsonConverter : JsonConverter<ScriptPubKey>
     {
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
         public override ScriptPubKey Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             return JsonValueReader.Read(ref reader, KaspaRpcJson.ReadScript);
         }
 
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException">The assigned value is null. <paramref name="writer"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
         public override void Write(Utf8JsonWriter writer, ScriptPubKey value, JsonSerializerOptions options)
         {
             KaspaRpcJson.WriteScriptPublicKey(writer, value);

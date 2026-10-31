@@ -19,6 +19,9 @@ namespace NKaspa.JsonConverters
         }
 
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.FormatException">Private key must be a hex string. Hex string contains a non-hex character. Hex string length must be even.</exception>
+        /// <exception cref="System.InvalidOperationException">Refusing to convert Key. {NKaspaJsonSerializer.PrivateKeyWarning}.</exception>
         public override Key Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             Refuse();
@@ -38,6 +41,10 @@ namespace NKaspa.JsonConverters
         }
 
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException">The assigned value is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
+        /// <exception cref="System.InvalidOperationException">Refusing to convert Key. {NKaspaJsonSerializer.PrivateKeyWarning}.</exception>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed.</exception>
         public override void Write(Utf8JsonWriter writer, Key value, JsonSerializerOptions options)
         {
             Refuse();
@@ -69,6 +76,7 @@ namespace NKaspa.JsonConverters
         private readonly bool _allowPrivateKeys;
 
         /// <summary>Creates a converter. The default registration passes false.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
         public ExtKeyJsonConverter(Network network, bool allowPrivateKeys)
         {
             _network = network ?? throw new ArgumentNullException(nameof(network));
@@ -76,6 +84,17 @@ namespace NKaspa.JsonConverters
         }
 
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentException">Private key is zero or not in the secp256k1 range. Private key must be 32 bytes. An HD fingerprint is 4 bytes.</exception>
+        /// <exception cref="System.FormatException">
+        /// Extended private key prefix does not match the {_network.Name} network. Extended private key must be
+        /// a Base58Check string. Extended private key is not in the secp256k1 range. Extended private key
+        /// prefix byte is not 0x00. A master extended key must have a zero parent fingerprint and a zero child
+        /// index. Extended key version is not a private prefix, or it does not match the key type. An extended
+        /// key payload is 78 bytes. Invalid Base58Check checksum. Base58Check payload is shorter than the
+        /// checksum. Base58 value does not fit in the decode buffer. Invalid Base58 character.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">Refusing to convert ExtKey. {NKaspaJsonSerializer.PrivateKeyWarning}.</exception>
         public override ExtKey Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             Refuse();
@@ -95,6 +114,9 @@ namespace NKaspa.JsonConverters
         }
 
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException">The assigned value is null.</exception>
+        /// <exception cref="System.InvalidOperationException">Refusing to convert ExtKey. {NKaspaJsonSerializer.PrivateKeyWarning}.</exception>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed. The ExtKey has been disposed.</exception>
         public override void Write(Utf8JsonWriter writer, ExtKey value, JsonSerializerOptions options)
         {
             Refuse();

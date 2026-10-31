@@ -52,6 +52,8 @@ namespace NKaspa
         /// Script that locks an output to this address.
         /// Kaspa counterpart of NBitcoin.BitcoinAddress.ScriptPubKey.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentException">Schnorr x-only public key must be 32 bytes. ECDSA public key must be 33 bytes. Script hash must be 32 bytes.</exception>
         public ScriptPubKey ScriptPubKey
         {
             get { return _scriptPubKey ??= GeneratePaymentScript(); }
@@ -70,6 +72,14 @@ namespace NKaspa
         /// Parses an address and selects the network from its prefix.
         /// Kaspa counterpart of NBitcoin.BitcoinAddress.Create.
         /// </summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentException">Address prefix must not contain a colon. Address prefix is required.</exception>
+        /// <exception cref="System.FormatException">
+        /// Kaspa address is null. Unknown Kaspa address prefix '{prefix}'. Kaspa address is for {network.Name},
+        /// not {expectedNetwork.Name}. Kaspa address version or payload length is not Schnorr (0, 32 bytes),
+        /// ECDSA (1, 33 bytes), or P2SH (8, 32 bytes).
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">8-to-5 conversion produced an unexpected length.</exception>
         public static KaspaAddress Parse(string address)
         {
             if (!TryParse(address, null, out var parsed, out var error) || parsed == null)
@@ -81,6 +91,14 @@ namespace NKaspa
         }
 
         /// <summary>Parses an address and requires <paramref name="expectedNetwork"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="expectedNetwork"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">Address prefix must not contain a colon. Address prefix is required.</exception>
+        /// <exception cref="System.FormatException">
+        /// Kaspa address is null. Unknown Kaspa address prefix '{prefix}'. Kaspa address is for {network.Name},
+        /// not {expectedNetwork.Name}. Kaspa address version or payload length is not Schnorr (0, 32 bytes),
+        /// ECDSA (1, 33 bytes), or P2SH (8, 32 bytes).
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">8-to-5 conversion produced an unexpected length.</exception>
         public static KaspaAddress Parse(string address, Network expectedNetwork)
         {
             if (expectedNetwork == null)
@@ -97,12 +115,18 @@ namespace NKaspa
         }
 
         /// <summary>Parses without throwing. A null or invalid string returns false.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentException">Address prefix must not contain a colon. Address prefix is required.</exception>
+        /// <exception cref="System.InvalidOperationException">8-to-5 conversion produced an unexpected length.</exception>
         public static bool TryParse(string? address, out KaspaAddress? parsed)
         {
             return TryParse(address, null, out parsed, out _);
         }
 
         /// <summary>Parses without throwing and requires <paramref name="expectedNetwork"/>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="expectedNetwork"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">Address prefix must not contain a colon. Address prefix is required.</exception>
+        /// <exception cref="System.InvalidOperationException">8-to-5 conversion produced an unexpected length.</exception>
         public static bool TryParse(string? address, Network expectedNetwork, out KaspaAddress? parsed)
         {
             if (expectedNetwork == null)
@@ -114,6 +138,9 @@ namespace NKaspa
         }
 
         /// <summary>True when <see cref="TryParse(string?, out KaspaAddress?)"/> succeeds.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.ArgumentException">Address prefix must not contain a colon. Address prefix is required.</exception>
+        /// <exception cref="System.InvalidOperationException">8-to-5 conversion produced an unexpected length.</exception>
         public static bool IsValid(string? address)
         {
             return TryParse(address, out _);
@@ -245,6 +272,9 @@ namespace NKaspa
     public sealed class KaspaPubKeyAddress : KaspaAddress
     {
         /// <summary>Builds an address from a 32-byte x-only key. The key is not checked against the curve in this phase.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null. <paramref name="xOnlyPublicKey"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">Address prefix must not contain a colon. Address prefix is required. {name} must be {size} bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">8-to-5 conversion produced an unexpected length.</exception>
         public KaspaPubKeyAddress(byte[] xOnlyPublicKey, Network network)
             : this(
                 network ?? throw new ArgumentNullException(nameof(network)),
@@ -298,6 +328,9 @@ namespace NKaspa
     public sealed class KaspaPubKeyEcdsaAddress : KaspaAddress
     {
         /// <summary>Builds an address from a 33-byte compressed ECDSA key.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null. <paramref name="compressedPublicKey"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">Address prefix must not contain a colon. Address prefix is required. ECDSA public key must be 33 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">8-to-5 conversion produced an unexpected length.</exception>
         public KaspaPubKeyEcdsaAddress(byte[] compressedPublicKey, Network network)
             : this(
                 network ?? throw new ArgumentNullException(nameof(network)),
@@ -350,6 +383,9 @@ namespace NKaspa
     public sealed class KaspaScriptHashAddress : KaspaAddress
     {
         /// <summary>Builds an address from a 32-byte script hash in Kaspa wire order.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null. <paramref name="scriptHash"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">Address prefix must not contain a colon. Address prefix is required.</exception>
+        /// <exception cref="System.InvalidOperationException">8-to-5 conversion produced an unexpected length.</exception>
         public KaspaScriptHashAddress(uint256 scriptHash, Network network)
             : this(
                 network ?? throw new ArgumentNullException(nameof(network)),
@@ -359,6 +395,9 @@ namespace NKaspa
         }
 
         /// <summary>Builds an address from 32 script-hash bytes.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null. <paramref name="scriptHash"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">Address prefix must not contain a colon. Address prefix is required. Script hash must be 32 bytes.</exception>
+        /// <exception cref="System.InvalidOperationException">8-to-5 conversion produced an unexpected length.</exception>
         public KaspaScriptHashAddress(byte[] scriptHash, Network network)
             : this(
                 network ?? throw new ArgumentNullException(nameof(network)),
@@ -377,6 +416,8 @@ namespace NKaspa
         }
 
         /// <summary>The 32-byte script hash.</summary>
+        /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
+        /// <exception cref="System.FormatException">uint256 requires 32 bytes.</exception>
         public uint256 Hash
         {
             get { return new uint256(PayloadCore); }

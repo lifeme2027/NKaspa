@@ -139,6 +139,8 @@ namespace NKaspa.RPC
         private bool _retryReorg;
 
         /// <summary>Creates an accessor. <paramref name="finalityDepth"/> is the KIP-21 window <c>F</c>.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="client"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">The request limit must be at least 1.</exception>
         public ConsensusSeqCommitAccessor(IKaspaRpcClient client, ulong finalityDepth = DefaultFinalityDepth, int maxRequests = DefaultMaxRequests)
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
@@ -173,6 +175,7 @@ namespace NKaspa.RPC
         /// Extra attempts after a real reorg. Zero throws on the first one.
         /// The count is not reset between attempts.
         /// </summary>
+        /// <exception cref="System.ArgumentOutOfRangeException">Reorg retries cannot be negative.</exception>
         public int MaxReorgRetries
         {
             get { return _maxReorgRetries; }
@@ -193,6 +196,7 @@ namespace NKaspa.RPC
         /// Ignored when <see cref="PointOfView"/> or <see cref="ChainBlock"/> is set.
         /// The steps count toward <see cref="MaxRequests"/>.
         /// </summary>
+        /// <exception cref="System.ArgumentOutOfRangeException">Stable depth cannot be negative.</exception>
         public int StableDepth
         {
             get { return _stableDepth; }
@@ -220,6 +224,40 @@ namespace NKaspa.RPC
         public uint256? ChainBlock { get; set; }
 
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException"><paramref name="blockHash"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// wRPC request is missing a numeric id. Set PointOfView or ChainBlock, not both. PointOfView is the
+        /// selected parent P. ChainBlock is the chain block B whose selected parent becomes P.
+        /// </exception>
+        /// <exception cref="System.FormatException">
+        /// Expected a boolean for isChainBlock. Expected a hex hash for {name}. uint256 hex must be 32 bytes.
+        /// uint256 requires 32 bytes. Hex string contains a non-hex character. Hex string length must be even.
+        /// Expected an unsigned 64-bit integer. JSON number does not fit in an unsigned 64-bit integer.
+        /// Expected a parent hash. Expected parent hashes. Expected an array for parents. Missing JSON string
+        /// {name}. Missing JSON property {name}. Hash is missing. networkId is not a string or an object.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">WebSocket is not connected. Call ConnectAsync first.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC response has no params. RPC response id does not match the request. RPC error.</exception>
+        /// <exception cref="NKaspa.RPC.ConsensusSeqCommitException">
+        /// getBlockDagInfo.sink changed from {previous} to {dag.Sink} and the new selected chain does not
+        /// contain {anchor}. verboseData.isChainBlock is missing for {current.Hash}. selected parent chain
+        /// cycled at {current.Hash}. isChainBlock is false for {block.Hash} on the selected chain.
+        /// verboseData.isChainBlock is missing for {block.Hash}. getBlock did not return {hash}. The node data
+        /// is incomplete. verboseData.hash {block.VerboseHash} does not match the requested block {block.Hash}.
+        /// header.hash {block.HeaderHash} does not match the requested block {block.Hash}. Request limit of
+        /// {_maxRequests.ToString(System.Globalization.CultureInfo.InvariantCulture)} was reached before the
+        /// selected parent chain could be checked. blue score does not decrease from {child.Hash}
+        /// ({childScore.ToString(System.Globalization.CultureInfo.InvariantCulture)}) to selected parent
+        /// {parent.Hash} ({parentScore.ToString(System.Globalization.CultureInfo.InvariantCulture)}). header
+        /// blueScore does not match verboseData blueScore for {block.Hash}. blueScore is missing for
+        /// {block.Hash}. selected parent walk reached {block.Hash} but isChainBlock is false. isChainBlock is
+        /// false for {block.Hash} and getBlockDagInfo.sink changed from {previous} to {again.Sink}.
+        /// getBlockDagInfo failed: {ex.Message}. selectedParentHash {block.SelectedParentHash} does not match
+        /// the first direct parent {block.DirectParent} of {block.Hash}. verboseData.selectedParentHash is
+        /// missing for {block.Hash}. selectedParentHash is set but header.parents is empty for {block.Hash}.
+        /// Further failures of this type use the same exception.
+        /// </exception>
         public bool? IsChainAncestor(uint256 blockHash)
         {
             if (blockHash == null)
@@ -240,6 +278,40 @@ namespace NKaspa.RPC
         }
 
         /// <inheritdoc />
+        /// <exception cref="System.ArgumentNullException"><paramref name="blockHash"/> is null.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range.</exception>
+        /// <exception cref="System.ArgumentException">
+        /// wRPC request is missing a numeric id. Set PointOfView or ChainBlock, not both. PointOfView is the
+        /// selected parent P. ChainBlock is the chain block B whose selected parent becomes P.
+        /// </exception>
+        /// <exception cref="System.FormatException">
+        /// Expected a boolean for isChainBlock. Expected a hex hash for {name}. uint256 hex must be 32 bytes.
+        /// uint256 requires 32 bytes. Hex string contains a non-hex character. Hex string length must be even.
+        /// Expected an unsigned 64-bit integer. JSON number does not fit in an unsigned 64-bit integer.
+        /// Expected a parent hash. Expected parent hashes. Expected an array for parents. Missing JSON string
+        /// {name}. Missing JSON property {name}. Hash is missing. networkId is not a string or an object.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">WebSocket is not connected. Call ConnectAsync first.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC response has no params. RPC response id does not match the request. RPC error.</exception>
+        /// <exception cref="NKaspa.RPC.ConsensusSeqCommitException">
+        /// acceptedIdMerkleRoot is missing for {target.Hash}. seq commitment was requested for {target.Hash},
+        /// which is not a selected-parent ancestor of {pov.Hash}. header blueScore does not match verboseData
+        /// blueScore for {block.Hash}. blueScore is missing for {block.Hash}. getBlockDagInfo.sink changed from
+        /// {previous} to {dag.Sink} and the new selected chain does not contain {anchor}.
+        /// verboseData.isChainBlock is missing for {current.Hash}. selected parent chain cycled at
+        /// {current.Hash}. isChainBlock is false for {block.Hash} on the selected chain.
+        /// verboseData.isChainBlock is missing for {block.Hash}. getBlock did not return {hash}. The node data
+        /// is incomplete. verboseData.hash {block.VerboseHash} does not match the requested block {block.Hash}.
+        /// header.hash {block.HeaderHash} does not match the requested block {block.Hash}. Request limit of
+        /// {_maxRequests.ToString(System.Globalization.CultureInfo.InvariantCulture)} was reached before the
+        /// selected parent chain could be checked. blue score does not decrease from {child.Hash}
+        /// ({childScore.ToString(System.Globalization.CultureInfo.InvariantCulture)}) to selected parent
+        /// {parent.Hash} ({parentScore.ToString(System.Globalization.CultureInfo.InvariantCulture)}). selected
+        /// parent walk reached {block.Hash} but isChainBlock is false. isChainBlock is false for {block.Hash}
+        /// and getBlockDagInfo.sink changed from {previous} to {again.Sink}. getBlockDagInfo failed:
+        /// {ex.Message}. selectedParentHash {block.SelectedParentHash} does not match the first direct parent
+        /// {block.DirectParent} of {block.Hash}. Further failures of this type use the same exception.
+        /// </exception>
         public uint256? SeqCommitmentWithinDepth(uint256 blockHash)
         {
             if (blockHash == null)
