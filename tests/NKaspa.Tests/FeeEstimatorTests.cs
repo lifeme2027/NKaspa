@@ -61,6 +61,44 @@ namespace NKaspa.Tests
             Assert.Equal(203_600UL, balanced.Fee.Sompi);
         }
 
+        /// <summary>
+        /// Quote(network, daa) uses MassPolicy.ForNetwork. The floor is 1 before Toccata and 100 after.
+        /// Storage mass stays in the fee below Crescendo. The commitment flag is the Crescendo switch, not the formula.
+        /// </summary>
+        [Fact]
+        public void Daa_quote_uses_the_for_network_relay_rate()
+        {
+            var inputs = new[] { FeeInput.Schnorr(100_000_000) };
+            var outputs = new[] { FeeOutput.Schnorr(20_000_000), FeeOutput.Schnorr(79_796_400) };
+            var before = FeeEstimator.Quote(Network.Mainnet, ConsensusParams.MainnetCrescendoActivationDaaScore - 1, inputs, outputs);
+            var crescendo = FeeEstimator.Quote(Network.Mainnet, ConsensusParams.MainnetCrescendoActivationDaaScore, inputs, outputs);
+            var toccata = FeeEstimator.Quote(Network.Mainnet, Network.MainnetToccataActivationDaaScore, inputs, outputs);
+
+            Assert.Equal(2036UL, before.Mass.ComputeMass);
+            Assert.Equal(52_531UL, before.Mass.StorageMass);
+            Assert.Equal(before.Mass, crescendo.Mass);
+            Assert.Equal(before.Mass, toccata.Mass);
+            Assert.False(MassPolicy.ForNetwork(Network.Mainnet, ConsensusParams.MainnetCrescendoActivationDaaScore - 1).StorageMassCommitmentRequired);
+            Assert.Equal(1UL, before.Feerate.SompiPerGram);
+            Assert.Equal(MassCalculator.RelayMass(before.Mass) * 1, before.RelayFee.Sompi);
+            Assert.Equal(before.Mass.FeeMass * 1, before.Fee.Sompi);
+            Assert.Equal(before.Fee.Sompi, crescendo.Fee.Sompi);
+            Assert.Equal(100UL, toccata.Feerate.SompiPerGram);
+            Assert.Equal(before.Fee.Sompi * 100, toccata.Fee.Sompi);
+            Assert.Equal(5_253_100UL, toccata.Fee.Sompi);
+            Assert.Equal(FeeEstimator.Estimate(inputs, outputs), toccata.Mass);
+
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                FeeEstimator.Quote(Network.Mainnet, Network.MainnetToccataActivationDaaScore, inputs, outputs, new FeeRate(1)));
+
+            var low = new RpcFeeEstimate(new RpcFeeBucket(1, 1), Array.Empty<RpcFeeBucket>(), Array.Empty<RpcFeeBucket>());
+            var beforeNode = FeeEstimator.Quote(Network.Mainnet, ConsensusParams.MainnetCrescendoActivationDaaScore - 1, inputs, outputs, low);
+            var afterNode = FeeEstimator.Quote(Network.Mainnet, Network.MainnetToccataActivationDaaScore, inputs, outputs, low);
+            Assert.Equal(1UL, beforeNode.Feerate.SompiPerGram);
+            Assert.Equal(100UL, afterNode.Feerate.SompiPerGram);
+            Assert.Throws<ArgumentNullException>(() => FeeEstimator.Quote(null!, 0, inputs, outputs));
+        }
+
         [Fact]
         public void Two_input_and_version1_shapes_match_the_signed_payment()
         {

@@ -151,13 +151,15 @@ namespace NKaspa
 
         /// <summary>
         /// Creates a builder for <paramref name="network"/> at <paramref name="virtualDaaScore"/>.
+        /// The policy is <see cref="MassPolicy.ForNetwork"/>.
         /// Scores below <see cref="Network.ToccataActivationDaaScore"/> use the pre-Toccata cap and 1 sompi per gram.
         /// Simnet and current devnet use score 0, so every score is post-Toccata.
         /// An old devnet node needs <see cref="MassPolicy.PreToccata"/> explicitly.
         /// </summary>
         /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">Unknown Kaspa network.</exception>
         public TransactionBuilder(Network network, ulong virtualDaaScore)
-            : this(network, RequireNetwork(network).MassPolicyAt(virtualDaaScore))
+            : this(network, MassPolicy.ForNetwork(network, virtualDaaScore))
         {
         }
 

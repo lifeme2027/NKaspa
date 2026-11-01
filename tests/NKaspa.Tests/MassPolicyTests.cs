@@ -137,8 +137,68 @@ namespace NKaspa.Tests
             Assert.Equal(250_000UL, builder.MaximumMass);
             Assert.Equal(50UL, builder.MinimumRelayFeeRate);
             Assert.Equal(MassCalculator.StorageMassParameter / 250_000, builder.MinimumChange.Sompi);
+            Assert.True(policy.StorageMassCommitmentRequired);
+            Assert.True(MassPolicy.PreToccata.StorageMassCommitmentRequired);
+            Assert.True(MassPolicy.PostToccata.StorageMassCommitmentRequired);
             Assert.Throws<ArgumentOutOfRangeException>(() => new MassPolicy(true, limits, 0, 50));
             Assert.Throws<ArgumentOutOfRangeException>(() => new MassPolicy(false, default, 100, 1));
+        }
+
+        /// <summary>
+        /// Storage-mass commitment follows Crescendo. Cap and relay rate follow Toccata.
+        /// Mainnet Crescendo is 110165000 (params.rs MAINNET_PARAMS.crescendo_activation).
+        /// Testnet-10 Crescendo is 88657000 (TESTNET_PARAMS.crescendo_activation).
+        /// rusty-kaspa PR 588 set storage_mass_activation to ForkActivation::never() on those two params.
+        /// PR 379 applied KIP-9 in the mempool for every network and in consensus only on testnet-11.
+        /// consensus/core/src/tx.rs set_storage_mass at f7d7877363fb97c2ec6871be0e8cbc351d44df10
+        /// says the commitment field was activated on mainnet as part of the Crescendo hardfork.
+        /// https://github.com/kaspanet/rusty-kaspa/blob/f7d7877363fb97c2ec6871be0e8cbc351d44df10/consensus/core/src/tx.rs
+        /// </summary>
+        [Fact]
+        public void ForNetwork_splits_crescendo_commitment_from_the_toccata_relay_rate()
+        {
+            Assert.Throws<ArgumentNullException>(() => MassPolicy.ForNetwork(null!, 0));
+
+            var mainnetBefore = MassPolicy.ForNetwork(Network.Mainnet, ConsensusParams.MainnetCrescendoActivationDaaScore - 1);
+            Assert.False(mainnetBefore.StorageMassCommitmentRequired);
+            Assert.False(mainnetBefore.ToccataActive);
+            Assert.Equal(1UL, mainnetBefore.MinimumRelayFeeRate);
+            Assert.Equal(100_000UL, mainnetBefore.MaximumTransactionMass);
+
+            var mainnetCrescendo = MassPolicy.ForNetwork(Network.Mainnet, ConsensusParams.MainnetCrescendoActivationDaaScore);
+            Assert.Equal(110_165_000UL, ConsensusParams.MainnetCrescendoActivationDaaScore);
+            Assert.True(mainnetCrescendo.StorageMassCommitmentRequired);
+            Assert.False(mainnetCrescendo.ToccataActive);
+            Assert.Equal(1UL, mainnetCrescendo.MinimumRelayFeeRate);
+
+            var mainnetToccata = MassPolicy.ForNetwork(Network.Mainnet, Network.MainnetToccataActivationDaaScore);
+            Assert.True(mainnetToccata.StorageMassCommitmentRequired);
+            Assert.True(mainnetToccata.ToccataActive);
+            Assert.Equal(100UL, mainnetToccata.MinimumRelayFeeRate);
+            Assert.Equal(500_000UL, mainnetToccata.MaximumTransactionMass);
+            Assert.Equal(2_000_000UL, mainnetToccata.MinimumChange.Sompi);
+
+            var testnetBefore = MassPolicy.ForNetwork(Network.Testnet, ConsensusParams.Testnet10CrescendoActivationDaaScore - 1);
+            Assert.Equal(88_657_000UL, ConsensusParams.Testnet10CrescendoActivationDaaScore);
+            Assert.False(testnetBefore.StorageMassCommitmentRequired);
+            Assert.Equal(1UL, testnetBefore.MinimumRelayFeeRate);
+            var testnetCrescendo = MassPolicy.ForNetwork(Network.Testnet, ConsensusParams.Testnet10CrescendoActivationDaaScore);
+            Assert.True(testnetCrescendo.StorageMassCommitmentRequired);
+            Assert.False(testnetCrescendo.ToccataActive);
+            var testnetToccata = MassPolicy.ForNetwork(Network.Testnet, Network.TestnetToccataActivationDaaScore);
+            Assert.True(testnetToccata.ToccataActive);
+            Assert.Equal(MassPolicy.PostToccata.MinimumRelayFeeRate, testnetToccata.MinimumRelayFeeRate);
+
+            Assert.True(MassPolicy.ForNetwork(Network.Simnet, 0).StorageMassCommitmentRequired);
+            Assert.True(MassPolicy.ForNetwork(Network.Simnet, 0).ToccataActive);
+            Assert.True(MassPolicy.ForNetwork(Network.Devnet, 0).StorageMassCommitmentRequired);
+            Assert.Equal(100UL, MassPolicy.ForNetwork(Network.Devnet, 0).MinimumRelayFeeRate);
+
+            var overridden = Network.Testnet.WithToccataActivationDaaScore(Network.TestnetZkHardeningActivationDaaScore);
+            var atRecordedToccata = MassPolicy.ForNetwork(overridden, Network.TestnetToccataActivationDaaScore);
+            Assert.False(atRecordedToccata.ToccataActive);
+            Assert.True(atRecordedToccata.StorageMassCommitmentRequired);
+            Assert.Equal(1UL, atRecordedToccata.MinimumRelayFeeRate);
         }
     }
 }

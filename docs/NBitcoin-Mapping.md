@@ -310,7 +310,7 @@ Coinbase 成熟度。`ConsensusParams` 按网络给出 DAA 分数上的成熟度
 
 `FeeEstimator.Estimate` 用占位签名脚本构造一笔未签名交易，再交给 `MassCalculator`。Schnorr 和 ECDSA 的占位签名脚本都是 66 字节（`OP_DATA_65 || 64 个零 || sighash`），版本 0 计 1 个 sigop，版本 1 在未指定时用 `TransactionBuilder.DefaultComputeBudget`（10）。不读取私钥。1 输入 2 输出的 Schnorr P2PK 与已签名交易的 compute、transient、storage mass 相同，compute mass 是 2036，按 100 sompi/gram 的中继费是 203600 sompi。输入 100000000、付出 20000000 时 storage mass 是 52531，`Quote.Fee` 是 5253100，中继费仍是 203600。输入 5675155239、输出 500000000 与 5171555239 时 storage mass 是 2017，低于 compute mass，`Quote.Fee` 与中继费都是 203600。两输入是 3154，版本 1 且预算 10 是 2038。`Quote` 的 `RelayFee` 乘的是中继 mass（不含 storage）。`Fee` 乘的是 `FeeMass`，storage mass 更大时手续费高于中继费。KIP-9 样例输入 5675155239、输出 12000000 与 5654655239 的 storage mass 是 83333，费用是 8333300 sompi，中继费仍是 203600。
 
-`DefaultMinimumFeerateSompiPerGram` 是 100，与 `MassCalculator.MinimumFeeRate` 相同。`MinimumFeerate(RpcFeeEstimate)` 在 `priorityBucket`、`normalBuckets`、`lowBuckets` 里取最低的正有限 `feerate`，用 `Math.Ceiling` 收成整数 sompi。NaN、无穷、小于等于 0 的桶跳过。一个桶都没有时返回 100。节点可以给出低于 100 的桶，这个方法原样返回（向上取整之后）。`PayableFeerate` 把更低的桶抬到调用方给出的协议下限，默认 100。`Quote(RpcFeeEstimate)` 用的是 `PayableFeerate`。`ReadMinimumFeerateAsync` 调用 `getFeeEstimate`，返回的是没有抬升的 `MinimumFeerate`。显式费率低于下限抛 `ArgumentOutOfRangeException`。下限 0 抛 `ArgumentOutOfRangeException`，消息是 `The protocol minimum feerate must be non-zero.`。DAA 相关的费率仍在 `MassPolicy`，这一节的默认值是 Toccata 之后的 100。
+`DefaultMinimumFeerateSompiPerGram` 是 100，与 `MassCalculator.MinimumFeeRate` 相同。`MinimumFeerate(RpcFeeEstimate)` 在 `priorityBucket`、`normalBuckets`、`lowBuckets` 里取最低的正有限 `feerate`，用 `Math.Ceiling` 收成整数 sompi。NaN、无穷、小于等于 0 的桶跳过。一个桶都没有时返回 100。节点可以给出低于 100 的桶，这个方法原样返回（向上取整之后）。`PayableFeerate` 把更低的桶抬到调用方给出的协议下限，默认 100。`Quote(RpcFeeEstimate)` 用的是 `PayableFeerate`。`ReadMinimumFeerateAsync` 调用 `getFeeEstimate`，返回的是没有抬升的 `MinimumFeerate`。显式费率低于下限抛 `ArgumentOutOfRangeException`。下限 0 抛 `ArgumentOutOfRangeException`，消息是 `The protocol minimum feerate must be non-zero.`。`Quote(network, virtualDaaScore, ...)` 的下限来自 `MassPolicy.ForNetwork`。不带网络的重载仍默认 Toccata 之后的 100。见下面的 DAA 策略一节。
 
 ## 0.1.11 秘密文本
 
@@ -335,6 +335,12 @@ System.Text.Json 通过 `KeystoreSecretJsonConverter` 拒绝读写，消息正�
 `PersonalMessage` 对应 rusty-kaspa 的 `sign_message` 和 `verify_message`（`wallet/core/src/message.rs`，提交 `8fe466311ba179e74fc8a52f13b36140bb6b9a4e`）。`Hash` 是 UTF-8 消息的 BLAKE2b-256。BLAKE2b 的密钥是 ASCII 字符串 `PersonalMessageSigningHash`（`crypto/hashes/src/hashers.rs` 的 `blake2b_hasher!`）。`SignMessage(Key, message)` 返回 BIP-340 的 `SchnorrSignature`。辅助随机数为空时抽 32 个随机字节。传入 32 字节（包括全 0）则原样使用。全 0 是测试例 0，不是 `sign_schnorr_no_aux_rand`。
 
 `VerifyMessage(PubKey, message, signature)` 核对这枚 BIP-340 签名。`VerifyMessage(KaspaAddress, message, signature)` 只接受 `KaspaPubKeyAddress`。32 字节载荷必须就是那把 x-only 公钥，并且这个点在曲线上。ECDSA 地址和脚本哈希地址返回 false，即使载荷字节碰巧对得上。不在曲线上的载荷也返回 false。地址前缀不进入摘要，所以同一把密钥在主网和测试网都能验过。`samples/SignMessage` 调用这个 API。旧示例对 UTF-8 做无密钥 BLAKE2b-256，并且还签了 ECDSA。那个摘要对不上 rusty-kaspa。
+
+## 0.1.11 DAA mass 策略
+
+`MassPolicy.ForNetwork(network, virtualDaaScore)` 是入口。单笔上限和中继费率按 Toccata，走 `Network.MassPolicyAt`。主网是 474165565，测试网 suffix 10 是 467579632（rusty-kaspa `90dbf074` `consensus/core/src/config/params.rs`）。Simnet 和 Devnet 是 0，任何分数都是 Toccata 之后。分数之前上限 100000、费率 1 sompi/gram。到达分数之后上限 500000、费率 100。`PreToccata` 和 `PostToccata` 的 `StorageMassCommitmentRequired` 都是 true。在主网和测试网 10 上，Crescendo 早于 Toccata。
+
+`StorageMassCommitmentRequired` 跟着 Crescendo：主网 110165000，测试网 10 是 88657000（`ConsensusParams`）。Simnet 和 Devnet 是 `ForkActivation::always()`，分数 0 也要提交。rusty-kaspa 没有给主网或测试网 10 公布过有限的 `storage_mass_activation`。Pull request 588 把 `MAINNET_PARAMS` 和 `TESTNET_PARAMS` 设成 `ForkActivation::never()`（`u64::MAX`）。Pull request 379 在所有网络的内存池启用 KIP-9，共识层只在测试网 11（DAA 23325109，后来改成 always）。当前 master 删掉了这个字段。`consensus/core/src/tx.rs` 的 `set_storage_mass` 在 `f7d7877363fb97c2ec6871be0e8cbc351d44df10` 仍写着：这个承诺字段作为 Crescendo 硬分叉的一部分在主网激活。`FeeEstimator.Quote(network, virtualDaaScore, ...)` 用该策略的中继费率。Crescendo 之前 `FeeQuote.Fee` 仍含 storage mass，因为内存池规则不是那个 `never()` 开关。`TransactionBuilder(network, virtualDaaScore)` 调用 `ForNetwork`。`WithToccataActivationDaaScore` 只替换 Toccata 分数，不移动 Crescendo 分数。
 
 ## 0.1.10 后续修复
 

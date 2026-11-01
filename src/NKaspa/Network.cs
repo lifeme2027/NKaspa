@@ -128,9 +128,11 @@ namespace NKaspa
         }
 
         /// <summary>
-        /// Mass policy a builder should use at <paramref name="virtualDaaScore"/>.
+        /// Mass cap and relay rate at <paramref name="virtualDaaScore"/>.
         /// Below the activation score this is <see cref="Policy.MassPolicy.PreToccata"/> (cap 100000, relay rate 1).
         /// At and above it, this is <see cref="Policy.MassPolicy.PostToccata"/> (cap 500000, relay rate 100).
+        /// Both of those values report the storage-mass commitment as required.
+        /// <see cref="Policy.MassPolicy.ForNetwork"/> is the entry point that also turns that commitment off below Crescendo.
         /// </summary>
         public Policy.MassPolicy MassPolicyAt(ulong virtualDaaScore)
         {

@@ -190,7 +190,10 @@ namespace NKaspa.Policy
     /// <see cref="PayableFeerate(RpcFeeEstimate, ulong?)"/> raises a lower node bucket up to the constant, because a current node rejects a fee below it.
     /// </para>
     /// <para>
-    /// DAA-aware relay rates stay on <see cref="MassPolicy"/>. This type uses 100 sompi per gram unless the caller passes another floor.
+    /// The <c>Quote</c> overloads that take a <see cref="Network"/> and a virtual DAA score take the floor from <see cref="MassPolicy.ForNetwork"/>.
+    /// That is 1 sompi per gram before Toccata and 100 after.
+    /// Overloads that do not take a network keep 100 unless the caller passes another floor.
+    /// Storage mass stays in <see cref="FeeQuote.Fee"/> at every DAA score. The mempool KIP-9 rule is not the Crescendo commitment switch.
     /// </para>
     /// </remarks>
     public static class FeeEstimator
@@ -271,6 +274,38 @@ namespace NKaspa.Policy
         }
 
         /// <summary>
+        /// Mass and fee for a shape at <paramref name="virtualDaaScore"/> on <paramref name="network"/>.
+        /// The floor is <see cref="MassPolicy.MinimumRelayFeeRate"/> from <see cref="MassPolicy.ForNetwork"/>.
+        /// A null <paramref name="feerate"/> uses that floor. A lower explicit rate throws.
+        /// Block limits come from the same policy. Storage mass is included at every score.
+        /// </summary>
+        /// <exception cref="System.ArgumentNullException">
+        /// <paramref name="network"/> is null. <paramref name="inputs"/> is null. <paramref name="outputs"/> is null.
+        /// </exception>
+        /// <exception cref="System.ArgumentException">
+        /// Unknown Kaspa network. Output amount and plurality must be non-zero. Input amount and plurality must be
+        /// non-zero. A transaction needs at least one output. A non-coinbase transaction needs at least one input.
+        /// Subnetwork id must be 20 bytes.
+        /// </exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">
+        /// A value is outside the allowed range. Fee rate {rate} is below the network minimum of {floor} sompi/gram.
+        /// </exception>
+        /// <exception cref="System.OverflowException">
+        /// Normalized mass does not fit in 64 bits. Input amount mean does not fit in 64 bits. The fee does not fit in 64 bits.
+        /// </exception>
+        public static FeeQuote Quote(
+            Network network,
+            ulong virtualDaaScore,
+            IReadOnlyList<FeeInput> inputs,
+            IReadOnlyList<FeeOutput> outputs,
+            FeeRate? feerate = null,
+            ushort version = 0)
+        {
+            var policy = MassPolicy.ForNetwork(network, virtualDaaScore);
+            return Quote(inputs, outputs, feerate, version, policy.BlockLimits, policy.MinimumRelayFeeRate);
+        }
+
+        /// <summary>
         /// Mass and fee using <see cref="PayableFeerate(RpcFeeEstimate, ulong?)"/> as the rate.
         /// The node bucket is raised to <paramref name="minimumFeerateSompiPerGram"/> when it is lower.
         /// </summary>
@@ -296,6 +331,38 @@ namespace NKaspa.Policy
             var floor = FloorOf(minimumFeerateSompiPerGram, nameof(minimumFeerateSompiPerGram));
             var rate = PayableFeerate(nodeEstimate, floor);
             return Quote(inputs, outputs, rate, version, limits, floor);
+        }
+
+        /// <summary>
+        /// Mass and fee at <paramref name="virtualDaaScore"/> on <paramref name="network"/>, using the node estimate.
+        /// <see cref="PayableFeerate(RpcFeeEstimate, ulong?)"/> raises a bucket below
+        /// <see cref="MassPolicy.ForNetwork"/>'s relay rate up to that rate.
+        /// Before Toccata the floor is 1. After Toccata it is 100.
+        /// </summary>
+        /// <exception cref="System.ArgumentNullException">
+        /// <paramref name="network"/> is null. <paramref name="inputs"/> is null. <paramref name="outputs"/> is null.
+        /// <paramref name="nodeEstimate"/> is null.
+        /// </exception>
+        /// <exception cref="System.ArgumentException">
+        /// Unknown Kaspa network. Output amount and plurality must be non-zero. Input amount and plurality must be
+        /// non-zero. A transaction needs at least one output. A non-coinbase transaction needs at least one input.
+        /// Subnetwork id must be 20 bytes.
+        /// </exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">A value is outside the allowed range. The protocol minimum feerate must be non-zero.</exception>
+        /// <exception cref="System.OverflowException">
+        /// Fee rate does not fit in 64 bits. Normalized mass does not fit in 64 bits. Input amount mean does not
+        /// fit in 64 bits. The fee does not fit in 64 bits.
+        /// </exception>
+        public static FeeQuote Quote(
+            Network network,
+            ulong virtualDaaScore,
+            IReadOnlyList<FeeInput> inputs,
+            IReadOnlyList<FeeOutput> outputs,
+            RpcFeeEstimate nodeEstimate,
+            ushort version = 0)
+        {
+            var policy = MassPolicy.ForNetwork(network, virtualDaaScore);
+            return Quote(inputs, outputs, nodeEstimate, version, policy.BlockLimits, policy.MinimumRelayFeeRate);
         }
 
         /// <summary>
