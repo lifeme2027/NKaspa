@@ -320,6 +320,16 @@ System.Text.Json 通过 `KeystoreSecretJsonConverter` 拒绝读写，消息正�
 
 `Key.ToString` 是 `NKaspa.Key`。`Key.Reveal` 把 32 字节复制进 `KeystoreSecret`。`Key.Clear` 清零这把密钥。`Mnemonic.Reveal` 把规范句子复制进去。词表字符串是共享的，清不掉。`ExtKey.Reveal` 复制 `ExportXprv()`。`ExtKey.Clear` 清零扩展密钥和链码。
 
+## 0.1.11 类型化 wRPC 错误
+
+公共基类是 `KaspaWrpcException`。它不继承 `KaspaRpcException`。`KaspaRpcEncodingMismatchException` 也不属于这一族。JSON 客户端、Borsh 客户端和 `KaspaRpcConnection` 都走同一套映射。
+
+节点够不着时是 `KaspaNodeUnreachableException`，消息是 `Kaspa node is unreachable.`。被包进去的是原来的 `TimeoutException`、`WebSocketException`、`IOException`，以及消息里含有 `disconnected` 的 `InvalidOperationException`。`KaspaWebSocketChannel` 自己仍抛 `TimeoutException`。调用方取消、对象已释放、`WebSocket is not connected`、编码不匹配，都不包。Borsh 服务端错误码 0 的文本正好是 `connection is closed`（workflow-rs `ServerError`），这条用原文，内层是 `KaspaRpcException`。`RPC call timed out` 表示节点已经收到调用，仍是 `KaspaRpcException`。
+
+`KaspaUtxoIndexNotEnabledException` 对应 rusty-kaspa `rpc/core/src/error.rs` 的 `RpcError::NoUtxoIndex`。展示文本是 `Method unavailable. Run the node with the --utxoindex argument.`。映射按子串 `--utxoindex`，忽略大小写，消息原文保留。`KaspaNodeNotSyncedException` 对应同一文件的 `RpcError::ConsensusInTransitionalIbdState`，句子必须正好是 `consensus is currently in a transitional ibd state`（忽略大小写）。多出来的字仍是普通 `KaspaRpcException`。`KaspaWrongNetworkException` 对应 `consensus/core/src/network.rs` 的 `NetworkIdError` 和 `NetworkTypeError`，前缀是 `Invalid network type:`、`Invalid network id:`、`Invalid network name prefix:`、`Invalid network suffix:`、`Missing network suffix:`、`Network suffix required for network type:`、`Unexpected extra token:`。RPC 文本错误的 `ReportedNetworkId` 和 `ExpectedNetwork` 是 null。像 `nope` 这样的普通错误仍是 `KaspaRpcException`。
+
+`EnsureReadyAsync` 先读 `getServerInfo`。网络对不上抛 `KaspaWrongNetworkException`，消息是 `Node reported network '{id}'. Expected '{name}'.`。`testnet-10` 与 `Network.Testnet` 相同。然后在 `requireSynced` 为真且 `isSynced` 为假时抛 `Node is not synced.`。再在 `requireUtxoIndex` 为真且 `hasUtxoIndex` 为假时抛 `Node does not have the UTXO index enabled.`。两个开关都为假时，网络正确即可返回。`GetServerInfoAsync` 本身不查同步和索引。未知网络 id 也是网络错误。
+
 ## 0.1.10 后续修复
 
 Linux 审查（对照 `f41c86a`，测试者 测试1）和钱包组 R1/R10 的后续改动。没有改版本号，仍是 0.1.10-alpha。

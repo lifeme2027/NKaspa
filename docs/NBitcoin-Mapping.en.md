@@ -318,6 +318,16 @@ System.Text.Json refuses reads and writes through `KeystoreSecretJsonConverter`.
 
 `Key.ToString` is `NKaspa.Key`. `Key.Reveal` copies the 32 bytes into a `KeystoreSecret`. `Key.Clear` zeros that key. `Mnemonic.Reveal` copies the canonical sentence. The wordlist strings are shared and cannot be wiped. `ExtKey.Reveal` copies `ExportXprv()`. `ExtKey.Clear` zeros the extended key and the chain code.
 
+## 0.1.11 typed wRPC errors
+
+The common base is `KaspaWrpcException`. It does not derive from `KaspaRpcException`. `KaspaRpcEncodingMismatchException` stays outside this family. The JSON client, the Borsh client, and `KaspaRpcConnection` share one mapping.
+
+`KaspaNodeUnreachableException` means the socket could not be opened or it dropped. The message is `Kaspa node is unreachable.` The inner exception is the original `TimeoutException`, `WebSocketException`, `IOException`, or an `InvalidOperationException` whose text contains `disconnected`. `KaspaWebSocketChannel` still throws `TimeoutException` itself. Caller cancellation, disposal, `WebSocket is not connected`, and an encoding mismatch are not wrapped. Borsh server error code 0 is exactly `connection is closed` (workflow-rs `ServerError`). That text is kept, and the inner exception is `KaspaRpcException`. `RPC call timed out` means the node was reached and stays `KaspaRpcException`.
+
+`KaspaUtxoIndexNotEnabledException` is rusty-kaspa `RpcError::NoUtxoIndex` in `rpc/core/src/error.rs`. The display text is `Method unavailable. Run the node with the --utxoindex argument.` A message is mapped when it contains `--utxoindex`, ignoring case, and the original text is kept. `KaspaNodeNotSyncedException` is `RpcError::ConsensusInTransitionalIbdState` in the same file. The sentence must be exactly `consensus is currently in a transitional ibd state`, ignoring case. Extra words stay a generic `KaspaRpcException`. `KaspaWrongNetworkException` is `NetworkIdError` and `NetworkTypeError` in `consensus/core/src/network.rs`. The prefixes are `Invalid network type:`, `Invalid network id:`, `Invalid network name prefix:`, `Invalid network suffix:`, `Missing network suffix:`, `Network suffix required for network type:`, and `Unexpected extra token:`. An RPC text error leaves `ReportedNetworkId` and `ExpectedNetwork` null. A generic error such as `nope` stays `KaspaRpcException`.
+
+`EnsureReadyAsync` reads `getServerInfo` first. A different network throws `KaspaWrongNetworkException` with `Node reported network '{id}'. Expected '{name}'.`. `testnet-10` matches `Network.Testnet`. When `requireSynced` is true and `isSynced` is false, the message is `Node is not synced.` When `requireUtxoIndex` is true and `hasUtxoIndex` is false, the message is `Node does not have the UTXO index enabled.` Both flags false returns once the network matches. `GetServerInfoAsync` does not apply those checks. An unknown network id is a wrong-network error.
+
 ## Later 0.1.10 fixes
 
 Follow-up from a Linux review (against `f41c86a`) and wallet notes R1/R10. The version stayed 0.1.10-alpha.

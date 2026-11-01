@@ -294,17 +294,37 @@ namespace NKaspa.RPC
 
         /// <summary>Opens the WebSocket. Requests made before this call fail.</summary>
         /// <exception cref="System.InvalidOperationException">WebSocket is already connected.</exception>
-        /// <exception cref="System.TimeoutException">WebSocket connect timed out.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaNodeUnreachableException">Kaspa node is unreachable. The inner exception may be a timeout or a WebSocket error.</exception>
         /// <exception cref="System.OperationCanceledException">The caller's token was canceled.</exception>
         /// <exception cref="System.ObjectDisposedException">The connection has been disposed.</exception>
-        public Task ConnectAsync(CancellationToken cancellationToken = default)
+        public async Task ConnectAsync(CancellationToken cancellationToken = default)
         {
-            if (_json != null)
+            try
             {
-                return _json.ConnectAsync(cancellationToken);
-            }
+                if (_json != null)
+                {
+                    await _json.ConnectAsync(cancellationToken).ConfigureAwait(false);
+                    return;
+                }
 
-            return _borsh!.ConnectAsync(cancellationToken);
+                await _borsh!.ConnectAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                var mapped = KaspaWrpcErrors.Transport(exception);
+                if (ReferenceEquals(mapped, exception))
+                {
+                    throw;
+                }
+
+                throw mapped;
+            }
+        }
+
+        /// <inheritdoc />
+        public Task EnsureReadyAsync(Network network, bool requireSynced = true, bool requireUtxoIndex = true, CancellationToken cancellationToken = default)
+        {
+            return _client.EnsureReadyAsync(network, requireSynced, requireUtxoIndex, cancellationToken);
         }
 
         /// <inheritdoc />

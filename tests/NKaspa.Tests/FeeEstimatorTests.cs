@@ -406,6 +406,11 @@ namespace NKaspa.Tests
             {
                 throw new NotImplementedException();
             }
+
+            public Task EnsureReadyAsync(Network network, bool requireSynced = true, bool requireUtxoIndex = true, CancellationToken cancellationToken = default)
+            {
+                throw new NotImplementedException();
+            }
         }
     }
 }

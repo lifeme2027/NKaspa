@@ -33,6 +33,10 @@ namespace NKaspa.RPC
     /// Minimal Kaspa wRPC client.
     /// The JSON envelope is workflow-rpc: <c>id</c>, <c>method</c>, and <c>params</c>.
     /// Success responses carry the body in <c>params</c>. A <c>result</c> field is accepted when reading.
+    /// An RPC message of rusty-kaspa <c>NoUtxoIndex</c>, the IBD sentence, or a network-id error is thrown as
+    /// <see cref="KaspaUtxoIndexNotEnabledException"/>, <see cref="KaspaNodeNotSyncedException"/>, or <see cref="KaspaWrongNetworkException"/>.
+    /// A timeout or a dropped socket is <see cref="KaspaNodeUnreachableException"/>. Other node errors stay <see cref="KaspaRpcException"/>.
+    /// <see cref="KaspaRpcEncodingMismatchException"/> is unchanged. <see cref="GetServerInfoAsync"/> does not apply the sync or index check.
     /// </summary>
     public interface IKaspaRpcClient
     {
@@ -184,6 +188,20 @@ namespace NKaspa.RPC
         /// <exception cref="System.InvalidOperationException">WebSocket is not connected. Call ConnectAsync first. Subscriptions require KaspaWebSocketChannel.</exception>
         /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC error.</exception>
         Task<KaspaSubscription> NotifyBlockAddedAsync(Action<RpcBlockAdded> onAdded, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Calls <see cref="GetServerInfoAsync"/> and checks the network, sync flag, and UTXO index.
+        /// <see cref="GetServerInfoAsync"/> itself returns an unsynced node and a node without the index.
+        /// <c>testnet-10</c> matches <see cref="Network.Testnet"/>.
+        /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaWrongNetworkException">Node reported network '{id}'. Expected '{name}'.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaNodeNotSyncedException">Node is not synced.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaUtxoIndexNotEnabledException">Node does not have the UTXO index enabled.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaNodeUnreachableException">Kaspa node is unreachable.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC response has no params. RPC response id does not match the request. RPC error.</exception>
+        /// <exception cref="System.InvalidOperationException">WebSocket is not connected. Call ConnectAsync first.</exception>
+        Task EnsureReadyAsync(Network network, bool requireSynced = true, bool requireUtxoIndex = true, CancellationToken cancellationToken = default);
     }
 
     /// <summary>

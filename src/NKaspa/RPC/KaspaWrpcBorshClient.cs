@@ -23,6 +23,12 @@ namespace NKaspa.RPC
         }
 
         /// <inheritdoc />
+        public Task EnsureReadyAsync(Network network, bool requireSynced = true, bool requireUtxoIndex = true, CancellationToken cancellationToken = default)
+        {
+            return KaspaWrpcErrors.Ensure(this, network, requireSynced, requireUtxoIndex, cancellationToken);
+        }
+
+        /// <inheritdoc />
         public Task<RpcServerInfo> GetServerInfoAsync(CancellationToken cancellationToken = default)
         {
             return CallAsync(KaspaBorshCodec.OpGetServerInfo, KaspaBorshCodec.EmptyPayload(), KaspaBorshCodec.ReadServerInfo, cancellationToken);
@@ -210,11 +216,26 @@ namespace NKaspa.RPC
         private async Task<byte[]> ExchangeAsync(byte[] frame, CancellationToken cancellationToken)
         {
             var id = KaspaBorshCodec.ReadRequestId(frame);
-            var response = await _channel.ExchangeAsync(frame, cancellationToken).ConfigureAwait(false);
+            byte[] response;
+            try
+            {
+                response = await _channel.ExchangeAsync(frame, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                var mapped = KaspaWrpcErrors.Transport(exception);
+                if (ReferenceEquals(mapped, exception))
+                {
+                    throw;
+                }
+
+                throw mapped;
+            }
+
             var incoming = KaspaBorshCodec.DecodeFrame(response);
             if (incoming.Error != null)
             {
-                throw incoming.Error;
+                throw KaspaWrpcErrors.FromRpc(incoming.Error);
             }
 
             if (incoming.Id != id)

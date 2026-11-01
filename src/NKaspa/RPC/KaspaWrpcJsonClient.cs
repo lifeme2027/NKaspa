@@ -25,6 +25,12 @@ namespace NKaspa.RPC
         }
 
         /// <inheritdoc />
+        public Task EnsureReadyAsync(Network network, bool requireSynced = true, bool requireUtxoIndex = true, CancellationToken cancellationToken = default)
+        {
+            return KaspaWrpcErrors.Ensure(this, network, requireSynced, requireUtxoIndex, cancellationToken);
+        }
+
+        /// <inheritdoc />
         /// <exception cref="System.ArgumentNullException">A required value is null.</exception>
         /// <exception cref="System.ArgumentException">wRPC request is missing a numeric id.</exception>
         /// <exception cref="System.FormatException">
@@ -835,14 +841,28 @@ namespace NKaspa.RPC
             }
 
             var request = Encoding.UTF8.GetString(stream.ToArray());
-            var responseText = await _channel.ExchangeAsync(request, cancellationToken).ConfigureAwait(false);
+            string responseText;
+            try
+            {
+                responseText = await _channel.ExchangeAsync(request, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                var mapped = KaspaWrpcErrors.Transport(exception);
+                if (ReferenceEquals(mapped, exception))
+                {
+                    throw;
+                }
+
+                throw mapped;
+            }
             using var document = JsonDocument.Parse(responseText);
             var root = document.RootElement;
             if (root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object)
             {
                 var code = error.TryGetProperty("code", out var codeElement) && codeElement.TryGetInt32(out var codeValue) ? codeValue : 0;
                 var message = error.TryGetProperty("message", out var messageElement) ? messageElement.GetString() : "RPC error";
-                throw new KaspaRpcException(code, message ?? "RPC error");
+                throw KaspaWrpcErrors.FromRpc(new KaspaRpcException(code, message ?? "RPC error"));
             }
 
             if (!root.TryGetProperty("id", out var responseId) || !responseId.TryGetInt64(out var responseNumber) || responseNumber != id)
