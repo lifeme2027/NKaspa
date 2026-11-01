@@ -121,7 +121,7 @@ Case-insensitivity and zero-width removal (a leading BOM and marks inside a word
 | 状态 | 原因 |
 | --- | --- |
 | 无需原样实现 | 比特币标准脚本（P2PKH、P2WPKH、multisig 计数）对不上 Kaspa。 |
-| 已实现（mass） | `MassCalculator`：版本 0 与版本 1 的 compute mass、KIP-13 transient mass、KIP-9 storage mass。费用 mass 是这三项归一化后的最大值。块限额是 compute 500000、storage 500000、transient 1000000。旧的单笔 `100_000` 仍保留为可选策略。币库交易这三项都是 0。脚本执行在 `TxScriptEngine`。标准性策略仍是已有的模板和 mass，没有单独的 `StandardTransactionPolicy`。 |
+| 已实现（mass） | `MassCalculator`：版本 0 与版本 1 的 compute mass、KIP-13 transient mass、KIP-9 storage mass。费用 mass 是这三项归一化后的最大值。块限额是 compute 500000、storage 500000、transient 1000000。旧的单笔 `100_000` 仍保留为可选策略。币库交易这三项都是 0。脚本执行在 `TxScriptEngine`。标准性策略仍是已有的模板和 mass，没有单独的 `StandardTransactionPolicy`。`FeeEstimator` 不需要私钥：按输入脚本种类和输出金额算出与已签名交易相同的 mass 和手续费。版本 0、1 个 Schnorr 输入、2 个 34 字节输出的 compute mass 是 2036。协议最低费率常量是 100 sompi/gram。`MinimumFeerate` 取 `getFeeEstimate` 里最低的正有限桶并向上取整，`PayableFeerate` 把它抬到 100。 |
 
 ## RPC
 
@@ -305,6 +305,12 @@ Coinbase 成熟度。`ConsensusParams` 按网络给出 DAA 分数上的成熟度
 2026-11-01 对 testnet-10 做了只读核对，没有提交交易。REST `https://api-tn10.kaspa.org/info/blockdag` 的 `networkName` 是 `kaspa-testnet-10`，`virtualDaaScore` 是 `611687351`，`sink` 是 `12e70b94db857ebfa30d9bdfb5872c9e78299f698b703ba79fc4a5ab009f3004`，响应里没有 `blueScore`。同一 sink 的区块 REST 里，header 与 verboseData 的 `blueScore` 都是 `600053776`，`blueWork` 是未补齐的 `7cdd01645b922`。随后用本库连上公开 `wss://electron-10.kaspa.stream/kaspa/testnet-10/wrpc/json`（只读）。`getServerInfo` 是 rusty-kaspa 2.1.0、`testnet-10`。`getBlockDagInfo` 的 `virtualDaaScore` 是 `611688197`，`BlueScore` 是 0。`getSinkBlueScore` 是 `600054623`，与该 sink 的 header 和 verbose `blueScore` 相同。`blueWork` 解析成 24 字节小端。`getVirtualChainFromBlock` 从该 sink 返回 0 个移除块和 4 个新增块。没有调用 `submitTransaction`。
 
 密钥库。`WalletKeystore` 用口令加密助记词或种子。KDF 是 PBKDF2-HMAC-SHA256。`.NET` 基础类库没有 Argon2，所以用 `Rfc2898DeriveBytes.Pbkdf2`（.NET Standard 2.1 上是同算法的实例方法），默认 600000 次，次数写进文件。密文是 AES-256-GCM（`System.Security.Cryptography.AesGcm`）。盐和 nonce 随机，除非调用方传入固定长度的值。JSON 字段顺序是 `version`、`kdf`、`kdfParams`、`cipher`、`salt`、`nonce`、`tag`、`ciphertext`。版本是 1，`kdf` 是 `pbkdf2-sha256`，`cipher` 是 `aes-256-gcm`。关联数据把版本、KDF、次数、哈希、密钥长度和算法绑在一起。口令错误，或密文、tag、nonce、次数被改，抛 `WrongKeystorePasswordException`，消息正好是 `Wrong keystore password.`。版本、KDF、哈希、密钥长度或算法对不上时，在解密前抛 `KeystoreException`。`KeystoreSecret.ToString` 和 `WalletKeystoreParameters.ToString` 不打印秘密。能清零的缓冲区用 `CryptographicOperations.ZeroMemory`。`.NET` 字符串清不掉。
+
+## 0.1.11 无密钥手续费估算
+
+`FeeEstimator.Estimate` 用占位签名脚本构造一笔未签名交易，再交给 `MassCalculator`。Schnorr 和 ECDSA 的占位签名脚本都是 66 字节（`OP_DATA_65 || 64 个零 || sighash`），版本 0 计 1 个 sigop，版本 1 在未指定时用 `TransactionBuilder.DefaultComputeBudget`（10）。不读取私钥。1 输入 2 输出的 Schnorr P2PK 与已签名交易的 compute、transient、storage mass 相同，compute mass 是 2036，按 100 sompi/gram 的中继费是 203600 sompi。输入 100000000、付出 20000000 时 storage mass 是 52531，`Quote.Fee` 是 5253100，中继费仍是 203600。输入 5675155239、输出 500000000 与 5171555239 时 storage mass 是 2017，低于 compute mass，`Quote.Fee` 与中继费都是 203600。两输入是 3154，版本 1 且预算 10 是 2038。`Quote` 的 `RelayFee` 乘的是中继 mass（不含 storage）。`Fee` 乘的是 `FeeMass`，storage mass 更大时手续费高于中继费。KIP-9 样例输入 5675155239、输出 12000000 与 5654655239 的 storage mass 是 83333，费用是 8333300 sompi，中继费仍是 203600。
+
+`DefaultMinimumFeerateSompiPerGram` 是 100，与 `MassCalculator.MinimumFeeRate` 相同。`MinimumFeerate(RpcFeeEstimate)` 在 `priorityBucket`、`normalBuckets`、`lowBuckets` 里取最低的正有限 `feerate`，用 `Math.Ceiling` 收成整数 sompi。NaN、无穷、小于等于 0 的桶跳过。一个桶都没有时返回 100。节点可以给出低于 100 的桶，这个方法原样返回（向上取整之后）。`PayableFeerate` 把更低的桶抬到调用方给出的协议下限，默认 100。`Quote(RpcFeeEstimate)` 用的是 `PayableFeerate`。`ReadMinimumFeerateAsync` 调用 `getFeeEstimate`，返回的是没有抬升的 `MinimumFeerate`。显式费率低于下限抛 `ArgumentOutOfRangeException`。下限 0 抛 `ArgumentOutOfRangeException`，消息是 `The protocol minimum feerate must be non-zero.`。DAA 相关的费率仍在 `MassPolicy`，这一节的默认值是 Toccata 之后的 100。
 
 ## 0.1.10 后续修复
 
