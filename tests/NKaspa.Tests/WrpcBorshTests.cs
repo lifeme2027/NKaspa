@@ -78,6 +78,7 @@ namespace NKaspa.Tests
             Assert.Equal(new uint256(3), dag.PruningPointHash);
             Assert.Equal(50UL, dag.VirtualDaaScore);
             Assert.Equal(new uint256(4), dag.Sink);
+            Assert.Equal(0UL, dag.BlueScore);
 
             Assert.Equal(9007199254740993UL, KaspaBorshCodec.ReadBalance(Body(BorshGolden.BalanceResponse(1, 9007199254740993UL))).Sompi);
 
@@ -179,6 +180,8 @@ namespace NKaspa.Tests
             Assert.Equal(1.0, fees.PriorityBucket!.Feerate);
             Assert.Equal(tx.GetId(), id);
             Assert.Equal(blockHash, block!.Hash);
+            Assert.Equal(4UL, block.BlueScore);
+            Assert.Equal(new byte[24], block.BlueWork);
             await connection.DisposeAsync();
             await server.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.Equal(new byte[] { 114, 131, 136, 137, 135, 147, 125, 126 }, ops);
@@ -968,7 +971,7 @@ namespace NKaspa.Tests
 
         private static byte[] BlockSerializer(uint256 hash, bool verbose)
         {
-            var header = Header(hash);
+            var header = Header(hash, null);
             var transactions = new Writer();
             transactions.U32(0);
             var block = new Writer();
@@ -1002,7 +1005,7 @@ namespace NKaspa.Tests
             return block.ToArray();
         }
 
-        private static byte[] Header(uint256 hash)
+        private static byte[] Header(uint256 hash, byte[]? blueWork)
         {
             var writer = new Writer();
             writer.U16(1);
@@ -1018,10 +1021,67 @@ namespace NKaspa.Tests
             writer.U32(0);
             writer.U64(0);
             writer.U64(9);
-            writer.Raw(new byte[24]);
+            writer.Raw(blueWork ?? new byte[24]);
             writer.U64(4);
             writer.Raw(new uint256(7).ToBytes());
             return writer.ToArray();
+        }
+
+        internal static byte[] GetBlockResponse(ulong id, uint256 hash, byte[] blueWork)
+        {
+            var header = Header(hash, blueWork);
+            var transactions = new Writer();
+            transactions.U32(0);
+            var block = new Writer();
+            block.U16(1);
+            block.Vec(header);
+            block.Vec(transactions.ToArray());
+            var none = new Writer();
+            none.U8(0);
+            block.Vec(none.ToArray());
+            var body = new Writer();
+            body.U16(1);
+            body.Vec(block.ToArray());
+            return Success(id, 126, body.ToArray());
+        }
+
+        internal static byte[] SinkResponse(ulong id, ulong blueScore)
+        {
+            var body = new Writer();
+            body.U16(1);
+            body.U64(blueScore);
+            return Success(id, 138, body.ToArray());
+        }
+
+        internal static byte[] VirtualChainResponse(ulong id, uint256 removed, uint256 added, uint256 accepting, uint256 transactionId)
+        {
+            var body = new Writer();
+            body.U16(1);
+            HashList(body, removed);
+            HashList(body, added);
+            body.U32(1);
+            body.Raw(accepting.ToBytes());
+            HashList(body, transactionId);
+            return Success(id, 128, body.ToArray());
+        }
+
+        internal static byte[] VirtualChainRequest(uint256 startHash, bool includeAccepted, ulong? minConfirmation)
+        {
+            var body = new Writer();
+            body.U16(2);
+            body.Raw(startHash.ToBytes());
+            body.U8(includeAccepted ? (byte)1 : (byte)0);
+            if (minConfirmation.HasValue)
+            {
+                body.U8(1);
+                body.U64(minConfirmation.Value);
+            }
+            else
+            {
+                body.U8(0);
+            }
+
+            return Wrap(body.ToArray());
         }
 
         private static void TransactionBody(Writer writer, Transaction transaction)

@@ -701,5 +701,51 @@ namespace NKaspa.RPC
 
             return Encoders.Hex.DecodeData(text);
         }
+
+        /// <summary>
+        /// Reads header <c>blueWork</c> into 24 little-endian bytes.
+        /// rusty-kaspa JSON is the <c>Uint192</c> integer as hex (<c>rpc/core/src/model/header.rs</c> field <c>blue_work</c>, name <c>blueWork</c>).
+        /// A <c>0x</c> prefix is accepted. An odd length is padded on the left. The value must fit in 24 bytes.
+        /// Borsh stores the same integer as three little-endian u64 limbs.
+        /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="text"/> is null.</exception>
+        /// <exception cref="System.FormatException">blueWork is not hex. blueWork is longer than 24 bytes. Hex string contains a non-hex character. Hex string length must be even.</exception>
+        public static byte[] ReadBlueWork(string text)
+        {
+            if (text == null)
+            {
+                throw new ArgumentNullException(nameof(text));
+            }
+
+            var hex = text.Trim();
+            if (hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                hex = hex.Substring(2);
+            }
+
+            if (hex.Length == 0)
+            {
+                return new byte[24];
+            }
+
+            if ((hex.Length & 1) == 1)
+            {
+                hex = "0" + hex;
+            }
+
+            if (hex.Length > 48)
+            {
+                throw new FormatException("blueWork is longer than 24 bytes.");
+            }
+
+            var bigEndian = Encoders.Hex.DecodeData(hex);
+            var littleEndian = new byte[24];
+            for (var i = 0; i < bigEndian.Length; i++)
+            {
+                littleEndian[i] = bigEndian[bigEndian.Length - 1 - i];
+            }
+
+            return littleEndian;
+        }
     }
 }

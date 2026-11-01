@@ -45,6 +45,7 @@ namespace NKaspa.Tests
             Assert.Equal(10UL, dag.BlockCount);
             Assert.Equal(2.5, dag.Difficulty);
             Assert.Equal(new uint256(4), dag.Sink);
+            Assert.Equal(0UL, dag.BlueScore);
 
             var balance = await client.GetBalanceByAddressAsync("kaspa:qq");
             Assert.Equal(9007199254740993UL, balance.Sompi);

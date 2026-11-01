@@ -61,6 +61,34 @@ namespace NKaspa.RPC
         /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC response has no params. RPC response id does not match the request. RPC error.</exception>
         Task<RpcBlockDagInfo> GetBlockDagInfoAsync(CancellationToken cancellationToken = default);
 
+        /// <summary>
+        /// getSinkBlueScore. The blue score of the virtual selected parent (the sink).
+        /// rusty-kaspa <c>GetSinkBlueScoreResponse.blue_score</c> in <c>rpc/core/src/model/message.rs</c>.
+        /// Borsh op 138. JSON method <c>getSinkBlueScore</c>, field <c>blueScore</c>.
+        /// <c>GetBlockDagInfoResponse</c> does not carry this value. A live node leaves <see cref="RpcBlockDagInfo.BlueScore"/> at zero unless the JSON body adds the field.
+        /// </summary>
+        /// <exception cref="System.ArgumentException">wRPC request is missing a numeric id.</exception>
+        /// <exception cref="System.FormatException">Expected an unsigned 64-bit integer. JSON number does not fit in an unsigned 64-bit integer. Borsh message is truncated. Missing JSON property blueScore.</exception>
+        /// <exception cref="System.InvalidOperationException">WebSocket is not connected. Call ConnectAsync first.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC response has no params. RPC response id does not match the request. RPC error.</exception>
+        Task<ulong> GetSinkBlueScoreAsync(CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// getVirtualChainFromBlock. Removed and added selected-chain hashes, and accepted transaction ids when requested.
+        /// rusty-kaspa <c>GetVirtualChainFromBlockResponse</c> in <c>rpc/core/src/model/message.rs</c>.
+        /// Borsh op 128. The response has no <c>blueScore</c>. Block headers, which do carry <c>blueScore</c>, are <c>GetVirtualChainFromBlockV2</c> (op 151) and are not read here.
+        /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="startHash"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">wRPC request is missing a numeric id.</exception>
+        /// <exception cref="System.FormatException">
+        /// uint256 hex must be 32 bytes. uint256 requires 32 bytes. Hex string contains a non-hex character.
+        /// Hex string length must be even. Expected a hex hash. Borsh message is truncated. Invalid Borsh bool.
+        /// Invalid Borsh option tag.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">WebSocket is not connected. Call ConnectAsync first.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcException">RPC response has no params. RPC response id does not match the request. RPC error.</exception>
+        Task<RpcVirtualChain> GetVirtualChainFromBlockAsync(uint256 startHash, bool includeAcceptedTransactionIds = false, ulong? minConfirmationCount = null, CancellationToken cancellationToken = default);
+
         /// <summary>getUtxosByAddresses.</summary>
         /// <exception cref="System.ArgumentNullException"><paramref name="addresses"/> is null.</exception>
         /// <exception cref="System.ArgumentException">wRPC request is missing a numeric id.</exception>
@@ -225,7 +253,8 @@ namespace NKaspa.RPC
             ulong? headerBlueScore = null,
             ulong? verboseBlueScore = null,
             uint256? headerHash = null,
-            uint256? verboseHash = null)
+            uint256? verboseHash = null,
+            byte[]? blueWork = null)
         {
             Hash = hash ?? throw new ArgumentNullException(nameof(hash));
             BlueScore = blueScore;
@@ -239,6 +268,7 @@ namespace NKaspa.RPC
             VerboseBlueScore = verboseBlueScore;
             HeaderHash = headerHash;
             VerboseHash = verboseHash;
+            BlueWork = CopyBlueWork(blueWork);
         }
 
         /// <summary>Block hash requested from getBlock.</summary>
@@ -246,6 +276,14 @@ namespace NKaspa.RPC
 
         /// <summary>header blueScore, or verboseData blueScore when the header omits it. Zero when both are missing.</summary>
         public ulong BlueScore { get; }
+
+        /// <summary>
+        /// header.blueWork. Twenty-four little-endian bytes.
+        /// rusty-kaspa <c>BlueWorkType</c> is <c>Uint192</c> (<c>rpc/core/src/model/header.rs</c> field <c>blue_work</c>, JSON name <c>blueWork</c>).
+        /// Borsh writes it between <c>daaScore</c> and <c>blueScore</c>: three little-endian u64 limbs.
+        /// Null when the JSON header omits the field.
+        /// </summary>
+        public byte[]? BlueWork { get; }
 
         /// <summary>header acceptedIdMerkleRoot. Null when the field is missing.</summary>
         public uint256? AcceptedIdMerkleRoot { get; }
@@ -276,6 +314,23 @@ namespace NKaspa.RPC
 
         /// <summary>verboseData.hash. Null when verbose data omits it.</summary>
         public uint256? VerboseHash { get; }
+
+        private static byte[]? CopyBlueWork(byte[]? blueWork)
+        {
+            if (blueWork == null)
+            {
+                return null;
+            }
+
+            if (blueWork.Length != 24)
+            {
+                throw new ArgumentException("blueWork must be 24 bytes.", nameof(blueWork));
+            }
+
+            var copy = new byte[24];
+            Buffer.BlockCopy(blueWork, 0, copy, 0, 24);
+            return copy;
+        }
     }
 
     /// <summary>getServerInfo body.</summary>
@@ -318,7 +373,7 @@ namespace NKaspa.RPC
     /// <summary>getBlockDagInfo body.</summary>
     public sealed class RpcBlockDagInfo
     {
-        /// <summary>Creates the DAG info record.</summary>
+        /// <summary>Creates the DAG info record. <see cref="BlueScore"/> is zero.</summary>
         public RpcBlockDagInfo(
             string network,
             ulong blockCount,
@@ -330,6 +385,28 @@ namespace NKaspa.RPC
             uint256 pruningPointHash,
             ulong virtualDaaScore,
             uint256 sink)
+            : this(network, blockCount, headerCount, tipHashes, difficulty, pastMedianTime, virtualParentHashes, pruningPointHash, virtualDaaScore, sink, 0)
+        {
+        }
+
+        /// <summary>
+        /// Creates the DAG info record.
+        /// <paramref name="blueScore"/> is the JSON <c>blueScore</c> field when a peer sends one.
+        /// rusty-kaspa <c>GetBlockDagInfoResponse</c> (<c>rpc/core/src/model/message.rs</c>) does not serialize <c>blueScore</c>.
+        /// Pass zero for a Borsh body. The sink score is <see cref="IKaspaRpcClient.GetSinkBlueScoreAsync"/>.
+        /// </summary>
+        public RpcBlockDagInfo(
+            string network,
+            ulong blockCount,
+            ulong headerCount,
+            IReadOnlyList<uint256> tipHashes,
+            double difficulty,
+            ulong pastMedianTime,
+            IReadOnlyList<uint256> virtualParentHashes,
+            uint256 pruningPointHash,
+            ulong virtualDaaScore,
+            uint256 sink,
+            ulong blueScore)
         {
             Network = network;
             BlockCount = blockCount;
@@ -341,6 +418,7 @@ namespace NKaspa.RPC
             PruningPointHash = pruningPointHash;
             VirtualDaaScore = virtualDaaScore;
             Sink = sink;
+            BlueScore = blueScore;
         }
 
         /// <summary>Network name. The wRPC field is <c>network</c>.</summary>
@@ -372,6 +450,68 @@ namespace NKaspa.RPC
 
         /// <summary>sink.</summary>
         public uint256 Sink { get; }
+
+        /// <summary>
+        /// blueScore when the JSON body included it. Zero when the field is absent.
+        /// rusty-kaspa <c>GetBlockDagInfoResponse</c> (<c>rpc/core/src/model/message.rs</c>) serializes
+        /// <c>network</c>, <c>blockCount</c>, <c>headerCount</c>, <c>tipHashes</c>, <c>difficulty</c>,
+        /// <c>pastMedianTime</c>, <c>virtualParentHashes</c>, <c>pruningPointHash</c>, <c>virtualDaaScore</c>, <c>sink</c>.
+        /// There is no <c>blueScore</c> on that Borsh body, so a Borsh read leaves this at zero.
+        /// The sink's blue score is <see cref="IKaspaRpcClient.GetSinkBlueScoreAsync"/>
+        /// (<c>GetSinkBlueScoreResponse.blue_score</c>, formerly the virtual selected parent blue score).
+        /// </summary>
+        public ulong BlueScore { get; }
+    }
+
+    /// <summary>
+    /// getVirtualChainFromBlock body.
+    /// Field order matches rusty-kaspa <c>GetVirtualChainFromBlockResponse</c>:
+    /// <c>removedChainBlockHashes</c>, <c>addedChainBlockHashes</c>, <c>acceptedTransactionIds</c>.
+    /// </summary>
+    public sealed class RpcVirtualChain
+    {
+        /// <summary>Creates the chain diff. A null list is empty.</summary>
+        public RpcVirtualChain(
+            IReadOnlyList<uint256>? removedChainBlockHashes,
+            IReadOnlyList<uint256>? addedChainBlockHashes,
+            IReadOnlyList<RpcAcceptedTransactionIds>? acceptedTransactionIds)
+        {
+            RemovedChainBlockHashes = removedChainBlockHashes ?? new List<uint256>();
+            AddedChainBlockHashes = addedChainBlockHashes ?? new List<uint256>();
+            AcceptedTransactionIds = acceptedTransactionIds ?? new List<RpcAcceptedTransactionIds>();
+        }
+
+        /// <summary>removedChainBlockHashes.</summary>
+        public IReadOnlyList<uint256> RemovedChainBlockHashes { get; }
+
+        /// <summary>addedChainBlockHashes.</summary>
+        public IReadOnlyList<uint256> AddedChainBlockHashes { get; }
+
+        /// <summary>acceptedTransactionIds. Empty when the request did not ask for them.</summary>
+        public IReadOnlyList<RpcAcceptedTransactionIds> AcceptedTransactionIds { get; }
+    }
+
+    /// <summary>
+    /// One accepting block and the transaction ids it accepted.
+    /// rusty-kaspa <c>RpcAcceptedTransactionIds</c> in <c>rpc/core/src/model/tx.rs</c>.
+    /// JSON names are <c>acceptingBlockHash</c> and <c>acceptedTransactionIds</c>.
+    /// Borsh is the derived layout: 32-byte hash, then a <c>u32</c> count and that many hashes. No serializer version.
+    /// </summary>
+    public sealed class RpcAcceptedTransactionIds
+    {
+        /// <summary>Creates the row.</summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="acceptingBlockHash"/> is null. <paramref name="acceptedTransactionIds"/> is null.</exception>
+        public RpcAcceptedTransactionIds(uint256 acceptingBlockHash, IReadOnlyList<uint256> acceptedTransactionIds)
+        {
+            AcceptingBlockHash = acceptingBlockHash ?? throw new ArgumentNullException(nameof(acceptingBlockHash));
+            AcceptedTransactionIds = acceptedTransactionIds ?? throw new ArgumentNullException(nameof(acceptedTransactionIds));
+        }
+
+        /// <summary>acceptingBlockHash.</summary>
+        public uint256 AcceptingBlockHash { get; }
+
+        /// <summary>acceptedTransactionIds.</summary>
+        public IReadOnlyList<uint256> AcceptedTransactionIds { get; }
     }
 
     /// <summary>One entry from getUtxosByAddresses.</summary>
@@ -503,7 +643,8 @@ namespace NKaspa.RPC
             uint256? directParent,
             bool isChainBlock,
             uint256? selectedParentHash,
-            IReadOnlyList<Transaction> transactions)
+            IReadOnlyList<Transaction> transactions,
+            byte[]? blueWork = null)
         {
             Hash = hash ?? throw new ArgumentNullException(nameof(hash));
             Version = version;
@@ -516,6 +657,7 @@ namespace NKaspa.RPC
             IsChainBlock = isChainBlock;
             SelectedParentHash = selectedParentHash;
             Transactions = transactions ?? throw new ArgumentNullException(nameof(transactions));
+            BlueWork = CopyAddedBlueWork(blueWork);
         }
 
         /// <summary>header.hash.</summary>
@@ -529,6 +671,13 @@ namespace NKaspa.RPC
 
         /// <summary>header.blueScore.</summary>
         public ulong BlueScore { get; }
+
+        /// <summary>
+        /// header.blueWork. Twenty-four little-endian bytes.
+        /// Same <c>BlueWorkType</c> layout as <see cref="RpcChainBlock.BlueWork"/>.
+        /// Null when the JSON header omits <c>blueWork</c>.
+        /// </summary>
+        public byte[]? BlueWork { get; }
 
         /// <summary>header.timestamp, milliseconds.</summary>
         public ulong Timestamp { get; }
@@ -550,5 +699,22 @@ namespace NKaspa.RPC
 
         /// <summary>Block transactions. Empty when the node included none.</summary>
         public IReadOnlyList<Transaction> Transactions { get; }
+
+        private static byte[]? CopyAddedBlueWork(byte[]? blueWork)
+        {
+            if (blueWork == null)
+            {
+                return null;
+            }
+
+            if (blueWork.Length != 24)
+            {
+                throw new ArgumentException("blueWork must be 24 bytes.", nameof(blueWork));
+            }
+
+            var copy = new byte[24];
+            Buffer.BlockCopy(blueWork, 0, copy, 0, 24);
+            return copy;
+        }
     }
 }

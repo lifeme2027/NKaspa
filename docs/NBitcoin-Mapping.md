@@ -294,6 +294,18 @@ Mass：当前 rusty-kaspa master 的 mainnet、testnet（suffix 10）、simnet�
 
 `SubmitTransaction` 只在假服务器测试里发送。这一节没有对真实网络提交交易。
 
+## 0.1.11 蓝分、coinbase 成熟度、密钥库
+
+版本号仍是 0.1.11-alpha。
+
+蓝分。rusty-kaspa `GetBlockDagInfoResponse`（`rpc/core/src/model/message.rs`）没有 `blueScore`。Borsh 字段顺序是 `network`、`blockCount`、`headerCount`、`tipHashes`、`difficulty`、`pastMedianTime`、`virtualParentHashes`、`pruningPointHash`、`virtualDaaScore`、`sink`。本库不在这条 Borsh 记录末尾多读一个 u64。JSON 可以多一个 `blueScore`。缺这个字段时 `RpcBlockDagInfo.BlueScore` 是 0。`GetBlockDagInfoAsync` 不会顺手调用 `getSinkBlueScore`。sink 的蓝分是 `GetSinkBlueScoreAsync`（JSON 方法 `getSinkBlueScore`，Borsh 操作码 138）。响应是 serializer 版本 1，然后一个 u64 `blueScore`。这是 virtual selected parent（sink）的蓝分，旧名是 `GetVirtualSelectedParentBlueScore`。`GetVirtualChainFromBlockAsync`（操作码 128）的请求是 serializer 版本 2：`startHash`、`includeAcceptedTransactionIds`、可选的 `minConfirmationCount`。响应是版本 1：`removedChainBlockHashes`、`addedChainBlockHashes`、`acceptedTransactionIds`。这条响应没有蓝分。带区块头的 `GetVirtualChainFromBlockV2`（操作码 151）不读。区块头本来就有 `blueScore`。`blueWork` 是 `header.rs` 的 `BlueWorkType`（`Uint192`），24 字节小端。JSON 十六进制可以不补前导零，奇数长度会在左边补一个半字节。`RpcChainBlock.BlueWork` 和 `RpcBlockAdded.BlueWork` 在字段存在时保存这 24 字节。
+
+Coinbase 成熟度。`ConsensusParams` 按网络给出 DAA 分数上的成熟度，出处是 rusty-kaspa `consensus/core/src/config/params.rs`、`bps.rs` 的 `Bps::coinbase_maturity`（`BPS * COINBASE_MATURITY_SECONDS`）和 `constants.rs` 里的 100 秒。主网 Crescendo 激活分是 110165000，之前 1 块每秒，成熟度 100，之后 1000。测试网 suffix 10（`Network.Testnet`）激活分是 88657000，规则相同。Simnet 和 Devnet 是 `ForkActivation::always()`，激活前也是 10 块每秒，所以任何分数的成熟度都是 1000。当前 master 没有 `TESTNET11_PARAMS`。历史上的 testnet-11 是 10 BPS 网络，`kaspawallet` 提交 `25c2dd86709b5a0b889785e7e6b0c00c8827a8b7` 在网络名 `kaspa-testnet-11` 时用成熟度 1000。`ConsensusParams.Testnet11` 记下这个数。`ForNetwork` 不把名字 `testnet` 映射到它。`IsCoinbaseMature(utxoEntry, virtualDaaScore, network)` 和 `SpendableAtDaaScore` 按这个时刻表判断。非 coinbase 直接成熟。coinbase 在 `virtualDaaScore - blockDaaScore` 达到该视点的成熟度时成熟，相等算成熟。视点低于区块分数时不成熟。减法不环绕。当前节点的 `TransactionValidator` 只存 `params.coinbase_maturity()`，也就是激活后的 1000。这个助手仍按分叉时刻表计算，方便测激活前的边界。
+
+2026-11-01 对 testnet-10 做了只读核对，没有提交交易。REST `https://api-tn10.kaspa.org/info/blockdag` 的 `networkName` 是 `kaspa-testnet-10`，`virtualDaaScore` 是 `611687351`，`sink` 是 `12e70b94db857ebfa30d9bdfb5872c9e78299f698b703ba79fc4a5ab009f3004`，响应里没有 `blueScore`。同一 sink 的区块 REST 里，header 与 verboseData 的 `blueScore` 都是 `600053776`，`blueWork` 是未补齐的 `7cdd01645b922`。随后用本库连上公开 `wss://electron-10.kaspa.stream/kaspa/testnet-10/wrpc/json`（只读）。`getServerInfo` 是 rusty-kaspa 2.1.0、`testnet-10`。`getBlockDagInfo` 的 `virtualDaaScore` 是 `611688197`，`BlueScore` 是 0。`getSinkBlueScore` 是 `600054623`，与该 sink 的 header 和 verbose `blueScore` 相同。`blueWork` 解析成 24 字节小端。`getVirtualChainFromBlock` 从该 sink 返回 0 个移除块和 4 个新增块。没有调用 `submitTransaction`。
+
+密钥库。`WalletKeystore` 用口令加密助记词或种子。KDF 是 PBKDF2-HMAC-SHA256。`.NET` 基础类库没有 Argon2，所以用 `Rfc2898DeriveBytes.Pbkdf2`（.NET Standard 2.1 上是同算法的实例方法），默认 600000 次，次数写进文件。密文是 AES-256-GCM（`System.Security.Cryptography.AesGcm`）。盐和 nonce 随机，除非调用方传入固定长度的值。JSON 字段顺序是 `version`、`kdf`、`kdfParams`、`cipher`、`salt`、`nonce`、`tag`、`ciphertext`。版本是 1，`kdf` 是 `pbkdf2-sha256`，`cipher` 是 `aes-256-gcm`。关联数据把版本、KDF、次数、哈希、密钥长度和算法绑在一起。口令错误，或密文、tag、nonce、次数被改，抛 `WrongKeystorePasswordException`，消息正好是 `Wrong keystore password.`。版本、KDF、哈希、密钥长度或算法对不上时，在解密前抛 `KeystoreException`。`KeystoreSecret.ToString` 和 `WalletKeystoreParameters.ToString` 不打印秘密。能清零的缓冲区用 `CryptographicOperations.ZeroMemory`。`.NET` 字符串清不掉。
+
 ## 0.1.10 后续修复
 
 Linux 审查（对照 `f41c86a`，测试者 测试1）和钱包组 R1/R10 的后续改动。没有改版本号，仍是 0.1.10-alpha。

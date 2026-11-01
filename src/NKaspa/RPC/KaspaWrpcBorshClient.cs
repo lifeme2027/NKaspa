@@ -35,6 +35,24 @@ namespace NKaspa.RPC
         }
 
         /// <inheritdoc />
+        public Task<ulong> GetSinkBlueScoreAsync(CancellationToken cancellationToken = default)
+        {
+            return CallAsync(KaspaBorshCodec.OpGetSinkBlueScore, KaspaBorshCodec.EmptyPayload(), KaspaBorshCodec.ReadSinkBlueScore, cancellationToken);
+        }
+
+        /// <inheritdoc />
+        public Task<RpcVirtualChain> GetVirtualChainFromBlockAsync(uint256 startHash, bool includeAcceptedTransactionIds = false, ulong? minConfirmationCount = null, CancellationToken cancellationToken = default)
+        {
+            if (startHash == null)
+            {
+                throw new ArgumentNullException(nameof(startHash));
+            }
+
+            var payload = KaspaBorshCodec.VirtualChainPayload(startHash, includeAcceptedTransactionIds, minConfirmationCount);
+            return CallAsync(KaspaBorshCodec.OpGetVirtualChainFromBlock, payload, KaspaBorshCodec.ReadVirtualChain, cancellationToken);
+        }
+
+        /// <inheritdoc />
         public Task<IReadOnlyList<RpcUtxo>> GetUtxosByAddressesAsync(IReadOnlyList<string> addresses, CancellationToken cancellationToken = default)
         {
             if (addresses == null)

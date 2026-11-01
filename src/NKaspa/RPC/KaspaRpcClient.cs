@@ -320,6 +320,18 @@ namespace NKaspa.RPC
         }
 
         /// <inheritdoc />
+        public Task<ulong> GetSinkBlueScoreAsync(CancellationToken cancellationToken = default)
+        {
+            return _client.GetSinkBlueScoreAsync(cancellationToken);
+        }
+
+        /// <inheritdoc />
+        public Task<RpcVirtualChain> GetVirtualChainFromBlockAsync(uint256 startHash, bool includeAcceptedTransactionIds = false, ulong? minConfirmationCount = null, CancellationToken cancellationToken = default)
+        {
+            return _client.GetVirtualChainFromBlockAsync(startHash, includeAcceptedTransactionIds, minConfirmationCount, cancellationToken);
+        }
+
+        /// <inheritdoc />
         public Task<IReadOnlyList<RpcUtxo>> GetUtxosByAddressesAsync(IReadOnlyList<string> addresses, CancellationToken cancellationToken = default)
         {
             return _client.GetUtxosByAddressesAsync(addresses, cancellationToken);

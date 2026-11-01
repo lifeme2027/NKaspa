@@ -77,7 +77,45 @@ namespace NKaspa.RPC
                 KaspaRpcJson.ReadHashes(Require(body, "virtualParentHashes")),
                 uint256.Parse(StringOf(body, "pruningPointHash")),
                 KaspaRpcJson.ReadU64(Require(body, "virtualDaaScore")),
-                uint256.Parse(StringOf(body, "sink")));
+                uint256.Parse(StringOf(body, "sink")),
+                body.TryGetProperty("blueScore", out var blueScore) && blueScore.ValueKind != JsonValueKind.Null
+                    ? KaspaRpcJson.ReadU64(blueScore)
+                    : 0UL);
+        }
+
+        /// <inheritdoc />
+        public async Task<ulong> GetSinkBlueScoreAsync(CancellationToken cancellationToken = default)
+        {
+            var body = await InvokeAsync("getSinkBlueScore", writer => { }, cancellationToken).ConfigureAwait(false);
+            return KaspaRpcJson.ReadU64(Require(body, "blueScore"));
+        }
+
+        /// <inheritdoc />
+        public async Task<RpcVirtualChain> GetVirtualChainFromBlockAsync(uint256 startHash, bool includeAcceptedTransactionIds = false, ulong? minConfirmationCount = null, CancellationToken cancellationToken = default)
+        {
+            if (startHash == null)
+            {
+                throw new ArgumentNullException(nameof(startHash));
+            }
+
+            var body = await InvokeAsync("getVirtualChainFromBlock", writer =>
+            {
+                writer.WriteString("startHash", startHash.ToString());
+                writer.WriteBoolean("includeAcceptedTransactionIds", includeAcceptedTransactionIds);
+                if (minConfirmationCount.HasValue)
+                {
+                    writer.WriteNumber("minConfirmationCount", minConfirmationCount.Value);
+                }
+                else
+                {
+                    writer.WriteNull("minConfirmationCount");
+                }
+            }, cancellationToken).ConfigureAwait(false);
+
+            return new RpcVirtualChain(
+                ReadHashList(body, "removedChainBlockHashes"),
+                ReadHashList(body, "addedChainBlockHashes"),
+                ReadAcceptedIds(body));
         }
 
         /// <inheritdoc />
@@ -283,7 +321,8 @@ namespace NKaspa.RPC
                 ReadOptionalScore(header, "blueScore"),
                 ReadOptionalScore(verbose, "blueScore"),
                 ReadOptionalHash(header, "hash"),
-                ReadOptionalHash(verbose, "hash"));
+                ReadOptionalHash(verbose, "hash"),
+                ReadBlueWork(header));
         }
 
         /// <inheritdoc />
@@ -579,7 +618,83 @@ namespace NKaspa.RPC
                 directParent,
                 chain,
                 ReadOptionalHash(verbose, "selectedParentHash"),
-                transactions);
+                transactions,
+                ReadBlueWork(header));
+        }
+
+        private static IReadOnlyList<uint256> ReadHashList(JsonElement body, string name)
+        {
+            if (!body.TryGetProperty(name, out var array) || array.ValueKind == JsonValueKind.Null)
+            {
+                return new List<uint256>();
+            }
+
+            if (array.ValueKind != JsonValueKind.Array)
+            {
+                throw new FormatException("Expected a hex hash.");
+            }
+
+            var hashes = new List<uint256>();
+            foreach (var item in array.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.String)
+                {
+                    throw new FormatException("Expected a hex hash.");
+                }
+
+                var text = item.GetString();
+                if (string.IsNullOrEmpty(text))
+                {
+                    throw new FormatException("Expected a hex hash.");
+                }
+
+                hashes.Add(uint256.Parse(text));
+            }
+
+            return hashes;
+        }
+
+        private static IReadOnlyList<RpcAcceptedTransactionIds> ReadAcceptedIds(JsonElement body)
+        {
+            if (!body.TryGetProperty("acceptedTransactionIds", out var array) || array.ValueKind == JsonValueKind.Null)
+            {
+                return new List<RpcAcceptedTransactionIds>();
+            }
+
+            if (array.ValueKind != JsonValueKind.Array)
+            {
+                throw new FormatException("Expected a hex hash.");
+            }
+
+            var rows = new List<RpcAcceptedTransactionIds>();
+            foreach (var item in array.EnumerateArray())
+            {
+                var accepting = ReadOptionalHash(item, "acceptingBlockHash") ?? throw new FormatException("Expected a hex hash.");
+                rows.Add(new RpcAcceptedTransactionIds(accepting, ReadHashList(item, "acceptedTransactionIds")));
+            }
+
+            return rows;
+        }
+
+        private static byte[]? ReadBlueWork(JsonElement header)
+        {
+            if (header.ValueKind != JsonValueKind.Object || !header.TryGetProperty("blueWork", out var element) || element.ValueKind == JsonValueKind.Null)
+            {
+                return null;
+            }
+
+            if (element.ValueKind != JsonValueKind.String)
+            {
+                throw new FormatException("Expected a hex string for blueWork.");
+            }
+
+            var text = element.GetString();
+            if (string.IsNullOrEmpty(text))
+            {
+                return null;
+            }
+
+            return KaspaRpcJson.ReadBlueWork(text);
         }
 
         private static ulong? ReadOptionalScore(JsonElement obj, string name)

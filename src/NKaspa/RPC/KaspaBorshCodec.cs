@@ -26,7 +26,9 @@ namespace NKaspa.RPC
         internal const byte OpGetServerInfo = 114;
         internal const byte OpSubmitTransaction = 125;
         internal const byte OpGetBlock = 126;
+        internal const byte OpGetVirtualChainFromBlock = 128;
         internal const byte OpGetBlockDagInfo = 131;
+        internal const byte OpGetSinkBlueScore = 138;
         internal const byte OpGetUtxosByAddresses = 135;
         internal const byte OpGetBalanceByAddress = 136;
         internal const byte OpGetBalancesByAddresses = 137;
@@ -87,6 +89,27 @@ namespace NKaspa.RPC
             body.Raw(hash.ToBytes());
             body.Bool(includeTransactions);
             return EncodeRequest(id, OpGetBlock, Wrap(body.ToArray()));
+        }
+
+        internal static byte[] VirtualChainPayload(uint256 startHash, bool includeAcceptedTransactionIds, ulong? minConfirmationCount)
+        {
+            // message.rs GetVirtualChainFromBlockRequest Serializer writes version 2 so min_confirmation_count is present.
+            // Order: start_hash, include_accepted_transaction_ids, Option<u64> min_confirmation_count.
+            var body = new BorshWriter();
+            body.U16(2);
+            body.Raw(startHash.ToBytes());
+            body.Bool(includeAcceptedTransactionIds);
+            if (minConfirmationCount.HasValue)
+            {
+                body.U8(1);
+                body.U64(minConfirmationCount.Value);
+            }
+            else
+            {
+                body.U8(0);
+            }
+
+            return Wrap(body.ToArray());
         }
 
         internal static byte[] ScopePayload(ushort scope, IReadOnlyList<string>? addresses)
@@ -218,7 +241,34 @@ namespace NKaspa.RPC
             var pruning = reader.Hash();
             var score = reader.U64();
             var sink = reader.Hash();
+            // message.rs GetBlockDagInfoResponse Serializer stops at sink. Do not read a blue score here.
             return new RpcBlockDagInfo(network, blocks, headers, tips, difficulty, median, parents, pruning, score, sink);
+        }
+
+        internal static ulong ReadSinkBlueScore(byte[] body)
+        {
+            // message.rs GetSinkBlueScoreResponse Serializer: u16 version, then blue_score.
+            var reader = Begin(body);
+            return reader.U64();
+        }
+
+        internal static RpcVirtualChain ReadVirtualChain(byte[] body)
+        {
+            // message.rs GetVirtualChainFromBlockResponse Serializer.
+            // Vec<RpcHash> is a u32 count plus raw hashes. RpcAcceptedTransactionIds is Borsh, not a versioned serializer.
+            var reader = Begin(body);
+            var removed = ReadHashList(reader);
+            var added = ReadHashList(reader);
+            var count = reader.U32();
+            var accepted = new List<RpcAcceptedTransactionIds>();
+            for (uint i = 0; i < count; i++)
+            {
+                var accepting = reader.Hash();
+                var ids = ReadHashList(reader);
+                accepted.Add(new RpcAcceptedTransactionIds(accepting, ids));
+            }
+
+            return new RpcVirtualChain(removed, added, accepted);
         }
 
         internal static Money ReadBalance(byte[] body)
@@ -307,7 +357,8 @@ namespace NKaspa.RPC
                 block.BlueScore,
                 block.VerboseBlueScore,
                 block.Hash,
-                block.VerboseHash);
+                block.VerboseHash,
+                block.BlueWork);
         }
 
         internal static RpcUtxosChanged? TryReadUtxosChanged(byte[] notificationBody)
@@ -367,7 +418,8 @@ namespace NKaspa.RPC
                 block.DirectParent,
                 block.IsChainBlock,
                 block.SelectedParentHash,
-                block.Transactions);
+                block.Transactions,
+                block.BlueWork);
         }
 
         private static bool TryOpenNotification(byte[] body, ushort variant, out BorshReader inner)
@@ -432,7 +484,7 @@ namespace NKaspa.RPC
             reader.U32();
             reader.U64();
             var daa = reader.U64();
-            reader.Bytes(24);
+            var blueWork = reader.Bytes(24);
             var blue = reader.U64();
             var pruning = reader.Hash();
             return new BorshBlock
@@ -441,6 +493,7 @@ namespace NKaspa.RPC
                 Version = version,
                 Timestamp = timestamp,
                 DaaScore = daa,
+                BlueWork = blueWork,
                 BlueScore = blue,
                 PruningPoint = pruning,
                 AcceptedIdMerkleRoot = accepted,
@@ -1060,6 +1113,8 @@ namespace NKaspa.RPC
             public ulong Timestamp { get; set; }
 
             public ulong DaaScore { get; set; }
+
+            public byte[] BlueWork { get; set; } = new byte[24];
 
             public ulong BlueScore { get; set; }
 
