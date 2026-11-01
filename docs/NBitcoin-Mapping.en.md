@@ -328,6 +328,12 @@ The common base is `KaspaWrpcException`. It does not derive from `KaspaRpcExcept
 
 `EnsureReadyAsync` reads `getServerInfo` first. A different network throws `KaspaWrongNetworkException` with `Node reported network '{id}'. Expected '{name}'.`. `testnet-10` matches `Network.Testnet`. When `requireSynced` is true and `isSynced` is false, the message is `Node is not synced.` When `requireUtxoIndex` is true and `hasUtxoIndex` is false, the message is `Node does not have the UTXO index enabled.` Both flags false returns once the network matches. `GetServerInfoAsync` does not apply those checks. An unknown network id is a wrong-network error.
 
+## 0.1.11 personal message
+
+`PersonalMessage` is rusty-kaspa `sign_message` and `verify_message` (`wallet/core/src/message.rs`, commit `8fe466311ba179e74fc8a52f13b36140bb6b9a4e`). `Hash` is BLAKE2b-256 of the UTF-8 message. The BLAKE2b key is the ASCII string `PersonalMessageSigningHash` (`crypto/hashes/src/hashers.rs`, `blake2b_hasher!`). `SignMessage(Key, message)` returns a BIP-340 `SchnorrSignature`. An empty auxiliary span draws 32 random bytes. Thirty-two explicit bytes, including all zeros, are passed through. All zeros are test case 0. They are not `sign_schnorr_no_aux_rand`.
+
+`VerifyMessage(PubKey, message, signature)` checks that BIP-340 signature. `VerifyMessage(KaspaAddress, message, signature)` accepts only a `KaspaPubKeyAddress`. The 32-byte payload must be that x-only key, and the key must lie on the curve. An ECDSA address or a script-hash address returns false even when the payload bytes match a key. A payload that is not on the curve returns false. The address prefix is not hashed, so the same key verifies on mainnet and on testnet. `samples/SignMessage` calls this API. The old sample hashed the UTF-8 bytes with unkeyed BLAKE2b-256 and also signed ECDSA. That digest does not match rusty-kaspa.
+
 ## Later 0.1.10 fixes
 
 Follow-up from a Linux review (against `f41c86a`) and wallet notes R1/R10. The version stayed 0.1.10-alpha.
@@ -381,7 +387,7 @@ Console projects under `samples/`, the short examples in the NBitcoin docs. They
 | Read-only node query | `samples/NodeQuery` | read-only `RPCClient` calls | `KaspaWebSocketChannel` + `KaspaWrpcJsonClient`. Methods are `getServerInfo`, `getBlockDagInfo`, `getBalanceByAddress`, `getUtxosByAddresses`. Default `wss://eva.kaspa.green/kaspa/mainnet/wrpc/json`. Does not call `submitTransaction`. |
 | Build and sign | `samples/Spend` | `TransactionBuilder` | Version 0, version 0 with `MustSpend` on two inputs, and version 1. The fee is `SendMinimumRelayFee`. By default it prints transaction hex and wRPC JSON. It submits only when `--broadcast` is set, `NKASPA_MNEMONIC` is set, and `--to` and `--amount` are passed. Before submit it checks the payment output, the minimum relay fee, and `Transaction.Verify`. `--from` and `--max-fee-sompi` are optional. |
 | PSKT 2-of-2 | `samples/PsktMultisig` | BIP174 `PartiallySignedTransaction` (not ported) | `NKaspa.PSKT.PSKT`: create, both parties `Sign`, `Combine`, `Finalize`, `ExtractTransaction`. |
-| Offline message signing | `samples/SignMessage` | `Key.SignMessage`. BIP322 stays not applicable | BLAKE2b-256 of the UTF-8 bytes, then `Key.SignSchnorr` / `Key.SignECDSA`, verified with `PubKey.Verify` / `PubKeyECDSA.Verify`. Not the Bitcoin message prefix. |
+| Offline message signing | `samples/SignMessage` | `Key.SignMessage`. BIP322 stays not applicable | `PersonalMessage.SignMessage` / `VerifyMessage`. BLAKE2b-256 keyed with `PersonalMessageSigningHash`, then BIP-340. The address overload accepts only a Schnorr pay-to-pubkey payload. Not the Bitcoin message prefix. |
 | Tutorial snippets | `samples/Tutorials` | short examples | `AddressTutorial` and `SendTutorial.RunOffline`, matching `docs/tutorials/`. Those snippets compile, open no socket, and do not call `SubmitTransactionAsync`. `SendOnTestnetAsync` exists so the broadcast path compiles. It defaults to testnet. The sample entry point does not call it. |
 | JSON | `samples/Json` | `NBitcoin.JsonConverters.Serializer` | `NKaspaJsonSerializer` and `AddNKaspaConverters(network)`. Version 0 and version 1 (`computeBudget`, `covenant`), and version-prefixed hex for `scriptPublicKey`. Private keys are refused by default. |
 

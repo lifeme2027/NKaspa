@@ -330,6 +330,12 @@ System.Text.Json 通过 `KeystoreSecretJsonConverter` 拒绝读写，消息正�
 
 `EnsureReadyAsync` 先读 `getServerInfo`。网络对不上抛 `KaspaWrongNetworkException`，消息是 `Node reported network '{id}'. Expected '{name}'.`。`testnet-10` 与 `Network.Testnet` 相同。然后在 `requireSynced` 为真且 `isSynced` 为假时抛 `Node is not synced.`。再在 `requireUtxoIndex` 为真且 `hasUtxoIndex` 为假时抛 `Node does not have the UTXO index enabled.`。两个开关都为假时，网络正确即可返回。`GetServerInfoAsync` 本身不查同步和索引。未知网络 id 也是网络错误。
 
+## 0.1.11 个人消息签名
+
+`PersonalMessage` 对应 rusty-kaspa 的 `sign_message` 和 `verify_message`（`wallet/core/src/message.rs`，提交 `8fe466311ba179e74fc8a52f13b36140bb6b9a4e`）。`Hash` 是 UTF-8 消息的 BLAKE2b-256。BLAKE2b 的密钥是 ASCII 字符串 `PersonalMessageSigningHash`（`crypto/hashes/src/hashers.rs` 的 `blake2b_hasher!`）。`SignMessage(Key, message)` 返回 BIP-340 的 `SchnorrSignature`。辅助随机数为空时抽 32 个随机字节。传入 32 字节（包括全 0）则原样使用。全 0 是测试例 0，不是 `sign_schnorr_no_aux_rand`。
+
+`VerifyMessage(PubKey, message, signature)` 核对这枚 BIP-340 签名。`VerifyMessage(KaspaAddress, message, signature)` 只接受 `KaspaPubKeyAddress`。32 字节载荷必须就是那把 x-only 公钥，并且这个点在曲线上。ECDSA 地址和脚本哈希地址返回 false，即使载荷字节碰巧对得上。不在曲线上的载荷也返回 false。地址前缀不进入摘要，所以同一把密钥在主网和测试网都能验过。`samples/SignMessage` 调用这个 API。旧示例对 UTF-8 做无密钥 BLAKE2b-256，并且还签了 ECDSA。那个摘要对不上 rusty-kaspa。
+
 ## 0.1.10 后续修复
 
 Linux 审查（对照 `f41c86a`，测试者 测试1）和钱包组 R1/R10 的后续改动。没有改版本号，仍是 0.1.10-alpha。
@@ -383,7 +389,7 @@ WebSocket。托管 `HttpListener`（Linux）的 `NetworkStream` 不拥有 TCP �
 | 只读节点查询 | `samples/NodeQuery` | `RPCClient` 的只读调用 | `KaspaWebSocketChannel` + `KaspaWrpcJsonClient`。方法是 `getServerInfo`、`getBlockDagInfo`、`getBalanceByAddress`、`getUtxosByAddresses`。默认 `wss://eva.kaspa.green/kaspa/mainnet/wrpc/json`。不调用 `submitTransaction`。 |
 | 构建并签名 | `samples/Spend` | `TransactionBuilder` | 版本 0、版本 0 的 `MustSpend` 双输入、版本 1，费用是 `SendMinimumRelayFee`。默认打印交易十六进制和 wRPC JSON。`--broadcast` 且环境变量 `NKASPA_MNEMONIC` 都有，并且还传入 `--to` 与 `--amount` 时才提交。提交前检查付款输出、最低中继费和 `Transaction.Verify`。`--from` 与 `--max-fee-sompi` 可选。 |
 | PSKT 2-of-2 | `samples/PsktMultisig` | BIP174 `PartiallySignedTransaction`（不移植） | `NKaspa.PSKT.PSKT`：创建、双方 `Sign`、`Combine`、`Finalize`、`ExtractTransaction`。 |
-| 离线消息签名 | `samples/SignMessage` | `Key.SignMessage`。BIP322 仍无需实现 | 对 UTF-8 的 BLAKE2b-256 调用 `Key.SignSchnorr` / `Key.SignECDSA`，再用 `PubKey.Verify` / `PubKeyECDSA.Verify`。不是比特币消息前缀。 |
+| 离线消息签名 | `samples/SignMessage` | `Key.SignMessage`。BIP322 仍无需实现 | `PersonalMessage.SignMessage` / `VerifyMessage`。以 `PersonalMessageSigningHash` 为密钥的 BLAKE2b-256，再做 BIP-340。地址重载只接受 Schnorr 公钥载荷。不是比特币消息前缀。 |
 | 教程片段 | `samples/Tutorials` | 短示例 | `AddressTutorial` 与 `SendTutorial.RunOffline`，对应 `docs/tutorials/`。编译这些片段，不开套接字，不调用 `SubmitTransactionAsync`。`SendOnTestnetAsync` 只为编译广播路径，默认测试网，示例入口不调用它。 |
 | JSON | `samples/Json` | `NBitcoin.JsonConverters.Serializer` | `NKaspaJsonSerializer` 与 `AddNKaspaConverters(network)`。版本 0 / 版本 1（`computeBudget`、`covenant`）、`scriptPublicKey` 的版本前缀十六进制。私钥默认拒绝。 |
 

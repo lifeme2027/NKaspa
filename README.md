@@ -210,7 +210,7 @@ powershell -File samples/smoke.ps1
 
 **Warning:** `dotnet run --project samples/Spend -- --broadcast` submits a transaction. It runs only when `--broadcast` is set and `NKASPA_MNEMONIC` is set. You also pass `--to` and `--amount`. Optional flags are `--url`, `--network`, `--version`, `--must-spend`, `--from`, and `--max-fee-sompi`. Before `submitTransaction`, the sample checks that an output pays `--amount` to `--to`, that the fee is the minimum relay fee, and that `Transaction.Verify` succeeds. `--from` must match the derived receive address when it is set. `--max-fee-sompi` refuses a fee above that sompi count. The sample does not read a secrets directory. Do not set that variable unless you intend to spend.
 
-`PsktMultisig` is a 2-of-2 Schnorr PSKT: create, both parties sign, combine, finalize, extract. `SignMessage` signs a UTF-8 string with Schnorr and ECDSA over its BLAKE2b-256 digest and verifies both. That is not Bitcoin's message-signing prefix and it is not BIP322. `samples/Tutorials` is the compilable form of the two English tutorials. It stays offline.
+`PsktMultisig` is a 2-of-2 Schnorr PSKT: create, both parties sign, combine, finalize, extract. `SignMessage` signs a UTF-8 string with `PersonalMessage.SignMessage`. The digest is BLAKE2b-256 keyed with `PersonalMessageSigningHash`, then BIP-340. It checks the Schnorr public key and the Schnorr address. That is rusty-kaspa `sign_message`, not Bitcoin's message prefix and not BIP322. `samples/Tutorials` is the compilable form of the two English tutorials. It stays offline.
 
 ### Build
 
@@ -418,7 +418,7 @@ powershell -File samples/smoke.ps1
 
 **警告：** `dotnet run --project samples/Spend -- --broadcast` 会提交交易。只有同时传入 `--broadcast` 并且设置了 `NKASPA_MNEMONIC` 才会提交。还要传入 `--to` 和 `--amount`。可选参数是 `--url`、`--network`、`--version`、`--must-spend`、`--from`、`--max-fee-sompi`。调用 `submitTransaction` 之前，示例会检查有一笔输出把 `--amount` 付给 `--to`、手续费是最低中继费，并且 `Transaction.Verify` 通过。设置了 `--from` 时，它必须等于派生出的收款地址。`--max-fee-sompi` 会拒绝更高的手续费。示例不读密钥目录。不打算花钱就不要设置那个变量。
 
-`PsktMultisig` 是 2-of-2 Schnorr PSKT：创建、双方签名、合并、完成、提取。`SignMessage` 对 UTF-8 字符串做 BLAKE2b-256，再分别做 Schnorr 和 ECDSA 签名并验证。这不是比特币的消息签名前缀，也不是 BIP322。`samples/Tutorials` 是两篇英文教程里的代码，只做离线检查。
+`PsktMultisig` 是 2-of-2 Schnorr PSKT：创建、双方签名、合并、完成、提取。`SignMessage` 用 `PersonalMessage.SignMessage` 签 UTF-8 字符串。摘要是以 `PersonalMessageSigningHash` 为密钥的 BLAKE2b-256，签名是 BIP-340。它同时核对 Schnorr 公钥和 Schnorr 地址。这是 rusty-kaspa 的 `sign_message`，不是比特币的消息前缀，也不是 BIP322。`samples/Tutorials` 是两篇英文教程里的代码，只做离线检查。
 
 ### 构建
 

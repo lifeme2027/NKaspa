@@ -178,18 +178,19 @@ namespace NKaspa.Tests
         }
 
         [Fact]
-        public void SignMessage_sample_verifies_schnorr_and_ecdsa_and_rejects_a_tampered_digest()
+        public void SignMessage_sample_verifies_the_keyed_personal_message_digest()
         {
             var writer = new StringWriter();
             var code = SignSample.Run(new[] { "NKaspa" }, writer);
             var text = writer.ToString();
             Assert.Equal(0, code);
             Assert.Contains("message: NKaspa", text, StringComparison.Ordinal);
+            Assert.Contains("digest: " + NKaspa.DataEncoders.Encoders.Hex.EncodeData(PersonalMessage.Hash("NKaspa")), text, StringComparison.Ordinal);
             Assert.Contains("schnorr-ok: true", text, StringComparison.Ordinal);
-            Assert.Contains("ecdsa-ok: true", text, StringComparison.Ordinal);
-            Assert.Contains("tampered-schnorr-ok: false", text, StringComparison.Ordinal);
-            Assert.Contains("tampered-ecdsa-ok: false", text, StringComparison.Ordinal);
+            Assert.Contains("address-ok: true", text, StringComparison.Ordinal);
+            Assert.Contains("tampered-ok: false", text, StringComparison.Ordinal);
             Assert.Contains("\nok", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("0000000000000000000000000000000000000000000000000000000000000003", text, StringComparison.Ordinal);
         }
 
         [Fact]
