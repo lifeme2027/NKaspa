@@ -15,6 +15,7 @@ namespace NKaspa
     /// <see cref="ExportXprv()"/>, <see cref="ExportXprv(Network)"/>, <see cref="GetWif(Network)"/>, <see cref="ToString(Network)"/>, and <see cref="ToBase58()"/> return the extended private key.
     /// Those strings are secret. Do not write them to logs.
     /// System.Text.Json refuses this type unless the caller opts in through <c>NKaspaJsonSerializer</c> with <c>allowPrivateKeys: true</c>.
+    /// <see cref="Reveal"/> copies <see cref="ExportXprv()"/> into a <see cref="KeystoreSecret"/>. <see cref="Clear"/> zeros this key.
     /// </summary>
     [JsonConverter(typeof(ExtKeyJsonConverter))]
     public sealed class ExtKey : IDisposable, IEquatable<ExtKey>
@@ -423,6 +424,22 @@ namespace NKaspa
         public override string ToString()
         {
             return "NKaspa.ExtKey";
+        }
+
+        /// <summary>
+        /// A <see cref="KeystoreSecret"/> holding the extended private key from <see cref="ExportXprv()"/>.
+        /// Dispose it to zero that UTF-8 buffer. This key is unchanged.
+        /// </summary>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed. The ExtKey has been disposed.</exception>
+        public KeystoreSecret Reveal()
+        {
+            return KeystoreSecret.FromPhrase(ExportXprv());
+        }
+
+        /// <summary>Zeros the private key and chain code. Same as <see cref="Dispose"/>.</summary>
+        public void Clear()
+        {
+            Dispose();
         }
 
         /// <summary>Zeros the private key.</summary>

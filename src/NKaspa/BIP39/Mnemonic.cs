@@ -30,6 +30,8 @@ namespace NKaspa
     /// <c>allowInvalidChecksum</c> is true.
     /// System.Text.Json refuses this type unless the caller opts in through <c>NKaspaJsonSerializer</c>
     /// with <c>allowPrivateKeys: true</c>.
+    /// <see cref="Reveal"/> copies the sentence into a <see cref="KeystoreSecret"/> whose buffer can be zeroed.
+    /// The wordlist strings cannot.
     /// </remarks>
     [JsonConverter(typeof(MnemonicJsonConverter))]
     public sealed class Mnemonic
@@ -192,6 +194,15 @@ namespace NKaspa
         public string ToPhrase()
         {
             return string.Join(" ", _words);
+        }
+
+        /// <summary>
+        /// A <see cref="KeystoreSecret"/> holding the UTF-8 canonical sentence.
+        /// Dispose it to zero that buffer. <see cref="Words"/> still returns the shared wordlist strings. Those strings cannot be wiped.
+        /// </summary>
+        public KeystoreSecret Reveal()
+        {
+            return KeystoreSecret.FromPhrase(ToPhrase());
         }
 
         /// <summary>A copy of the canonical words. Changing the returned array does not change this mnemonic.</summary>

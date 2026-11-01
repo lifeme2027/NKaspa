@@ -192,6 +192,7 @@ namespace NKaspa.JsonConverters
         /// Adds the Kaspa converters.
         /// <paramref name="allowPrivateKeys"/> writes <see cref="Key"/>, <see cref="ExtKey"/>, and <see cref="Mnemonic"/> secrets.
         /// <see cref="NKaspaJsonSerializer.PrivateKeyWarning"/> applies when it is true.
+        /// <see cref="KeystoreSecret"/> stays refused either way.
         /// </summary>
         /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null. <paramref name="options"/> is null.</exception>
         public static JsonSerializerOptions AddNKaspaConverters(this JsonSerializerOptions options, Network network, bool allowPrivateKeys)
@@ -232,6 +233,7 @@ namespace NKaspa.JsonConverters
             options.Converters.Add(new KeyJsonConverter(allowPrivateKeys));
             options.Converters.Add(new ExtKeyJsonConverter(network, allowPrivateKeys));
             options.Converters.Add(new MnemonicJsonConverter(allowPrivateKeys));
+            options.Converters.Add(new KeystoreSecretJsonConverter());
             return options;
         }
     }

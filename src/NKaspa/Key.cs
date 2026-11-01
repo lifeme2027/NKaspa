@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.Json.Serialization;
 using NBitcoin.Secp256k1;
@@ -17,7 +18,10 @@ namespace NKaspa
     /// uses RFC 6979 and the low-S form.
     /// System.Text.Json refuses this type unless the caller opts in through
     /// <see cref="NKaspaJsonSerializer"/> with <c>allowPrivateKeys: true</c>.
+    /// <see cref="ToString"/> returns <c>NKaspa.Key</c>. <see cref="Reveal"/> copies the secret into a <see cref="KeystoreSecret"/>.
+    /// <see cref="Clear"/> zeros this key.
     /// </remarks>
+    [DebuggerDisplay("NKaspa.Key")]
     [JsonConverter(typeof(KeyJsonConverter))]
     public sealed class Key : IDisposable, IEquatable<Key>
     {
@@ -225,6 +229,30 @@ namespace NKaspa
         {
             AssertNotDisposed();
             return Encoders.Hex.EncodeData(_secret);
+        }
+
+        /// <summary>
+        /// A <see cref="KeystoreSecret"/> that owns a copy of this 32-byte secret.
+        /// <see cref="KeystoreSecret.Reveal"/> returns the same lowercase hex as <see cref="ToHex"/>.
+        /// Dispose the copy when finished. This key is unchanged.
+        /// </summary>
+        /// <exception cref="System.ObjectDisposedException">The Key has been disposed.</exception>
+        public KeystoreSecret Reveal()
+        {
+            AssertNotDisposed();
+            return KeystoreSecret.FromBytes((byte[])_secret.Clone());
+        }
+
+        /// <summary>Zeros the secret. Same as <see cref="Dispose"/>.</summary>
+        public void Clear()
+        {
+            Dispose();
+        }
+
+        /// <summary>Type name only (<c>NKaspa.Key</c>). Safe to log. Use <see cref="ToHex"/> or <see cref="Reveal"/> for the secret.</summary>
+        public override string ToString()
+        {
+            return "NKaspa.Key";
         }
 
         /// <summary>Zeros the secret.</summary>

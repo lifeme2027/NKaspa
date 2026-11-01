@@ -3,6 +3,9 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using NKaspa.DataEncoders;
+using NKaspa.JsonConverters;
 
 namespace NKaspa
 {
@@ -528,9 +531,13 @@ namespace NKaspa
 
     /// <summary>
     /// A mnemonic sentence or seed bytes held so that <see cref="ToString"/> cannot print them.
-    /// Dispose clears the buffer. A .NET string returned by <see cref="GetPhrase"/> cannot be cleared.
+    /// <see cref="Reveal"/> is the explicit text form. <see cref="Clear"/> and <see cref="Dispose"/> zero the buffer.
+    /// A .NET string returned by <see cref="Reveal"/> or <see cref="GetPhrase"/> cannot be cleared.
+    /// System.Text.Json refuses this type. <c>allowPrivateKeys</c> does not unlock it.
+    /// Newtonsoft.Json is not referenced. <see cref="ShouldSerializeIsPhrase"/> throws if that serializer is used.
     /// </summary>
     [DebuggerDisplay("NKaspa.KeystoreSecret")]
+    [JsonConverter(typeof(KeystoreSecretJsonConverter))]
     public sealed class KeystoreSecret : IDisposable
     {
         private byte[]? _bytes;
@@ -602,6 +609,38 @@ namespace NKaspa
             return copy;
         }
 
+        /// <summary>
+        /// The secret as text. A phrase is the UTF-8 sentence. Seed bytes are lowercase hex.
+        /// <see cref="ToString"/> does not return this value. The returned string cannot be cleared.
+        /// A secret opened by <see cref="WalletKeystore.DecryptSecret"/> is seed bytes, so this method returns hex. Use <see cref="WalletKeystore.DecryptToString"/> for the sentence.
+        /// </summary>
+        /// <exception cref="System.ObjectDisposedException">This value has been disposed.</exception>
+        public string Reveal()
+        {
+            if (_phrase)
+            {
+                return GetPhrase();
+            }
+
+            return Encoders.Hex.EncodeData(Bytes());
+        }
+
+        /// <summary>Zeros the secret buffer. Same as <see cref="Dispose"/>. A second call does nothing.</summary>
+        public void Clear()
+        {
+            Dispose();
+        }
+
+        /// <summary>
+        /// Newtonsoft.Json is not a dependency. Its default contract resolver calls this method before writing <see cref="IsPhrase"/>, and the method throws.
+        /// System.Text.Json uses <see cref="KeystoreSecretJsonConverter"/> and throws as well, including when <c>allowPrivateKeys</c> is true.
+        /// </summary>
+        /// <exception cref="System.InvalidOperationException">Refusing to convert KeystoreSecret.</exception>
+        public bool ShouldSerializeIsPhrase()
+        {
+            throw new InvalidOperationException(KeystoreSecretJsonConverter.Refusal);
+        }
+
         /// <summary>Clears the secret buffer. A second call does nothing.</summary>
         public void Dispose()
         {
@@ -614,7 +653,7 @@ namespace NKaspa
             _disposed = true;
         }
 
-        /// <summary>Type name only (<c>NKaspa.KeystoreSecret</c>). Safe to log. Use <see cref="GetPhrase"/> or <see cref="CopyBytes"/> for the secret.</summary>
+        /// <summary>Type name only (<c>NKaspa.KeystoreSecret</c>). Safe to log. Use <see cref="Reveal"/> for the secret.</summary>
         public override string ToString()
         {
             return "NKaspa.KeystoreSecret";

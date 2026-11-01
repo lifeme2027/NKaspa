@@ -310,6 +310,14 @@ Keystore. `WalletKeystore` encrypts a mnemonic or a seed with a password. The KD
 
 `DefaultMinimumFeerateSompiPerGram` is 100, the same value as `MassCalculator.MinimumFeeRate`. `MinimumFeerate(RpcFeeEstimate)` takes the lowest positive finite `feerate` among `priorityBucket`, `normalBuckets`, and `lowBuckets`, then rounds up with `Math.Ceiling`. NaN, infinity, and values that are not positive are skipped. When no bucket remains, the result is 100. A node may advertise a bucket below 100. This method returns that bucket after rounding up. `PayableFeerate` raises a lower bucket to the caller's protocol floor, which defaults to 100. `Quote(RpcFeeEstimate)` uses `PayableFeerate`. `ReadMinimumFeerateAsync` calls `getFeeEstimate` and returns `MinimumFeerate` without that raise. An explicit rate below the floor throws `ArgumentOutOfRangeException`. A floor of 0 throws `ArgumentOutOfRangeException` with the message `The protocol minimum feerate must be non-zero.` DAA-aware rates stay on `MassPolicy`. The default in this section is the post-Toccata 100.
 
+## 0.1.11 secret text
+
+`KeystoreSecret` remains the holder for a mnemonic or a seed. There is no second redacting type. `ToString` is `NKaspa.KeystoreSecret`. `Reveal` returns the UTF-8 sentence when `IsPhrase` is true, and lowercase hex for seed bytes. `WalletKeystore.DecryptSecret` returns seed bytes, so `Reveal` is hex. The sentence is `DecryptToString`. `Clear` is the same as `Dispose` and uses `CryptographicOperations.ZeroMemory`. A returned .NET string cannot be cleared.
+
+System.Text.Json refuses reads and writes through `KeystoreSecretJsonConverter`. The message is exactly `Refusing to convert KeystoreSecret.` `allowPrivateKeys: true` does not unlock this type. `Key`, `ExtKey`, and `Mnemonic` keep the old rule and write a secret only when that flag is set. Newtonsoft.Json is not a package reference, and this library does not add it. Newtonsoft's default contract resolver calls `ShouldSerializeIsPhrase` before writing `IsPhrase`. That method throws the same refusal.
+
+`Key.ToString` is `NKaspa.Key`. `Key.Reveal` copies the 32 bytes into a `KeystoreSecret`. `Key.Clear` zeros that key. `Mnemonic.Reveal` copies the canonical sentence. The wordlist strings are shared and cannot be wiped. `ExtKey.Reveal` copies `ExportXprv()`. `ExtKey.Clear` zeros the extended key and the chain code.
+
 ## Later 0.1.10 fixes
 
 Follow-up from a Linux review (against `f41c86a`) and wallet notes R1/R10. The version stayed 0.1.10-alpha.

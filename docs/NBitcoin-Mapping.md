@@ -312,6 +312,14 @@ Coinbase 成熟度。`ConsensusParams` 按网络给出 DAA 分数上的成熟度
 
 `DefaultMinimumFeerateSompiPerGram` 是 100，与 `MassCalculator.MinimumFeeRate` 相同。`MinimumFeerate(RpcFeeEstimate)` 在 `priorityBucket`、`normalBuckets`、`lowBuckets` 里取最低的正有限 `feerate`，用 `Math.Ceiling` 收成整数 sompi。NaN、无穷、小于等于 0 的桶跳过。一个桶都没有时返回 100。节点可以给出低于 100 的桶，这个方法原样返回（向上取整之后）。`PayableFeerate` 把更低的桶抬到调用方给出的协议下限，默认 100。`Quote(RpcFeeEstimate)` 用的是 `PayableFeerate`。`ReadMinimumFeerateAsync` 调用 `getFeeEstimate`，返回的是没有抬升的 `MinimumFeerate`。显式费率低于下限抛 `ArgumentOutOfRangeException`。下限 0 抛 `ArgumentOutOfRangeException`，消息是 `The protocol minimum feerate must be non-zero.`。DAA 相关的费率仍在 `MassPolicy`，这一节的默认值是 Toccata 之后的 100。
 
+## 0.1.11 秘密文本
+
+`KeystoreSecret` 仍是助记词和种子的持有者，没有另做一套脱敏类型。`ToString` 是 `NKaspa.KeystoreSecret`。`Reveal` 在 `IsPhrase` 时返回 UTF-8 句子，种子字节则返回小写十六进制。`WalletKeystore.DecryptSecret` 解出来的是种子字节，所以 `Reveal` 是十六进制；句子用 `DecryptToString`。`Clear` 与 `Dispose` 相同，用 `CryptographicOperations.ZeroMemory` 清掉缓冲区。返回的 .NET 字符串清不掉。
+
+System.Text.Json 通过 `KeystoreSecretJsonConverter` 拒绝读写，消息正好是 `Refusing to convert KeystoreSecret.`。`allowPrivateKeys: true` 不能打开这个类型。`Key`、`ExtKey`、`Mnemonic` 仍按原来的规则，只有显式打开时才写出秘密。Newtonsoft.Json 不是本库的依赖，没有为它加包。Newtonsoft 的默认契约解析器在写 `IsPhrase` 之前会调用 `ShouldSerializeIsPhrase`，这个方法抛出同一句拒绝。
+
+`Key.ToString` 是 `NKaspa.Key`。`Key.Reveal` 把 32 字节复制进 `KeystoreSecret`。`Key.Clear` 清零这把密钥。`Mnemonic.Reveal` 把规范句子复制进去。词表字符串是共享的，清不掉。`ExtKey.Reveal` 复制 `ExportXprv()`。`ExtKey.Clear` 清零扩展密钥和链码。
+
 ## 0.1.10 后续修复
 
 Linux 审查（对照 `f41c86a`，测试者 测试1）和钱包组 R1/R10 的后续改动。没有改版本号，仍是 0.1.10-alpha。
