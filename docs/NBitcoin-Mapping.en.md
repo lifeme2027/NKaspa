@@ -340,6 +340,14 @@ The common base is `KaspaWrpcException`. It does not derive from `KaspaRpcExcept
 
 `StorageMassCommitmentRequired` follows Crescendo: mainnet 110165000, testnet-10 88657000 (`ConsensusParams`). Simnet and devnet use `ForkActivation::always()`, so the commitment is required at score 0. rusty-kaspa published no finite `storage_mass_activation` for mainnet or testnet-10. Pull request 588 set `MAINNET_PARAMS` and `TESTNET_PARAMS` to `ForkActivation::never()` (`u64::MAX`). Pull request 379 applied KIP-9 in the mempool on every network and in consensus only on testnet-11 (DAA 23325109, later always). Current master dropped the field. `consensus/core/src/tx.rs` `set_storage_mass`, still present at `f7d7877363fb97c2ec6871be0e8cbc351d44df10`, says the commitment field was activated on mainnet as part of the Crescendo hardfork. `FeeEstimator.Quote(network, virtualDaaScore, ...)` uses the policy relay rate. Storage mass stays in `FeeQuote.Fee` below Crescendo, because the mempool rule was not that `never()` switch. `TransactionBuilder(network, virtualDaaScore)` calls `ForNetwork`. Replacing the Toccata score with `WithToccataActivationDaaScore` does not move the Crescendo score.
 
+## 0.1.11 public node resolver
+
+`KaspaResolver` is rusty-kaspa `rpc/wrpc/client/src/resolver.rs`. `PublicResolvers` is the enabled groups in `Resolvers.toml` at commit `1c1a6927d20042953f0389b1089720e515fe74e5`: eric, maxim, sean, and troy on `kaspa.stream`; john, mike, paul, and alex on `kaspa.red`; jake, mark, adam, and liam on `kaspa.green`; noah, ryan, jack, and luke on `kaspa.blue`. The row `http://127.0.0.1:8888` has `enable = false` and is not included. Commented `kaspa-ng` groups are not included.
+
+The query is `GET {resolver}/v2/kaspa/{network}/{tls|any}/wrpc/{json|borsh}` (`CURRENT_VERSION` is 2). `KaspaResolverTransport.Any` writes `any`. `Tls` writes `tls`. `Network.Testnet` is the network id `testnet-10`. JSON and Borsh are the path segments `json` and `borsh`. `KaspaRpcEncoding.Auto` is rejected. The response field is `url`. `uid` is optional. The URL must be `ws` or `wss`.
+
+Each `ResolveAsync` shuffles the list unless `shuffle` is false, then tries resolvers until one succeeds. The default per-call timeout is 5 seconds. A timeout, a non-success status, invalid JSON, or a body without a WebSocket `url` moves to the next resolver. When every resolver fails, `KaspaResolverException` says `Kaspa resolver returned no endpoint.` `AttemptedUrls` keeps the GET URLs. Caller cancellation is `OperationCanceledException`. `ConnectAsync` resolves a node and opens the wRPC socket. A handshake timeout is still `KaspaNodeUnreachableException`.
+
 ## Later 0.1.10 fixes
 
 Follow-up from a Linux review (against `f41c86a`) and wallet notes R1/R10. The version stayed 0.1.10-alpha.

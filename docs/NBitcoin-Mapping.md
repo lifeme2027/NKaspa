@@ -342,6 +342,14 @@ System.Text.Json 通过 `KeystoreSecretJsonConverter` 拒绝读写，消息正�
 
 `StorageMassCommitmentRequired` 跟着 Crescendo：主网 110165000，测试网 10 是 88657000（`ConsensusParams`）。Simnet 和 Devnet 是 `ForkActivation::always()`，分数 0 也要提交。rusty-kaspa 没有给主网或测试网 10 公布过有限的 `storage_mass_activation`。Pull request 588 把 `MAINNET_PARAMS` 和 `TESTNET_PARAMS` 设成 `ForkActivation::never()`（`u64::MAX`）。Pull request 379 在所有网络的内存池启用 KIP-9，共识层只在测试网 11（DAA 23325109，后来改成 always）。当前 master 删掉了这个字段。`consensus/core/src/tx.rs` 的 `set_storage_mass` 在 `f7d7877363fb97c2ec6871be0e8cbc351d44df10` 仍写着：这个承诺字段作为 Crescendo 硬分叉的一部分在主网激活。`FeeEstimator.Quote(network, virtualDaaScore, ...)` 用该策略的中继费率。Crescendo 之前 `FeeQuote.Fee` 仍含 storage mass，因为内存池规则不是那个 `never()` 开关。`TransactionBuilder(network, virtualDaaScore)` 调用 `ForNetwork`。`WithToccataActivationDaaScore` 只替换 Toccata 分数，不移动 Crescendo 分数。
 
+## 0.1.11 公共节点解析
+
+`KaspaResolver` 对应 rusty-kaspa `rpc/wrpc/client/src/resolver.rs`。`PublicResolvers` 是提交 `1c1a6927d20042953f0389b1089720e515fe74e5` 的 `Resolvers.toml` 里启用的组：`kaspa.stream` 上的 eric、maxim、sean、troy；`kaspa.red` 上的 john、mike、paul、alex；`kaspa.green` 上的 jake、mark、adam、liam；`kaspa.blue` 上的 noah、ryan、jack、luke。`http://127.0.0.1:8888` 的 `enable = false`，不在名单里。注释掉的 `kaspa-ng` 组也不在。
+
+请求是 `GET {resolver}/v2/kaspa/{network}/{tls|any}/wrpc/{json|borsh}`（`CURRENT_VERSION` 是 2）。`KaspaResolverTransport.Any` 写成 `any`，`Tls` 写成 `tls`。`Network.Testnet` 的网络 id 是 `testnet-10`。JSON 和 Borsh 的路径段是 `json` 和 `borsh`。`KaspaRpcEncoding.Auto` 会被拒绝。响应用字段 `url`。`uid` 可有可无。地址必须是 `ws` 或 `wss`。
+
+每次 `ResolveAsync` 会打乱顺序，除非 `shuffle` 为 false，然后逐个尝试，直到有一个成功。单次超时默认 5 秒。超时、非成功状态、非法 JSON、或者没有 WebSocket `url` 的正文，都换下一个解析器。全部失败时 `KaspaResolverException` 的消息是 `Kaspa resolver returned no endpoint.`。`AttemptedUrls` 保留这些 GET 地址。调用方取消是 `OperationCanceledException`。`ConnectAsync` 先解析再打开 wRPC 套接字。握手超时仍是 `KaspaNodeUnreachableException`。
+
 ## 0.1.10 后续修复
 
 Linux 审查（对照 `f41c86a`，测试者 测试1）和钱包组 R1/R10 的后续改动。没有改版本号，仍是 0.1.10-alpha。

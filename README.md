@@ -28,7 +28,7 @@ This repository is **0.1.11-alpha**. The NuGet package index lists **0.1.10-alph
 
 **What derivation path?** `m/44'/111111'/0'/0/0`, which is `KeyPath.KaspaReceive(0)`.
 
-**Which RPC?** wRPC over WebSocket, both JSON and Borsh, through `KaspaRpcClient` (requires 0.1.11-alpha). There is no gRPC client. A path ending in `/wrpc/borsh` or containing `/borsh` selects Borsh. A path ending in `/wrpc/json` or containing `/json` selects JSON. The path wins over the port. Ports 16110, 16210, 16510, and 16610 are gRPC ports and are rejected. If the port and the path are both unknown, for example `wss` on port 443 with no `/json` or `/borsh` hint, `Create` throws. It does not default to either encoding.
+**Which RPC?** wRPC over WebSocket, both JSON and Borsh, through `KaspaRpcClient` (requires 0.1.11-alpha). `KaspaResolver` looks up a public node with rusty-kaspa's resolver list (`GET /v2/kaspa/{network}/{tls|any}/wrpc/{json|borsh}`) and can open that socket. There is no gRPC client. A path ending in `/wrpc/borsh` or containing `/borsh` selects Borsh. A path ending in `/wrpc/json` or containing `/json` selects JSON. The path wins over the port. Ports 16110, 16210, 16510, and 16610 are gRPC ports and are rejected. If the port and the path are both unknown, for example `wss` on port 443 with no `/json` or `/borsh` hint, `Create` throws. It does not default to either encoding.
 
 **Is it production ready?** It is alpha. Block types are not implemented. BN254 pairing and RISC0 STARK verification are not implemented.
 
@@ -298,6 +298,7 @@ var info = await rpc.GetServerInfoAsync();
 // gRPC 端口 16110、16210、16510、16610 会抛异常。本库说的是 wRPC，不是 gRPC。
 // 传入 KaspaRpcEncoding.Borsh 或 Json 可以覆盖路径和 wRPC 端口，不能把 gRPC 端口变成 wRPC。
 // JSON 客户端收到二进制帧，或 Borsh 客户端收到文本帧，抛 KaspaRpcEncodingMismatchException。
+// KaspaResolver 用 rusty-kaspa 的解析器名单查找公共节点（GET /v2/kaspa/{network}/{tls|any}/wrpc/{json|borsh}），并可以打开那个套接字。
 // Create 不会连接。两种编码共用同一套超时、重连、16 MiB 上限、State 和 Reconnected。
 await using var node = KaspaRpcClient.Create("ws://127.0.0.1:17110");
 await node.ConnectAsync();
