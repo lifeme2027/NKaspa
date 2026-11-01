@@ -346,7 +346,11 @@ The common base is `KaspaWrpcException`. It does not derive from `KaspaRpcExcept
 
 The query is `GET {resolver}/v2/kaspa/{network}/{tls|any}/wrpc/{json|borsh}` (`CURRENT_VERSION` is 2). `KaspaResolverTransport.Any` writes `any`. `Tls` writes `tls`. `Network.Testnet` is the network id `testnet-10`. JSON and Borsh are the path segments `json` and `borsh`. `KaspaRpcEncoding.Auto` is rejected. The response field is `url`. `uid` is optional. The URL must be `ws` or `wss`.
 
-Each `ResolveAsync` shuffles the list unless `shuffle` is false, then tries resolvers until one succeeds. The default per-call timeout is 5 seconds. A timeout, a non-success status, invalid JSON, or a body without a WebSocket `url` moves to the next resolver. When every resolver fails, `KaspaResolverException` says `Kaspa resolver returned no endpoint.` `AttemptedUrls` keeps the GET URLs. Caller cancellation is `OperationCanceledException`. `ConnectAsync` resolves a node and opens the wRPC socket. A handshake timeout is still `KaspaNodeUnreachableException`.
+Each `ResolveAsync` shuffles the list unless `shuffle` is false, then tries resolvers until one succeeds. The default per-call timeout is 5 seconds. A timeout, a non-success status, invalid JSON, or a body without a WebSocket `url` moves to the next resolver. When every resolver fails and the fallback list is empty, `KaspaResolverException` says `Kaspa resolver returned no endpoint.` `AttemptedUrls` keeps the GET URLs. Caller cancellation is `OperationCanceledException`. `ConnectAsync` resolves a node and opens the wRPC socket. A handshake timeout is still `KaspaNodeUnreachableException`.
+
+## 0.1.11 resolver fallback nodes
+
+When every resolver fails, `ResolveAsync` returns the first fallback WebSocket URL and sets `KaspaNodeEndpoint.IsFallback`. The fallback is not probed. A null `fallbackEndpoints` argument selects `DefaultFallbackEndpoints`. Mainnet is `wss://eva.kaspa.green/kaspa/mainnet/wrpc/json` or the same path with `borsh`. Testnet-10 (`Network.Testnet`) is `wss://vector-10.kaspa.green/kaspa/testnet-10/wrpc/{json|borsh}` and then `wss://muon-10.kaspa.blue/kaspa/testnet-10/wrpc/{json|borsh}`. Simnet and devnet have an empty default, so they still throw `KaspaResolverException`. An empty list passed by the caller disables fallbacks. A custom list replaces the defaults for every network. These addresses are not guaranteed to be available.
 
 ## Later 0.1.10 fixes
 

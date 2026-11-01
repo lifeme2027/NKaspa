@@ -24,7 +24,7 @@ namespace NKaspa.RPC
         /// <summary>Creates an endpoint.</summary>
         /// <exception cref="System.ArgumentNullException"><paramref name="url"/> is null.</exception>
         /// <exception cref="System.ArgumentException"><paramref name="url"/> is not an absolute ws or wss URI.</exception>
-        public KaspaNodeEndpoint(string url, string? uid)
+        public KaspaNodeEndpoint(string url, string? uid, bool isFallback = false)
         {
             if (url == null)
             {
@@ -38,13 +38,17 @@ namespace NKaspa.RPC
 
             Url = url;
             Uid = uid;
+            IsFallback = isFallback;
         }
 
         /// <summary>wRPC WebSocket URL.</summary>
         public string Url { get; }
 
-        /// <summary>Resolver node id. Null when the JSON has no <c>uid</c>.</summary>
+        /// <summary>Resolver node id. Null when the JSON has no <c>uid</c>, including a fallback node.</summary>
         public string? Uid { get; }
+
+        /// <summary>True when every resolver failed and this URL came from the fallback list.</summary>
+        public bool IsFallback { get; }
     }
 
     /// <summary>
@@ -55,6 +59,9 @@ namespace NKaspa.RPC
     /// The JSON field used is <c>url</c>. <c>uid</c> is optional.
     /// Resolvers are tried in shuffled order until one returns a WebSocket URL.
     /// The disabled localhost row in <c>Resolvers.toml</c> is not in <see cref="PublicResolvers"/>.
+    /// When every resolver fails, <see cref="ResolveAsync"/> returns the first <see cref="FallbackEndpoints"/> URL.
+    /// A null fallback list selects <see cref="DefaultFallbackEndpoints"/>. Those public nodes are not guaranteed to be available.
+    /// An empty fallback list leaves the failure as <see cref="KaspaResolverException"/>.
     /// </summary>
     public sealed class KaspaResolver
     {
@@ -87,15 +94,20 @@ namespace NKaspa.RPC
         };
 
         private readonly string[] _resolvers;
+        private readonly string[]? _fallbacks;
         private readonly HttpMessageHandler? _handler;
 
         /// <summary>
         /// Creates a resolver.
         /// A null <paramref name="resolvers"/> list uses <see cref="PublicResolvers"/>.
         /// An empty list is rejected. rusty-kaspa panics on an empty custom list.
+        /// <paramref name="fallbackEndpoints"/> is used only after every resolver fails.
+        /// Null selects <see cref="DefaultFallbackEndpoints"/> for the network and encoding being resolved.
+        /// An empty list disables fallbacks. Those public nodes are not guaranteed to be available.
         /// </summary>
         /// <exception cref="System.ArgumentException">
         /// Resolver URL list is empty. Resolver URL is empty. Resolver URL must be an absolute http or https URI.
+        /// Fallback node URL is empty. Fallback node URL must be an absolute ws or wss URI.
         /// </exception>
         /// <exception cref="System.ArgumentOutOfRangeException">
         /// Resolver timeout must be positive. Resolver transport is not any or tls.
@@ -105,7 +117,8 @@ namespace NKaspa.RPC
             KaspaResolverTransport transport = KaspaResolverTransport.Any,
             TimeSpan? timeout = null,
             bool shuffle = true,
-            HttpMessageHandler? httpHandler = null)
+            HttpMessageHandler? httpHandler = null,
+            IReadOnlyList<string>? fallbackEndpoints = null)
         {
             var timeoutValue = timeout ?? DefaultTimeout;
             if (timeoutValue <= TimeSpan.Zero)
@@ -127,6 +140,7 @@ namespace NKaspa.RPC
             }
 
             _resolvers = copy;
+            _fallbacks = CopyFallbacks(fallbackEndpoints);
             _handler = httpHandler;
             Transport = transport;
             Timeout = timeoutValue;
@@ -155,6 +169,45 @@ namespace NKaspa.RPC
 
         /// <summary>True when each <see cref="ResolveAsync"/> shuffles the resolver list. rusty-kaspa shuffles.</summary>
         public bool Shuffle { get; }
+
+        /// <summary>
+        /// Fallback wRPC URLs supplied to this instance.
+        /// Null means <see cref="ResolveAsync"/> uses <see cref="DefaultFallbackEndpoints"/>.
+        /// An empty list disables fallbacks.
+        /// These addresses are not guaranteed to be available.
+        /// </summary>
+        public IReadOnlyList<string>? FallbackEndpoints
+        {
+            get { return _fallbacks == null ? null : Array.AsReadOnly(_fallbacks); }
+        }
+
+        /// <summary>
+        /// Public node URLs used only when every resolver fails.
+        /// Mainnet is <c>wss://eva.kaspa.green/kaspa/mainnet/wrpc/{json|borsh}</c>.
+        /// Testnet-10 is <c>wss://vector-10.kaspa.green/kaspa/testnet-10/wrpc/{json|borsh}</c>
+        /// and then <c>wss://muon-10.kaspa.blue/kaspa/testnet-10/wrpc/{json|borsh}</c>.
+        /// Simnet and devnet have none.
+        /// These addresses are not guaranteed to be available. Callers can replace or disable them.
+        /// </summary>
+        /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
+        /// <exception cref="System.ArgumentException">Unknown Kaspa network. Resolver encoding must be JSON or Borsh.</exception>
+        public static IReadOnlyList<string> DefaultFallbackEndpoints(Network network, KaspaRpcEncoding encoding)
+        {
+            var segment = EncodingSegment(encoding);
+            switch (NetworkId(network))
+            {
+                case "mainnet":
+                    return Array.AsReadOnly(new[] { "wss://eva.kaspa.green/kaspa/mainnet/wrpc/" + segment });
+                case "testnet-10":
+                    return Array.AsReadOnly(new[]
+                    {
+                        "wss://vector-10.kaspa.green/kaspa/testnet-10/wrpc/" + segment,
+                        "wss://muon-10.kaspa.blue/kaspa/testnet-10/wrpc/" + segment,
+                    });
+                default:
+                    return Array.Empty<string>();
+            }
+        }
 
         /// <summary>
         /// rusty-kaspa <c>NetworkId</c> display string for <paramref name="network"/>.
@@ -208,6 +261,8 @@ namespace NKaspa.RPC
         /// Asks each resolver, in shuffled order when <see cref="Shuffle"/> is true, for one node.
         /// The first JSON body with a non-empty <c>url</c> of scheme <c>ws</c> or <c>wss</c> wins.
         /// A timeout, an HTTP error, or a body without that URL is skipped.
+        /// When every resolver fails, the first fallback URL is returned and <see cref="KaspaNodeEndpoint.IsFallback"/> is true.
+        /// Fallback nodes are not probed. They are not guaranteed to be available.
         /// </summary>
         /// <exception cref="System.ArgumentNullException"><paramref name="network"/> is null.</exception>
         /// <exception cref="System.ArgumentException">Unknown Kaspa network. Resolver encoding must be JSON or Borsh.</exception>
@@ -249,6 +304,12 @@ namespace NKaspa.RPC
                         last = exception;
                     }
                 }
+            }
+
+            var fallbacks = _fallbacks ?? DefaultFallbackEndpoints(network, encoding);
+            if (fallbacks.Count > 0)
+            {
+                return new KaspaNodeEndpoint(fallbacks[0], null, true);
             }
 
             throw new KaspaResolverException(KaspaResolverException.DefaultMessage, attempted.ToArray(), last);
@@ -393,6 +454,37 @@ namespace NKaspa.RPC
                 urls[i] = urls[j];
                 urls[j] = swap;
             }
+        }
+
+        private static string[]? CopyFallbacks(IReadOnlyList<string>? fallbackEndpoints)
+        {
+            if (fallbackEndpoints == null)
+            {
+                return null;
+            }
+
+            var copy = new string[fallbackEndpoints.Count];
+            for (var i = 0; i < fallbackEndpoints.Count; i++)
+            {
+                copy[i] = RequireNode(fallbackEndpoints[i]);
+            }
+
+            return copy;
+        }
+
+        private static string RequireNode(string? url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                throw new ArgumentException("Fallback node URL is empty.", nameof(url));
+            }
+
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || (uri.Scheme != "ws" && uri.Scheme != "wss"))
+            {
+                throw new ArgumentException("Fallback node URL must be an absolute ws or wss URI.", nameof(url));
+            }
+
+            return url;
         }
 
         private static string RequireResolver(string? resolver)

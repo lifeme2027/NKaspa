@@ -67,6 +67,7 @@ namespace NKaspa.Tests
             var node = await resolver.ResolveAsync(Network.Testnet, KaspaRpcEncoding.Json);
             Assert.Equal("wss://vector-10.kaspa.green/kaspa/testnet-10/wrpc/json", node.Url);
             Assert.Equal("node-a", node.Uid);
+            Assert.False(node.IsFallback);
             Assert.Equal(5, script.Urls.Count);
             Assert.Equal("https://first.example/v2/kaspa/testnet-10/any/wrpc/json", script.Urls[0]);
             Assert.Equal("https://fifth.example/v2/kaspa/testnet-10/any/wrpc/json", script.Urls[4]);
@@ -83,13 +84,61 @@ namespace NKaspa.Tests
                 KaspaResolverTransport.Tls,
                 TimeSpan.FromSeconds(2),
                 shuffle: false,
-                script);
+                script,
+                Array.Empty<string>());
             var error = await Assert.ThrowsAsync<KaspaResolverException>(() => resolver.ResolveAsync(Network.Mainnet, KaspaRpcEncoding.Borsh));
             Assert.Equal(KaspaResolverException.DefaultMessage, error.Message);
             Assert.Equal(2, error.AttemptedUrls.Count);
             Assert.Equal("https://a.example/v2/kaspa/mainnet/tls/wrpc/borsh", error.AttemptedUrls[0]);
             Assert.Equal("https://b.example/v2/kaspa/mainnet/tls/wrpc/borsh", error.AttemptedUrls[1]);
             Assert.IsType<HttpRequestException>(error.InnerException);
+        }
+
+        [Fact]
+        public async Task Fallback_nodes_are_used_only_after_every_resolver_fails()
+        {
+            var defaults = KaspaResolver.DefaultFallbackEndpoints(Network.Mainnet, KaspaRpcEncoding.Json);
+            Assert.Equal(new[] { "wss://eva.kaspa.green/kaspa/mainnet/wrpc/json" }, defaults);
+            var testnet = KaspaResolver.DefaultFallbackEndpoints(Network.Testnet, KaspaRpcEncoding.Borsh);
+            Assert.Equal(
+                new[]
+                {
+                    "wss://vector-10.kaspa.green/kaspa/testnet-10/wrpc/borsh",
+                    "wss://muon-10.kaspa.blue/kaspa/testnet-10/wrpc/borsh",
+                },
+                testnet);
+            Assert.Empty(KaspaResolver.DefaultFallbackEndpoints(Network.Simnet, KaspaRpcEncoding.Json));
+            Assert.Empty(KaspaResolver.DefaultFallbackEndpoints(Network.Devnet, KaspaRpcEncoding.Json));
+
+            var script = new ScriptedHandler();
+            script.Add(Status(HttpStatusCode.NotFound));
+            var resolver = new KaspaResolver(new[] { "https://down.example" }, timeout: TimeSpan.FromSeconds(2), shuffle: false, httpHandler: script);
+            var node = await resolver.ResolveAsync(Network.Mainnet, KaspaRpcEncoding.Json);
+            Assert.True(node.IsFallback);
+            Assert.Equal("wss://eva.kaspa.green/kaspa/mainnet/wrpc/json", node.Url);
+            Assert.Null(resolver.FallbackEndpoints);
+
+            var custom = new KaspaResolver(
+                new[] { "https://down.example" },
+                timeout: TimeSpan.FromSeconds(2),
+                shuffle: false,
+                httpHandler: script,
+                fallbackEndpoints: new[] { "wss://example.invalid/kaspa/mainnet/wrpc/json" });
+            script.Add(Status(HttpStatusCode.BadGateway));
+            var replaced = await custom.ResolveAsync(Network.Testnet, KaspaRpcEncoding.Json);
+            Assert.True(replaced.IsFallback);
+            Assert.Equal("wss://example.invalid/kaspa/mainnet/wrpc/json", replaced.Url);
+
+            var disabled = new KaspaResolver(
+                new[] { "https://down.example" },
+                timeout: TimeSpan.FromSeconds(2),
+                shuffle: false,
+                httpHandler: script,
+                fallbackEndpoints: Array.Empty<string>());
+            script.Add(Status(HttpStatusCode.NotFound));
+            var error = await Assert.ThrowsAsync<KaspaResolverException>(() => disabled.ResolveAsync(Network.Mainnet, KaspaRpcEncoding.Json));
+            Assert.Equal(KaspaResolverException.DefaultMessage, error.Message);
+            Assert.Throws<ArgumentException>(() => new KaspaResolver(new[] { "https://down.example" }, fallbackEndpoints: new[] { "https://eva.kaspa.green" }));
         }
 
         [Fact]

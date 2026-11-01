@@ -348,7 +348,11 @@ System.Text.Json 通过 `KeystoreSecretJsonConverter` 拒绝读写，消息正�
 
 请求是 `GET {resolver}/v2/kaspa/{network}/{tls|any}/wrpc/{json|borsh}`（`CURRENT_VERSION` 是 2）。`KaspaResolverTransport.Any` 写成 `any`，`Tls` 写成 `tls`。`Network.Testnet` 的网络 id 是 `testnet-10`。JSON 和 Borsh 的路径段是 `json` 和 `borsh`。`KaspaRpcEncoding.Auto` 会被拒绝。响应用字段 `url`。`uid` 可有可无。地址必须是 `ws` 或 `wss`。
 
-每次 `ResolveAsync` 会打乱顺序，除非 `shuffle` 为 false，然后逐个尝试，直到有一个成功。单次超时默认 5 秒。超时、非成功状态、非法 JSON、或者没有 WebSocket `url` 的正文，都换下一个解析器。全部失败时 `KaspaResolverException` 的消息是 `Kaspa resolver returned no endpoint.`。`AttemptedUrls` 保留这些 GET 地址。调用方取消是 `OperationCanceledException`。`ConnectAsync` 先解析再打开 wRPC 套接字。握手超时仍是 `KaspaNodeUnreachableException`。
+每次 `ResolveAsync` 会打乱顺序，除非 `shuffle` 为 false，然后逐个尝试，直到有一个成功。单次超时默认 5 秒。超时、非成功状态、非法 JSON、或者没有 WebSocket `url` 的正文，都换下一个解析器。全部失败且备用名单为空时，`KaspaResolverException` 的消息是 `Kaspa resolver returned no endpoint.`。`AttemptedUrls` 保留这些 GET 地址。调用方取消是 `OperationCanceledException`。`ConnectAsync` 先解析再打开 wRPC 套接字。握手超时仍是 `KaspaNodeUnreachableException`。
+
+## 0.1.11 解析器的备用节点
+
+每个解析器都失败之后，`ResolveAsync` 返回备用 WebSocket 地址的第一项，并把 `KaspaNodeEndpoint.IsFallback` 设为 true。备用地址不会先探测。`fallbackEndpoints` 为 null 时用 `DefaultFallbackEndpoints`。主网是 `wss://eva.kaspa.green/kaspa/mainnet/wrpc/json`，Borsh 把末段换成 `borsh`。测试网 10（`Network.Testnet`）先是 `wss://vector-10.kaspa.green/kaspa/testnet-10/wrpc/{json|borsh}`，然后是 `wss://muon-10.kaspa.blue/kaspa/testnet-10/wrpc/{json|borsh}`。Simnet 和 Devnet 的默认名单是空的，所以仍抛 `KaspaResolverException`。调用方传入空名单就关闭备用。自定义名单会替换默认值，不按网络再选。这些地址不保证可用（not guaranteed to be available）。
 
 ## 0.1.10 后续修复
 
