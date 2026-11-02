@@ -8,7 +8,7 @@ NKaspa is a .NET (C#) library for Kaspa: addresses, keys, BIP39/BIP32 wallets, t
 
 ## English
 
-This repository is **0.1.11-alpha**. The NuGet package index lists **0.1.10-alpha** as the newest published version (`0.1.9-alpha` is also published). Snippets here track the repository. `KaspaRpcClient`, Borsh, path-based Auto encoding, gRPC-port rejection, and `KaspaRpcEncodingMismatchException` require 0.1.11-alpha. `Mnemonic.ToPhrase`, `KaspaWebSocketOptions`, `MassPolicy`, and the folded-change cap require 0.1.10-alpha.
+This repository is **0.1.11-alpha**. The NuGet package index lists **0.1.11-alpha** as the newest published version (`0.1.10-alpha` and `0.1.9-alpha` are also published). Snippets here track the repository. `KaspaRpcClient`, Borsh, path-based Auto encoding, gRPC-port rejection, and `KaspaRpcEncodingMismatchException` require 0.1.11-alpha. `Mnemonic.ToPhrase`, `KaspaWebSocketOptions`, `MassPolicy`, and the folded-change cap require 0.1.10-alpha.
 
 ### What's new in 0.1.11
 
