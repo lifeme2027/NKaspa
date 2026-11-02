@@ -2,7 +2,7 @@
 
 NKaspa is a .NET (C#) library for Kaspa: addresses, keys, BIP39/BIP32 wallets, transactions, PSKT and a wRPC client. Install: `dotnet add package NKaspa --prerelease`.
 
-**Used by:** [KasNetWallet](https://github.com/lifeme2027/KasNetWallet), an open-source Windows wallet built on NKaspa (alpha).
+**Used by:** [KasNetWallet](https://github.com/lifeme2027/KasNetWallet), an open-source Windows wallet built on NKaspa (alpha)，[Nkaspa document](https://github.com/lifeme2027/NKaspaDoc).
 
 [English](#english) · [中文](#中文)
 
