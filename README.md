@@ -10,6 +10,21 @@ NKaspa is a .NET (C#) library for Kaspa: addresses, keys, BIP39/BIP32 wallets, t
 
 This repository is **0.1.11-alpha**. The NuGet package index lists **0.1.10-alpha** as the newest published version (`0.1.9-alpha` is also published). Snippets here track the repository. `KaspaRpcClient`, Borsh, path-based Auto encoding, gRPC-port rejection, and `KaspaRpcEncodingMismatchException` require 0.1.11-alpha. `Mnemonic.ToPhrase`, `KaspaWebSocketOptions`, `MassPolicy`, and the folded-change cap require 0.1.10-alpha.
 
+### What's new in 0.1.11
+
+0.1.11-alpha is on [NuGet](https://www.nuget.org/packages/NKaspa/0.1.11-alpha). The full list is in [CHANGELOG.md](CHANGELOG.md).
+
+- wRPC Borsh client added. It coexists with the JSON client: both stay available through `KaspaRpcClient`, and existing JSON code keeps working. `KaspaRpcClient.Create(url, KaspaRpcEncoding.Auto)` picks one by reading the URL path first, then the port.
+- `GetSinkBlueScoreAsync` reads the sink blue score (`getSinkBlueScore`, Borsh op 138).
+- `ConsensusParams.IsCoinbaseMature` and `SpendableAtDaaScore` apply rusty-kaspa coinbase maturity in DAA score.
+- `WalletKeystore` encrypts a mnemonic or a seed with PBKDF2-HMAC-SHA256 and AES-256-GCM. It is not the same format as KasNetWallet's Argon2 keystore, and neither can read the other's files.
+- `FeeEstimator` estimates compute mass, KIP-9 storage mass, and the fee without private keys.
+- `PersonalMessage.SignMessage` and `VerifyMessage` match rusty-kaspa `sign_message`.
+- wRPC failures a wallet can branch on are `KaspaWrpcException`. `KaspaNodeUnreachableException` wraps timeouts and disconnects.
+- `MassPolicy.ForNetwork(network, virtualDaaScore)` selects the mass policy from the network activation scores.
+- `KaspaResolver` finds a public node through rusty-kaspa's resolver list and falls back to `DefaultFallbackEndpoints`.
+- `TransactionBuilder` throws `KaspaTransactionBuilderException` with a `Reason`. The WebSocket channels throw `KaspaConnectionClosedException`, `KaspaMessageTooLargeException`, and `KaspaRpcTimeoutException`. Each extends the type it replaced, and the messages are unchanged.
+
 ### FAQ
 
 **Is there a Kaspa SDK for C#/.NET?** Official SDKs are Rust, WASM, and Python. NKaspa is a community .NET library (MIT, see [LICENSE](LICENSE)).
@@ -28,7 +43,13 @@ This repository is **0.1.11-alpha**. The NuGet package index lists **0.1.10-alph
 
 **What derivation path?** `m/44'/111111'/0'/0/0`, which is `KeyPath.KaspaReceive(0)`.
 
-**Which RPC?** wRPC over WebSocket, both JSON and Borsh, through `KaspaRpcClient` (requires 0.1.11-alpha). `KaspaResolver` looks up a public node with rusty-kaspa's resolver list (`GET /v2/kaspa/{network}/{tls|any}/wrpc/{json|borsh}`) and can open that socket. If every resolver fails, it falls back to `wss://eva.kaspa.green` on mainnet, or `wss://vector-10.kaspa.green` and `wss://muon-10.kaspa.blue` on testnet-10. Those nodes are not guaranteed to be available. Pass an empty fallback list to disable them, or pass your own list to replace them. There is no gRPC client. A path ending in `/wrpc/borsh` or containing `/borsh` selects Borsh. A path ending in `/wrpc/json` or containing `/json` selects JSON. The path wins over the port. Ports 16110, 16210, 16510, and 16610 are gRPC ports and are rejected. If the port and the path are both unknown, for example `wss` on port 443 with no `/json` or `/borsh` hint, `Create` throws. It does not default to either encoding.
+**Which RPC?** wRPC over WebSocket, both JSON and Borsh, through `KaspaRpcClient` (requires 0.1.11-alpha). The two clients coexist; pick one per connection. There is no gRPC client.
+
+- **Borsh or JSON?** With `KaspaRpcEncoding.Auto`, the URL path is read before the port. A path ending in `/wrpc/borsh` or containing `/borsh` selects Borsh. A path ending in `/wrpc/json` or containing `/json` selects JSON. The path wins over the port. An explicit `KaspaRpcEncoding.Borsh` or `KaspaRpcEncoding.Json` overrides both.
+- **Which ports?** Borsh is 17110, 17210, 17510, and 17610. JSON is 18110, 18210, 18510, and 18610. The gRPC ports 16110, 16210, 16510, and 16610 are rejected with `ArgumentException`.
+- **Port 443?** `wss` on port 443 needs `/json` or `/borsh` in the path. If the port and the path are both unknown, `Create` throws. It does not default to either encoding.
+- **What if the encoding is wrong?** A JSON client that receives a binary frame, or a Borsh client that receives a text frame, throws `KaspaRpcEncodingMismatchException`. Pending requests fail at once. The client does not reconnect.
+- **Finding a public node?** `KaspaResolver` looks up a public node with rusty-kaspa's resolver list (`GET /v2/kaspa/{network}/{tls|any}/wrpc/{json|borsh}`) and can open that socket. Public resolvers may fail or return 404; `KaspaResolver` tries each one. If every resolver fails, it falls back to `DefaultFallbackEndpoints`: `wss://eva.kaspa.green` on mainnet, or `wss://vector-10.kaspa.green` and `wss://muon-10.kaspa.blue` on testnet-10. Those nodes are not guaranteed to be available. Pass an empty fallback list to disable them, or pass your own list to replace them.
 
 **Is it production ready?** It is alpha. Block types are not implemented. BN254 pairing and RISC0 STARK verification are not implemented.
 
