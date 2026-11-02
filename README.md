@@ -264,7 +264,7 @@ NKaspa does not include the NBitcoin source tree. Elliptic-curve operations use 
 
 NKaspa 是 Kaspa 的 .NET（C#）基础函数库：地址、密钥、BIP39/BIP32 钱包、交易、PSKT，以及 wRPC 客户端。安装：`dotnet add package NKaspa --prerelease`。
 
-本仓库是 **0.1.11-alpha**。NuGet 上已发布的最新版本是 **0.1.10-alpha**（另有 **0.1.9-alpha**）。这里的片段跟仓库走。`KaspaRpcClient`、Borsh、按路径选择的 Auto、拒绝 gRPC 端口，以及 `KaspaRpcEncodingMismatchException` 需要 0.1.11-alpha。`Mnemonic.ToPhrase`、`KaspaWebSocketOptions`、`MassPolicy` 和找零并入上限需要 0.1.10-alpha。英文教程：[生成地址](docs/tutorials/generate-kaspa-address-csharp.md)，[发送交易](docs/tutorials/send-kaspa-transaction-dotnet.md)。英文对照表：[docs/NBitcoin-Mapping.en.md](docs/NBitcoin-Mapping.en.md)。
+本仓库是 **0.1.11-alpha**。NuGet 上已发布的最新版本是 **0.1.11-alpha**（另有 **0.1.10-alpha** 和 **0.1.9-alpha**）。这里的片段跟仓库走。`KaspaRpcClient`、Borsh、按路径选择的 Auto、拒绝 gRPC 端口，以及 `KaspaRpcEncodingMismatchException` 需要 0.1.11-alpha。`Mnemonic.ToPhrase`、`KaspaWebSocketOptions`、`MassPolicy` 和找零并入上限需要 0.1.10-alpha。英文教程：[生成地址](docs/tutorials/generate-kaspa-address-csharp.md)，[发送交易](docs/tutorials/send-kaspa-transaction-dotnet.md)。英文对照表：[docs/NBitcoin-Mapping.en.md](docs/NBitcoin-Mapping.en.md)。
 
 公开类型尽量与 [NBitcoin](https://github.com/MetacoSA/NBitcoin) 一一对应，但语义按 Kaspa。地址是 cashaddr 风格的 bech32（前缀 `kaspa` / `kaspatest` / `kaspasim` / `kaspadev`，8 字符校验和）。共识哈希是不带密钥的 BLAKE2b-256，不是比特币的双 SHA256。
 
