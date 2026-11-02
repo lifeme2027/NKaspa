@@ -14,7 +14,7 @@ namespace NKaspa
     /// A larger change output that cannot be built (mass over the limit, or a storage-mass fee the surplus cannot pay)
     /// is folded into the fee only when the amount is at most <see cref="MaxFoldedChange"/> and within <see cref="MaxFoldedFeeFactor"/> of the fee that transaction needs.
     /// Those two limits are public. A caller can raise them. They are wallet safety limits, not consensus rules. Raising them can burn more sompi into the fee.
-    /// A larger unbuildable change throws. It is not burned as a fee.
+    /// A larger unbuildable change throws <see cref="KaspaTransactionBuilderException"/> with <see cref="KaspaTransactionBuilderReason.ChangeUnfoldable"/>. It is not burned as a fee.
     /// <see cref="ChangeFoldedIntoFee"/> is the sompi removed from change on the last successful build. It is not the total fee.
     /// <see cref="Policy.TransactionMass"/> does not repeat that amount.
     /// The fee mass must stay within <see cref="MaximumMass"/> and within <see cref="MassLimits"/>.
@@ -460,17 +460,27 @@ namespace NKaspa
         /// same exception.
         /// </exception>
         /// <exception cref="System.FormatException">Script push is too long. Script push is truncated. uint256 requires 32 bytes.</exception>
+        /// <exception cref="NKaspa.KaspaTransactionBuilderException">
+        /// Fee estimate did not converge. No outputs to send. No private key matches an input script. Fee is
+        /// below the minimum relay rate of 100 sompi per gram. Transaction mass exceeds the standard maximum.
+        /// Change would exceed the mass limit. Folding it into the fee would burn more than MaxFoldedChange
+        /// allows. Split the send or add inputs so the change output fits. Change is due and no change script
+        /// was set. Not enough funds. A must-spend outpoint was not added with AddCoins. Set SendFees,
+        /// SendEstimatedFees, or SendMinimumRelayFee. Set only one of SendFees, SendEstimatedFees, or
+        /// SendMinimumRelayFee. <see cref="KaspaTransactionBuilderException.Reason"/> names the check.
+        /// <see cref="KaspaTransactionBuilderException.Needed"/> and <see cref="KaspaTransactionBuilderException.Available"/>
+        /// are sompi. <see cref="KaspaTransactionBuilderException.Mass"/> and <see cref="KaspaTransactionBuilderException.Cap"/>
+        /// are grams. <see cref="KaspaTransactionBuilderException.Change"/> and <see cref="KaspaTransactionBuilderException.MaxFoldedChange"/>
+        /// are sompi. <see cref="KaspaTransactionBuilderException.Fee"/> and <see cref="KaspaTransactionBuilderException.MinimumFee"/>
+        /// are sompi. <see cref="KaspaTransactionBuilderException.InputIndex"/> is the unsigned input.
+        /// <see cref="KaspaTransactionBuilderException.Outpoint"/> is the missing must-spend outpoint.
+        /// This type extends <see cref="System.InvalidOperationException"/>.
+        /// </exception>
         /// <exception cref="System.InvalidOperationException">
-        /// Fee estimate did not converge. No outputs to send. No private key matches an input script. SignInput
-        /// signs pay-to-pubkey scripts. Build a pay-to-script-hash signature with
+        /// SignInput signs pay-to-pubkey scripts. Build a pay-to-script-hash signature with
         /// Script.PayToScriptHashSignature. Stored private key is no longer valid. Transaction input is missing
         /// an outpoint. BLAKE2b hasher is already finished. Transaction output is missing a script. SHA256 did
-        /// not produce a digest. Fee is below the minimum relay rate of 100 sompi per gram. Transaction mass
-        /// exceeds the standard maximum. Change would exceed the mass limit. Folding it into the fee would
-        /// burn more than MaxFoldedChange allows. Split the send or add inputs so the change output fits.
-        /// Change is due and no change script was set. Not enough funds. A
-        /// must-spend outpoint was not added with AddCoins. Set SendFees, SendEstimatedFees, or
-        /// SendMinimumRelayFee. Set only one of SendFees, SendEstimatedFees, or SendMinimumRelayFee.
+        /// not produce a digest.
         /// </exception>
         /// <exception cref="System.ObjectDisposedException">The Key has been disposed.</exception>
         /// <exception cref="System.OverflowException">Input amount mean does not fit in 64 bits. Normalized mass does not fit in 64 bits.</exception>
@@ -479,7 +489,7 @@ namespace NKaspa
             ChangeFoldedIntoFee = Money.Zero;
             if (_sends.Count == 0)
             {
-                throw new InvalidOperationException("No outputs to send.");
+                throw KaspaTransactionBuilderException.NoOutputs();
             }
 
             var mode = ResolveFeeMode();
@@ -516,7 +526,7 @@ namespace NKaspa
 
                 if (!settled)
                 {
-                    throw new InvalidOperationException("Fee estimate did not converge.");
+                    throw KaspaTransactionBuilderException.FeeEstimateDidNotConverge();
                 }
             }
 
@@ -564,15 +574,22 @@ namespace NKaspa
         /// same exception.
         /// </exception>
         /// <exception cref="System.FormatException">Script push is too long. Script push is truncated. uint256 requires 32 bytes.</exception>
-        /// <exception cref="System.InvalidOperationException">
+        /// <exception cref="NKaspa.KaspaTransactionBuilderException">
         /// Built input is not a known coin. Fee estimate did not converge. No outputs to send. No private key
-        /// matches an input script. SignInput signs pay-to-pubkey scripts. Build a pay-to-script-hash signature
-        /// with Script.PayToScriptHashSignature. Stored private key is no longer valid. Transaction input is
-        /// missing an outpoint. BLAKE2b hasher is already finished. Transaction output is missing a script.
-        /// SHA256 did not produce a digest. Fee is below the minimum relay rate of 100 sompi per gram.
-        /// Transaction mass exceeds the standard maximum. Change is due and no change script was set. Not
-        /// enough funds. A must-spend outpoint was not added with AddCoins. Set SendFees, SendEstimatedFees, or
-        /// SendMinimumRelayFee. Set only one of SendFees, SendEstimatedFees, or SendMinimumRelayFee.
+        /// matches an input script. Fee is below the minimum relay rate of 100 sompi per gram. Transaction mass
+        /// exceeds the standard maximum. Change would exceed the mass limit. Folding it into the fee would burn
+        /// more than MaxFoldedChange allows. Split the send or add inputs so the change output fits. Change is
+        /// due and no change script was set. Not enough funds. A must-spend outpoint was not added with
+        /// AddCoins. Set SendFees, SendEstimatedFees, or SendMinimumRelayFee. Set only one of SendFees,
+        /// SendEstimatedFees, or SendMinimumRelayFee. <see cref="KaspaTransactionBuilderException.Outpoint"/> is
+        /// set for an unknown built input and for a missing must-spend outpoint. The other properties match
+        /// <see cref="BuildTransaction"/>. This type extends <see cref="System.InvalidOperationException"/>.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">
+        /// SignInput signs pay-to-pubkey scripts. Build a pay-to-script-hash signature with
+        /// Script.PayToScriptHashSignature. Stored private key is no longer valid. Transaction input is missing
+        /// an outpoint. BLAKE2b hasher is already finished. Transaction output is missing a script. SHA256 did
+        /// not produce a digest.
         /// </exception>
         /// <exception cref="System.ObjectDisposedException">The Key has been disposed.</exception>
         /// <exception cref="System.OverflowException">Input amount mean does not fit in 64 bits. Normalized mass does not fit in 64 bits.</exception>
@@ -589,7 +606,7 @@ namespace NKaspa
                 var coin = FindCoin(transaction.Inputs[i].PreviousOutpoint);
                 if (coin == null)
                 {
-                    throw new InvalidOperationException("Built input is not a known coin.");
+                    throw KaspaTransactionBuilderException.UnknownInput(transaction.Inputs[i].PreviousOutpoint);
                 }
 
                 var input = new PSKTInput(transaction.Inputs[i].PreviousOutpoint)
@@ -834,7 +851,7 @@ namespace NKaspa
                 {
                     if (forcedSum < target)
                     {
-                        throw new InvalidOperationException("Not enough funds.");
+                        throw KaspaTransactionBuilderException.InsufficientFunds(target, forcedSum);
                     }
 
                     return forced;
@@ -863,7 +880,7 @@ namespace NKaspa
             {
                 if (FindCoin(_mustSpend[i]) == null)
                 {
-                    throw new InvalidOperationException("A must-spend outpoint was not added with AddCoins.");
+                    throw KaspaTransactionBuilderException.MustSpendUnknown(_mustSpend[i]);
                 }
             }
 
@@ -899,8 +916,8 @@ namespace NKaspa
 
             if (!TryFoldChange(selected, sendSum, change, ref fee, out transaction))
             {
-                throw new InvalidOperationException(
-                    "Change would exceed the mass limit. Folding it into the fee would burn more than MaxFoldedChange allows. Split the send or add inputs so the change output fits.");
+                var cap = MinimumChange.Sompi > MaxFoldedChange.Sompi ? MinimumChange.Sompi : MaxFoldedChange.Sompi;
+                throw KaspaTransactionBuilderException.ChangeUnfoldable(change, cap);
             }
 
             foldedAmount = checked(foldedAmount + change);
@@ -1059,7 +1076,8 @@ namespace NKaspa
 
             if (inputSum < sendSum || inputSum - sendSum < fee)
             {
-                throw new InvalidOperationException("Not enough funds.");
+                ulong? needed = sendSum > ulong.MaxValue - fee ? null : sendSum + fee;
+                throw KaspaTransactionBuilderException.InsufficientFunds(needed, inputSum);
             }
 
             var change = inputSum - sendSum - fee;
@@ -1072,7 +1090,7 @@ namespace NKaspa
 
             if (change > 0 && _change == null)
             {
-                throw new InvalidOperationException("Change is due and no change script was set.");
+                throw KaspaTransactionBuilderException.ChangeScriptMissing(change);
             }
 
             var inputs = new TxIn[selected.Count];
@@ -1149,12 +1167,12 @@ namespace NKaspa
 
             if (choices > 1)
             {
-                throw new InvalidOperationException("Set only one of SendFees, SendEstimatedFees, or SendMinimumRelayFee.");
+                throw KaspaTransactionBuilderException.ConflictingFeeModes();
             }
 
             if (choices == 0)
             {
-                throw new InvalidOperationException("Set SendFees, SendEstimatedFees, or SendMinimumRelayFee.");
+                throw KaspaTransactionBuilderException.FeeModeMissing();
             }
 
             if (_explicitFee.HasValue)
@@ -1186,8 +1204,7 @@ namespace NKaspa
             var floor = checked(MassCalculator.RelayMass(mass) * MinimumRelayFeeRate);
             if (fee < floor)
             {
-                throw new InvalidOperationException(
-                    "Fee is below the minimum relay rate of " + MinimumRelayFeeRate.ToString(System.Globalization.CultureInfo.InvariantCulture) + " sompi per gram.");
+                throw KaspaTransactionBuilderException.FeeBelowMinimum(fee, floor, MinimumRelayFeeRate);
             }
         }
 
@@ -1211,12 +1228,24 @@ namespace NKaspa
 
         private void EnsureWithin(TransactionMass mass)
         {
-            if (mass.FeeMass > MaximumMass
-                || mass.ComputeMass > MassLimits.Compute
-                || mass.StorageMass > MassLimits.Storage
-                || mass.TransientMass > MassLimits.Transient)
+            if (mass.FeeMass > MaximumMass)
             {
-                throw new InvalidOperationException("Transaction mass exceeds the standard maximum.");
+                throw KaspaTransactionBuilderException.MassExceeded(mass.FeeMass, MaximumMass);
+            }
+
+            if (mass.ComputeMass > MassLimits.Compute)
+            {
+                throw KaspaTransactionBuilderException.MassExceeded(mass.ComputeMass, MassLimits.Compute);
+            }
+
+            if (mass.StorageMass > MassLimits.Storage)
+            {
+                throw KaspaTransactionBuilderException.MassExceeded(mass.StorageMass, MassLimits.Storage);
+            }
+
+            if (mass.TransientMass > MassLimits.Transient)
+            {
+                throw KaspaTransactionBuilderException.MassExceeded(mass.TransientMass, MassLimits.Transient);
             }
         }
 
@@ -1227,7 +1256,7 @@ namespace NKaspa
                 var key = FindKey(selected[i].ScriptPubKey);
                 if (key == null)
                 {
-                    throw new InvalidOperationException("No private key matches an input script.");
+                    throw KaspaTransactionBuilderException.NoMatchingKey(i);
                 }
 
                 if (transaction.Version == 0)

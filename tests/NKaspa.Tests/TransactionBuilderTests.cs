@@ -82,7 +82,7 @@ namespace NKaspa.Tests
                 .SetChange(payer.GetAddress(Network.Mainnet))
                 .SendFees(new Money(1000));
 
-            var error = Assert.Throws<InvalidOperationException>(() => builder.BuildTransaction(true));
+            var error = Assert.Throws<KaspaTransactionBuilderException>(() => builder.BuildTransaction(true));
             Assert.Contains("mass", error.Message, StringComparison.OrdinalIgnoreCase);
         }
 
@@ -92,16 +92,16 @@ namespace NKaspa.Tests
             using var payer = Key.Parse(SecretA);
             var coin = new Coin(new OutPoint(new uint256(4), 0), new UtxoEntry(1000UL, payer.PubKey.GetScriptPubKey(), 1, false));
             var poor = new TransactionBuilder().AddKeys(payer).AddCoins(coin).Send(payer.GetAddress(Network.Mainnet), new Money(5000)).SendFees(new Money(100));
-            Assert.Throws<InvalidOperationException>(() => poor.BuildTransaction(true));
+            Assert.Throws<KaspaTransactionBuilderException>(() => poor.BuildTransaction(true));
 
             var rich = new Coin(new OutPoint(new uint256(5), 0), new UtxoEntry(100_000_000UL, payer.PubKey.GetScriptPubKey(), 1, false));
             var noKey = new TransactionBuilder().AddCoins(rich).Send(payer.GetAddress(Network.Mainnet), new Money(1000)).SendFees(new Money(100_000));
-            Assert.Throws<InvalidOperationException>(() => noKey.BuildTransaction(true));
+            Assert.Throws<KaspaTransactionBuilderException>(() => noKey.BuildTransaction(true));
 
             var both = new TransactionBuilder().AddKeys(payer).AddCoins(rich).Send(payer.GetAddress(Network.Mainnet), new Money(1000)).SetChange(payer.GetAddress(Network.Mainnet));
             both.SendFees(new Money(1000));
             both.SendEstimatedFees(FeeRate.MinimumRelay);
-            Assert.Throws<InvalidOperationException>(() => both.BuildTransaction(true));
+            Assert.Throws<KaspaTransactionBuilderException>(() => both.BuildTransaction(true));
 
             Assert.Throws<ArgumentOutOfRangeException>(() => new TransactionBuilder().SendEstimatedFees(new FeeRate(99)));
         }
@@ -183,7 +183,7 @@ namespace NKaspa.Tests
                 .AddCoins(coin)
                 .Send(payer.GetAddress(Network.Mainnet), new Money(4_761_904))
                 .SendFees(new Money(95_238_096));
-            var error = Assert.Throws<InvalidOperationException>(() => legacy.BuildTransaction(true));
+            var error = Assert.Throws<KaspaTransactionBuilderException>(() => legacy.BuildTransaction(true));
             Assert.Contains("mass", error.Message, StringComparison.OrdinalIgnoreCase);
             Assert.Equal(100_000UL, MassCalculator.MaxStandardTransactionMass);
         }
@@ -200,7 +200,7 @@ namespace NKaspa.Tests
                 .SetChange(payer.GetAddress(Network.Mainnet))
                 .SendFees(new Money(1));
 
-            var error = Assert.Throws<InvalidOperationException>(() => builder.BuildTransaction(true));
+            var error = Assert.Throws<KaspaTransactionBuilderException>(() => builder.BuildTransaction(true));
             Assert.Contains("relay", error.Message, StringComparison.OrdinalIgnoreCase);
 
             builder.AllowBelowMinimumRelayFee = true;
@@ -278,7 +278,7 @@ namespace NKaspa.Tests
                 .SetChange(payer.GetAddress(Network.Mainnet))
                 .SendEstimatedFees(FeeRate.MinimumRelay);
 
-            var error = Assert.Throws<InvalidOperationException>(() => builder.BuildTransaction(true));
+            var error = Assert.Throws<KaspaTransactionBuilderException>(() => builder.BuildTransaction(true));
             Assert.Contains("mass", error.Message, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("Split the send or add inputs", error.Message, StringComparison.Ordinal);
             Assert.DoesNotContain("Not enough funds", error.Message, StringComparison.Ordinal);
@@ -325,7 +325,7 @@ namespace NKaspa.Tests
                 .SetChange(payer.GetAddress(Network.Mainnet))
                 .SendEstimatedFees(new FeeRate(150));
 
-            var error = Assert.Throws<InvalidOperationException>(() => builder.BuildTransaction(true));
+            var error = Assert.Throws<KaspaTransactionBuilderException>(() => builder.BuildTransaction(true));
             Assert.Contains("mass", error.Message, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("Split the send or add inputs", error.Message, StringComparison.Ordinal);
             Assert.DoesNotContain("Not enough funds", error.Message, StringComparison.Ordinal);
@@ -354,7 +354,7 @@ namespace NKaspa.Tests
                 .AddCoins(small, small)
                 .Send(payer.GetAddress(Network.Mainnet), new Money(70_000_000))
                 .SendFees(new Money(1_000));
-            Assert.Throws<InvalidOperationException>(() => tooSmall.BuildTransaction(true));
+            Assert.Throws<KaspaTransactionBuilderException>(() => tooSmall.BuildTransaction(true));
 
             var other = new Coin(new OutPoint(new uint256(12), 0), new UtxoEntry(40_000_000UL, payer.PubKey.GetScriptPubKey(), 1, false));
             var both = new TransactionBuilder()
@@ -462,7 +462,7 @@ namespace NKaspa.Tests
                 .MustSpend(missing)
                 .Send(payer.GetAddress(Network.Mainnet), new Money(1_000_000))
                 .SendFees(new Money(1_000_000));
-            Assert.Throws<InvalidOperationException>(() => unknown.BuildTransaction(true));
+            Assert.Throws<KaspaTransactionBuilderException>(() => unknown.BuildTransaction(true));
         }
 
         [Fact]
@@ -559,7 +559,7 @@ namespace NKaspa.Tests
 
             Assert.Throws<ArgumentOutOfRangeException>(() => new TransactionBuilder().SetVersion(2));
             var conflict = new TransactionBuilder().SendMinimumRelayFee().SendEstimatedFees(FeeRate.MinimumRelay);
-            Assert.Throws<InvalidOperationException>(() => conflict.AddKeys(payer).AddCoins(v1Coin).Send(payer.GetAddress(Network.Mainnet), new Money(1_000_000)).BuildTransaction(true));
+            Assert.Throws<KaspaTransactionBuilderException>(() => conflict.AddKeys(payer).AddCoins(v1Coin).Send(payer.GetAddress(Network.Mainnet), new Money(1_000_000)).BuildTransaction(true));
         }
 
         [Fact]
@@ -623,7 +623,7 @@ namespace NKaspa.Tests
             }
 
             Assert.Equal(7_000_000UL, sum);
-            Assert.Throws<InvalidOperationException>(() => new DefaultCoinSelector().Select(new[] { exact }, new Money(80_000_000)));
+            Assert.Throws<KaspaTransactionBuilderException>(() => new DefaultCoinSelector().Select(new[] { exact }, new Money(80_000_000)));
             Assert.Throws<ArgumentNullException>(() => new DefaultCoinSelector().Select(null!, new Money(1)));
             Assert.Throws<ArgumentOutOfRangeException>(() => new DefaultCoinSelector().Select(new[] { exact }, Money.Zero));
         }

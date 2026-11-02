@@ -42,7 +42,7 @@ namespace NKaspa
         /// </summary>
         /// <exception cref="System.ArgumentNullException"><paramref name="coins"/> is null.</exception>
         /// <exception cref="System.ArgumentOutOfRangeException">The selection target must be greater than zero.</exception>
-        /// <exception cref="System.InvalidOperationException">Not enough funds.</exception>
+        /// <exception cref="NKaspa.KaspaTransactionBuilderException">Not enough funds. <see cref="KaspaTransactionBuilderReason.InsufficientFunds"/> sets <see cref="KaspaTransactionBuilderException.Needed"/> and <see cref="KaspaTransactionBuilderException.Available"/>. This type extends <see cref="System.InvalidOperationException"/>.</exception>
         public List<Coin> Select(IReadOnlyList<Coin> coins, Money target)
         {
             if (target.Sompi == 0)
@@ -53,7 +53,7 @@ namespace NKaspa
             var pool = Dedupe(coins);
             if (pool.Count == 0)
             {
-                throw new InvalidOperationException("Not enough funds.");
+                throw KaspaTransactionBuilderException.InsufficientFunds(target.Sompi, 0);
             }
 
             var targetValue = target.Sompi;
@@ -120,7 +120,7 @@ namespace NKaspa
             Search(pool, 0, 0, 0, target, prefer, chosen, best);
             if (!best.Found)
             {
-                throw new InvalidOperationException("Not enough funds.");
+                throw KaspaTransactionBuilderException.InsufficientFunds(target, SumOrNull(pool));
             }
 
             var result = new List<Coin>(best.Count);
@@ -215,22 +215,13 @@ namespace NKaspa
         {
             var ordered = new List<Coin>(pool);
             ordered.Sort(CompareLargestFirst);
-            ulong total = 0;
-            for (var i = 0; i < ordered.Count; i++)
+            var available = SumOrNull(ordered);
+            if (available == null || available.Value < target)
             {
-                var amount = ordered[i].Amount.Sompi;
-                if (total > ulong.MaxValue - amount)
-                {
-                    throw new InvalidOperationException("Not enough funds.");
-                }
-
-                total += amount;
+                throw KaspaTransactionBuilderException.InsufficientFunds(target, available);
             }
 
-            if (total < target)
-            {
-                throw new InvalidOperationException("Not enough funds.");
-            }
+            var total = available.Value;
 
             var goal = total >= prefer ? prefer : target;
             var selected = new List<Coin>();
@@ -245,7 +236,24 @@ namespace NKaspa
                 }
             }
 
-            throw new InvalidOperationException("Not enough funds.");
+            throw KaspaTransactionBuilderException.InsufficientFunds(target, total);
+        }
+
+        private static ulong? SumOrNull(List<Coin> coins)
+        {
+            ulong total = 0;
+            for (var i = 0; i < coins.Count; i++)
+            {
+                var amount = coins[i].Amount.Sompi;
+                if (total > ulong.MaxValue - amount)
+                {
+                    return null;
+                }
+
+                total += amount;
+            }
+
+            return total;
         }
 
         private static List<Coin> Dedupe(IReadOnlyList<Coin> coins)

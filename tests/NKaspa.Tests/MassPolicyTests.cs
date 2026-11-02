@@ -73,7 +73,7 @@ namespace NKaspa.Tests
             Assert.Equal(100_000UL, before.MaximumMass);
             Assert.Equal(10_000_000UL, before.MinimumChange.Sompi);
             Assert.Equal(1UL, before.MinimumRelayFeeRate);
-            var error = Assert.Throws<InvalidOperationException>(() => before.BuildTransaction(true));
+            var error = Assert.Throws<KaspaTransactionBuilderException>(() => before.BuildTransaction(true));
             Assert.Contains("mass", error.Message, StringComparison.OrdinalIgnoreCase);
 
             var at = new TransactionBuilder(Network.Testnet, Network.TestnetToccataActivationDaaScore)
