@@ -55,8 +55,10 @@ namespace NKaspa.Tests
             };
             await using var channel = new KaspaWebSocketChannel(new Uri("ws://127.0.0.1:" + port.ToString() + "/"), options);
             using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            var error = await Assert.ThrowsAsync<TimeoutException>(() => channel.ConnectAsync(cancel.Token));
+            var error = await Assert.ThrowsAsync<KaspaRpcTimeoutException>(() => channel.ConnectAsync(cancel.Token));
             Assert.Contains("timed out", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(options.ConnectTimeout, error.Timeout);
+            Assert.IsAssignableFrom<TimeoutException>(error);
             Assert.Equal(KaspaWebSocketState.Closed, channel.State);
             tcp.Stop();
             try
@@ -92,8 +94,10 @@ namespace NKaspa.Tests
             {
                 await using var channel = new KaspaWebSocketChannel(new Uri("ws://127.0.0.1:" + port.ToString() + "/"), options);
                 await channel.ConnectAsync();
-                var error = await Assert.ThrowsAsync<TimeoutException>(() => channel.ExchangeAsync(Request(1)));
+                var error = await Assert.ThrowsAsync<KaspaRpcTimeoutException>(() => channel.ExchangeAsync(Request(1)));
                 Assert.Contains("timed out", error.Message, StringComparison.OrdinalIgnoreCase);
+                Assert.Equal(options.RequestTimeout, error.Timeout);
+                Assert.IsAssignableFrom<TimeoutException>(error);
             }
             finally
             {
@@ -156,8 +160,10 @@ namespace NKaspa.Tests
             {
                 await using var channel = new KaspaWebSocketChannel(new Uri("ws://127.0.0.1:" + port.ToString() + "/"), options);
                 await channel.ConnectAsync();
-                var error = await Assert.ThrowsAsync<InvalidOperationException>(() => channel.ExchangeAsync(Request(3)));
+                var error = await Assert.ThrowsAsync<KaspaConnectionClosedException>(() => channel.ExchangeAsync(Request(3)));
                 Assert.Contains("disconnected", error.Message, StringComparison.OrdinalIgnoreCase);
+                Assert.Equal("WebSocket disconnected.", error.Message);
+                Assert.IsAssignableFrom<InvalidOperationException>(error);
             }
             finally
             {
@@ -296,9 +302,11 @@ namespace NKaspa.Tests
                 }
                 else
                 {
-                    var error = await Assert.ThrowsAsync<InvalidOperationException>(() => channel.ExchangeAsync(Request(1)));
+                    var error = await Assert.ThrowsAsync<KaspaMessageTooLargeException>(() => channel.ExchangeAsync(Request(1)));
+                    Assert.Equal(maxMessageBytes, error.LimitBytes);
                     Assert.Contains(maxMessageBytes.ToString(System.Globalization.CultureInfo.InvariantCulture), error.Message, StringComparison.Ordinal);
                     Assert.Contains("maximum", error.Message, StringComparison.OrdinalIgnoreCase);
+                    Assert.IsAssignableFrom<InvalidOperationException>(error);
                     Assert.DoesNotContain("PAYLOADMARKER", error.Message, StringComparison.Ordinal);
                     Assert.DoesNotContain("xxxxxxxx", error.Message, StringComparison.Ordinal);
                     Assert.Equal(KaspaWebSocketState.Closed, channel.State);

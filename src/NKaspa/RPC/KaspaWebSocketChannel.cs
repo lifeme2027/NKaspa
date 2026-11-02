@@ -18,14 +18,14 @@ namespace NKaspa.RPC
     /// </para>
     /// <para>
     /// <see cref="KaspaWebSocketOptions.ConnectTimeout"/> and <see cref="KaspaWebSocketOptions.RequestTimeout"/> bound each call.
-    /// The caller's <see cref="CancellationToken"/> cancels the same call. A timeout throws <see cref="TimeoutException"/>.
+    /// The caller's <see cref="CancellationToken"/> cancels the same call. A timeout throws <see cref="KaspaRpcTimeoutException"/>, which extends <see cref="TimeoutException"/>.
     /// Cancelling the token throws <see cref="OperationCanceledException"/>.
     /// </para>
     /// <para>
-    /// When the socket drops, waiting requests fail with <see cref="InvalidOperationException"/> and are not retried.
+    /// When the socket drops, waiting requests fail with <see cref="KaspaConnectionClosedException"/> and are not retried.
     /// <see cref="KaspaWebSocketOptions.AutoReconnect"/> can open a new socket with exponential backoff for later calls.
     /// <see cref="Reconnected"/> fires after that new socket is open so the caller can subscribe again.
-    /// A message larger than <see cref="KaspaWebSocketOptions.MaxMessageBytes"/> fails the read. The default limit is 16 MiB.
+    /// A message larger than <see cref="KaspaWebSocketOptions.MaxMessageBytes"/> fails the read with <see cref="KaspaMessageTooLargeException"/>. The default limit is 16 MiB.
     /// </para>
     /// <para>
     /// rusty-kaspa <c>KaspaRpcHandler::handshake</c> is still a TODO and does not send a greeting.
@@ -146,7 +146,7 @@ namespace NKaspa.RPC
         /// <summary>Opens the WebSocket and starts reading frames.</summary>
         /// <exception cref="System.InvalidOperationException">WebSocket is already connected.</exception>
         /// <exception cref="System.ObjectDisposedException">The KaspaWebSocketChannel has been disposed.</exception>
-        /// <exception cref="System.TimeoutException">WebSocket connect timed out.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcTimeoutException">WebSocket connect timed out. This type extends <see cref="System.TimeoutException"/>.</exception>
         /// <exception cref="System.OperationCanceledException">The caller's token was canceled.</exception>
         public async Task ConnectAsync(CancellationToken cancellationToken = default)
         {
@@ -189,8 +189,10 @@ namespace NKaspa.RPC
         /// </summary>
         /// <exception cref="System.ArgumentNullException"><paramref name="requestJson"/> is null.</exception>
         /// <exception cref="System.ArgumentException">wRPC request is missing a numeric id.</exception>
-        /// <exception cref="System.InvalidOperationException">WebSocket is not connected. Call ConnectAsync first. WebSocket disconnected.</exception>
-        /// <exception cref="System.TimeoutException">WebSocket request timed out.</exception>
+        /// <exception cref="System.InvalidOperationException">WebSocket is not connected. Call ConnectAsync first.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaConnectionClosedException">WebSocket disconnected. This type extends <see cref="System.InvalidOperationException"/>.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaRpcTimeoutException">WebSocket request timed out. This type extends <see cref="System.TimeoutException"/>.</exception>
+        /// <exception cref="NKaspa.RPC.KaspaMessageTooLargeException">WebSocket message exceeds the maximum of {limit} bytes. This type extends <see cref="System.InvalidOperationException"/>.</exception>
         /// <exception cref="System.OperationCanceledException">The caller's token was canceled.</exception>
         /// <exception cref="System.ObjectDisposedException">The KaspaWebSocketChannel has been disposed.</exception>
         /// <exception cref="NKaspa.RPC.KaspaRpcEncodingMismatchException">JSON wRPC client received a binary WebSocket frame.</exception>
@@ -242,7 +244,7 @@ namespace NKaspa.RPC
                     if (socket == null || socket.State != WebSocketState.Open)
                     {
                         ThrowIfTerminal();
-                        throw new InvalidOperationException("WebSocket disconnected.");
+                        throw new KaspaConnectionClosedException("WebSocket disconnected.");
                     }
 
                     try
@@ -252,7 +254,7 @@ namespace NKaspa.RPC
                     catch (WebSocketException exception)
                     {
                         ScheduleReconnect();
-                        throw new InvalidOperationException("WebSocket disconnected.", exception);
+                        throw new KaspaConnectionClosedException("WebSocket disconnected.", exception);
                     }
                 }
                 finally
@@ -267,7 +269,7 @@ namespace NKaspa.RPC
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && !IsInfinite(_options.RequestTimeout))
             {
-                throw new TimeoutException("WebSocket request timed out after " + Format(_options.RequestTimeout) + ".");
+                throw new KaspaRpcTimeoutException("WebSocket request timed out after " + Format(_options.RequestTimeout) + ".", _options.RequestTimeout);
             }
             finally
             {
@@ -349,7 +351,7 @@ namespace NKaspa.RPC
             await AwaitTask(job, cancellationToken).ConfigureAwait(false);
             if (!IsOpen)
             {
-                throw new InvalidOperationException("WebSocket disconnected.");
+                throw new KaspaConnectionClosedException("WebSocket disconnected.");
             }
         }
 
@@ -440,7 +442,7 @@ namespace NKaspa.RPC
                     }
                     catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && !IsInfinite(_options.ConnectTimeout))
                     {
-                        throw new TimeoutException("WebSocket connect timed out after " + Format(_options.ConnectTimeout) + ".");
+                        throw new KaspaRpcTimeoutException("WebSocket connect timed out after " + Format(_options.ConnectTimeout) + ".", _options.ConnectTimeout);
                     }
                 }
 
@@ -509,10 +511,7 @@ namespace NKaspa.RPC
 
                         if ((long)message.Length + result.Count > _options.MaxMessageBytes)
                         {
-                            fatal = new InvalidOperationException(
-                                "WebSocket message exceeds the maximum of "
-                                + _options.MaxMessageBytes.ToString(CultureInfo.InvariantCulture)
-                                + " bytes.");
+                            fatal = new KaspaMessageTooLargeException(_options.MaxMessageBytes);
                             return;
                         }
 
@@ -561,7 +560,7 @@ namespace NKaspa.RPC
                     }
                     else
                     {
-                        failure = new InvalidOperationException("WebSocket disconnected.");
+                        failure = new KaspaConnectionClosedException("WebSocket disconnected.");
                     }
 
                     FailPending(failure);

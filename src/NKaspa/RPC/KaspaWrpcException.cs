@@ -28,7 +28,7 @@ namespace NKaspa.RPC
     /// The socket could not be opened, or it dropped.
     /// The message is <c>Kaspa node is unreachable.</c> when the failure is a transport exception.
     /// A Borsh server error <c>connection is closed</c> uses that text.
-    /// <see cref="KaspaWebSocketChannel"/> still throws <see cref="TimeoutException"/> itself. This type wraps that timeout at the client.
+    /// <see cref="KaspaWebSocketChannel"/> throws <see cref="KaspaRpcTimeoutException"/>, which extends <see cref="TimeoutException"/>. This type wraps that timeout at the client.
     /// </summary>
     public sealed class KaspaNodeUnreachableException : KaspaWrpcException
     {

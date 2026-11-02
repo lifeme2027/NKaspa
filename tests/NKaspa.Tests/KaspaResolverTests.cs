@@ -187,7 +187,9 @@ namespace NKaspa.Tests
             };
             var error = await Assert.ThrowsAsync<KaspaNodeUnreachableException>(() => resolver.ConnectAsync(Network.Mainnet, KaspaRpcEncoding.Json, options));
             Assert.Equal(KaspaNodeUnreachableException.DefaultMessage, error.Message);
-            Assert.IsType<TimeoutException>(error.InnerException);
+            var timeout = Assert.IsType<KaspaRpcTimeoutException>(error.InnerException);
+            Assert.Equal(options.ConnectTimeout, timeout.Timeout);
+            Assert.IsAssignableFrom<TimeoutException>(timeout);
             tcp.Stop();
             try
             {

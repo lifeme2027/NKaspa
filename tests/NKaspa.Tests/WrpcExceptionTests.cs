@@ -129,6 +129,19 @@ namespace NKaspa.Tests
             var dropped = await Assert.ThrowsAsync<KaspaNodeUnreachableException>(() => client.GetServerInfoAsync());
             Assert.Equal("WebSocket disconnected.", dropped.InnerException!.Message);
 
+            channel.Failure = new KaspaConnectionClosedException("WebSocket disconnected.");
+            var closed = await Assert.ThrowsAsync<KaspaNodeUnreachableException>(() => client.GetServerInfoAsync());
+            Assert.IsType<KaspaConnectionClosedException>(closed.InnerException);
+
+            channel.Failure = new KaspaRpcTimeoutException("WebSocket request timed out after 00:00:00.4000000.", TimeSpan.FromMilliseconds(400));
+            var typedTimeout = await Assert.ThrowsAsync<KaspaNodeUnreachableException>(() => client.GetServerInfoAsync());
+            Assert.IsType<KaspaRpcTimeoutException>(typedTimeout.InnerException);
+            Assert.Equal(TimeSpan.FromMilliseconds(400), ((KaspaRpcTimeoutException)typedTimeout.InnerException).Timeout);
+
+            channel.Failure = new KaspaMessageTooLargeException(32);
+            var oversized = await Assert.ThrowsAsync<KaspaMessageTooLargeException>(() => client.GetServerInfoAsync());
+            Assert.Equal(32, oversized.LimitBytes);
+
             channel.Failure = new InvalidOperationException("WebSocket is not connected. Call ConnectAsync first.");
             var usage = await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetServerInfoAsync());
             Assert.Equal("WebSocket is not connected. Call ConnectAsync first.", usage.Message);
@@ -199,7 +212,9 @@ namespace NKaspa.Tests
             using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             var error = await Assert.ThrowsAsync<KaspaNodeUnreachableException>(() => connection.ConnectAsync(cancel.Token));
             Assert.Equal(KaspaNodeUnreachableException.DefaultMessage, error.Message);
-            Assert.IsType<TimeoutException>(error.InnerException);
+            var timeout = Assert.IsType<KaspaRpcTimeoutException>(error.InnerException);
+            Assert.Equal(options.ConnectTimeout, timeout.Timeout);
+            Assert.IsAssignableFrom<TimeoutException>(timeout);
             tcp.Stop();
             try
             {
