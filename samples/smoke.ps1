@@ -44,4 +44,7 @@ Invoke-Sample "samples\PsktMultisig\PsktMultisig.csproj"
 Invoke-Sample "samples\SignMessage\SignMessage.csproj" @("NKaspa")
 Invoke-Sample "samples\Json\Json.csproj"
 Invoke-Sample "samples\Tutorials\Tutorials.csproj"
+Write-Host "smoke samples\AspNetCheckout (build+test)"
+& $dotnet test -c Release (Join-Path $root "samples\AspNetCheckout.Tests\AspNetCheckout.Tests.csproj")
+if ($LASTEXITCODE -ne 0) { throw "smoke failed: AspNetCheckout ($LASTEXITCODE)" }
 Write-Host "smoke ok"

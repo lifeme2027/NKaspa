@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NKaspa testnet checkout sample</title>
+<style>body{font-family:sans-serif;max-width:40rem;margin:2rem auto}code{word-break:break-all}</style>
+</head>
+<body>
+<h1>Testnet checkout (watch-only sample)</h1>
+<p><strong>Alpha, unaudited, testnet only.</strong> Do not send mainnet KAS.</p>
+<form id="f"><label>Amount (KAS) <input id="amt" value="1" required></label> <button>Create order</button></form>
+<div id="out"></div>
+<script>
+const out = document.getElementById('out');
+let timer;
+document.getElementById('f').addEventListener('submit', async e => {
+  e.preventDefault();
+  clearInterval(timer);
+  const r = await fetch('/orders', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({amountKas: document.getElementById('amt').value})});
+  const o = await r.json();
+  if (!r.ok) { out.textContent = o.error || o.detail || r.status; return; }
+  out.innerHTML = '<p>Send <b></b> testnet KAS to</p><p><code></code></p><p>Status: <span id="st">pending</span></p>';
+  out.querySelector('b').textContent = o.amountKas;
+  out.querySelector('code').textContent = o.address;
+  timer = setInterval(async () => {
+    const s = await (await fetch('/orders/' + o.id)).json();
+    document.getElementById('st').textContent = s.status + ' (' + s.confirmations + '/' + s.requiredConfirmations + ')';
+    if (s.status === 'confirmed' || s.status === 'expired') clearInterval(timer);
+  }, 3000);
+});
+</script>
+</body>
+</html>
